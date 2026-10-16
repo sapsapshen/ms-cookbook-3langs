@@ -1,0 +1,18 @@
+{
+ "0": "The model on your laptop runs, but you want to try a bigger one or do some image generation and may not have the right hardware. You can also put the compute in the cloud and let a server carry that work.",
+ "1": "Cloud servers can be configured as needed. Here we keep using ModelScope Notebook: pick a CPU or GPU runtime in the browser, download the model and run the code. The page is on your own machine; the model runs on the connected cloud instance.",
+ "2": "This part runs two experiments. First use the CPU to run a 0.5B-class model and judge the sentiment of a review; then use the GPU to run an image-generation model and turn a text description into an image. They show how to work with the two kinds of resource; the tasks and models differ, so you cannot compare CPU and GPU speed directly from the run time.",
+ "3": "<b>Other cloud server resources will be added later.</b>",
+ "5": "From a ModelScope model page, enter \u201cNotebook quick start\u201d and click \u201cConnect runtime\u201d. This time pick a CPU instance first to finish the sentiment analysis, then switch to a GPU instance for image generation. For the Notebook operations you can refer to \u201cSee your first result in 30 minutes\u201d.",
+ "6": "After switching instances, the previous Python process and the loaded models are not carried over to the new instance: you need to re-check the dependencies in the current environment and run that experiment's code from the start.",
+ "8": "Taking the <a href=\"https://www.modelscope.cn/models/Qwen/Qwen2.5-0.5B-Instruct\" target=\"_blank\" rel=\"noopener noreferrer\">Qwen/Qwen2.5-0.5B-Instruct</a> model as an example, here is how to run a 0.5B-class model on the CPU for a sentiment-analysis task.",
+ "9": "After starting the CPU instance, enter the notebook development environment. The code for loading and running the model is as follows:",
+ "10": "The result:",
+ "12": "Using the <a href=\"https://www.modelscope.cn/models/Tongyi-MAI/Z-Image-Turbo\" target=\"_blank\" rel=\"noopener noreferrer\">Tongyi-MAI/Z-Image-Turbo</a> model, here is how to load a model on the GPU and complete an image-generation task.",
+ "13": "After starting the GPU instance, enter the notebook development environment.",
+ "14": "According to the model card, you need to install the latest diffusers in the terminal.",
+ "15": "Install complete:",
+ "16": "The code for loading and running the model is as follows:",
+ "17": "The generated image:",
+ "18": "The code and related files for this chapter are at: https://www.modelscope.cn/gallery/liucong/4a8eb492-54dc-4062-82c0-65b17fd94d5f"
+}

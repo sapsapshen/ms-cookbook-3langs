@@ -1,0 +1,370 @@
+<!-- Generated from ../source-html/chapter-06.html; do not edit independently. -->
+
+# 先评再选：用 EvalScope 形成开源模型的第一份报告
+
+这是一个真实且惨痛的教训。
+
+之前在给业务部门进行模型训练的时候，误以为越新的在通用榜单上效果越好的模型，就会在业务场景中表现的越出色。
+
+当出了一个在通用榜单上效果超群的模型时，<strong>信誓旦旦</strong><strong>地承诺</strong><strong>，马上可以给出更好的微调模型。</strong>
+
+但实则不然，因为每个模型在预训练和后训练中采用的数据大不相同。有的模型恰好在预训练阶段见过大量和你业务相似的数据，微调时自然事半功倍；有的虽然通用能力强，但和你的领域"八字不合"，怎么调都差一口气。
+
+<strong>所有模型在选择前，通用指标只能是一个参考标准，最终模型选择还要看在业务数据上的表现。</strong>
+
+<p></p>
+
+<a id="c6-s1"></a>
+
+## 只试几个问题，就能选出好模型吗？
+
+我们在选择模型时，经常会先看模型排行榜、下载量或者网上的评价，也可能直接准备几个问题问一下模型，看看回答得怎么样。这些方法可以帮助我们快速了解一个模型，但都有一定的局限。
+
+![正文配图](<../../assets/manuscript-20260914/c06-4316b3e21864b5.webp>)
+
+例如，模型下载量高，并不一定代表模型能力最强，也可能与模型发布时间、参数规模和使用门槛有关；几个问题回答得很好，也不能代表模型在这一类问题上都能保持同样的效果。
+
+特别是在多个模型之间进行选择时，如果每个模型测试的问题不同，或者判断答案好坏的标准不同，就很难进行直接比较。有时候两个模型看起来回答得都不错，但真正放到几百甚至几千条数据上测试以后，准确率和稳定性可能存在明显的差异。
+
+<p></p>
+
+模型评测的目的就是把不规范的评测标准，变成一套更加统一的测试方法，例如，准备 500 道固定的测试题，让 Qwen、DeepSeek 等候选模型分别回答，再使用相同的规则计算准确率。这样既可以比较不同模型的整体效果，也可以减少个人判断对结果的影响。
+
+通过模型评测，我们不仅可以看到模型最终得到多少分，还可以进一步分析模型哪些任务表现较好、哪些类型的问题容易出错，以及不同模型之间的差距有多大。这些结果可以帮助我们从多个候选模型中筛选出更加合适的模型，也可以为后续的业务数据测试、模型微调和部署提供参考。
+
+<p></p>
+
+<a id="c6-s2"></a>
+
+## 榜单上的分数，到底测的是什么？
+
+为了方便比较不同模型，Benchmark 中包含了不同类型的数据，例如，
+
+MMLU 包含数学、历史、计算机、法律等多个学科的问题，主要用于观察模型的知识和推理能力；
+
+![正文配图](<../../assets/manuscript-20260914/c06-f4faad78672f50.webp>)
+
+C-Eval 和 CMMLU 包含较多中文考试和知识类问题，可以用于测试模型的中文知识能力；
+
+GSM8K 主要由数学应用题组成，可以用于测试数学推理能力；
+
+![正文配图](<../../assets/manuscript-20260914/c06-75145880db6223.webp>)
+
+HumanEval 主要测试模型根据要求编写代码的能力；
+
+IFEval 则重点测试模型能不能按照用户提出的要求完成任务。
+
+![正文配图](<../../assets/manuscript-20260914/c06-63d8b874dceff0.webp>)
+
+<p></p>
+
+在实际评测时，可以根据自身业务需求，选择更贴合自己的场景的数据进行评测。例如，如果场景是更加关注中文知识的问答效果，可以重点测试中文理解、知识和推理相关的数据集；如果模型主要用于数学推理，则可以重点测试 GSM8K 等数学数据集。
+
+通过这些公开 Benchmark，可以比较不同模型在相同数据的效果，从中筛选出一些能力比较符合要求的模型。<strong>但是 Benchmark 分数高，并不代表模型在实际业务中一定好用。</strong>
+
+公开 Benchmark 里的数据都是通用数据，而真实业务中可能存在大量专业术语、内部规则，这些内容很难通过公开数据集测试出来。也就是说，我们再选择模型时，可以通过 Benchmark 做一次模型初筛，选出效果不错的模型，但是具体场景的效果，还需要使用业务数据进行评测。
+
+<p></p>
+
+<a id="c6-s3"></a>
+
+## 用自己的业务数据，再测一遍
+
+通用 Benchmark 测的是模型的通用能力，而业务评测着重的是它在具体场景中的实际表现。在第一轮筛选结束后，接下来的核心问题很明确：这个模型放到我们的业务里，到底适不适用？
+
+业务数据评测，本质上就是用真实业务产生的数据去验证模型。比如：做智能客服就用用户的真实咨询记录，做企业知识库就用员工日常的检索与问答，做工业运维则可以用一线的设备故障日志。
+
+在准备评测数据时，大家常有一个误区，认为数据量越大越好。相比于单纯的数量，数据的代表性和覆盖面其实更关键。如果准备了几万条数据，但大多是简单、重复的问题，测出来的分数哪怕很高，也没有太多参考价值，一份合理的业务测试集，应该具备清晰的梯度：既要有日常高频的基础问题，也要包含一定比例的复杂长难问题以及边界异常问题。只有通过这种有层次的真实数据检验，测出的结果才足够客观。
+
+![正文配图](<../../assets/manuscript-20260914/c06-b3877cf337a08f.webp>)
+
+<p></p>
+
+<a id="c6-s4"></a>
+
+## 评测这件事，EvalScope 能帮上什么忙？
+
+EvalScope 是 ModelScope 社区推出的大模型评测框架，可以实现对不同模型的效果与推理性能进行统一评估与横向对比。EvalScope 支持范围比较广，包括大语言模型、多模态模型，以及检索中常用的 Embedding 和 Reranker 等多种模型类型。EvalScope 的优势体现在以下几个方面：
+
+1）兼顾通用 Benchmark 与自定义业务评测
+
+EvalScope 预置了 MMLU、GSM8K、HumanEval 等常见的公开基准数据集，可以直接对模型的通用知识、数学、代码及逻辑推理能力进行评测。同时，它支持用户自定义评测集，例如将业务中的文本分类、问答、信息抽取等真实数据引入评测流程，从而准确判断模型在具体业务场景中的表现。
+
+2）支持多形态的模型接入与服务调用
+
+EvalScope 框架既支持评测本地离线模型，也兼容标准 OpenAI 格式接口。对于通过 vLLM、SGLang 等主流推理引擎部署的模型服务，可以直接接入评测，适配不同的开发与部署环境。
+
+3）具备推理性能压测能力
+
+除了效果评估，模型部署后的运行性能同样是选型的重要考量。EvalScope 能够模拟多用户并发请求，测试吞吐量、请求延迟、首 Token 延迟（TTFT）以及单 Token 输出耗时（TPOT）等核心指标，直观反映服务在并发场景下的承载能力与响应速度。
+
+4）提供多维度的对比分析与报告可视化
+
+评测完成后，EvalScope 框架支持自动生成统计报表与对比图表。
+
+<p></p>
+
+<a id="c6-s5"></a>
+
+## 动手跑一次评测，看看模型的实际表现
+
+本实验 ModelScope 的 Notebook 进行实验，采用 ubuntu22.04-cuda12.8.1-py312-torch2.10.0-1.39.0 这个镜像
+
+![正文配图](<../../assets/manuscript-20260914/c06-776b3c96504c69.webp>)
+
+查看环境中是否已经安装 evalscope
+
+```text
+!pip3 list |grep evalscope
+```
+
+终端中输出下面内容，说明已经安装了 evalscope
+
+![正文配图](<../../assets/manuscript-20260914/c06-d64df78b854d6f.webp>)
+
+如果没有安装，可以通过 pip 直接安装
+
+```text
+!pip3  install evalscope
+如果需要扩展更多的功能，可以使用下面的命令安装
+!pip3 install -e '.[opencompass]'   # Install OpenCompass backend
+!pip3 install -e '.[perf]'          # Install Perf dependencies
+!pip3 install -e '.[app]'           # Install visualization dependencies
+!pip3 install -e '.[all]'           # Install all backends (Native, OpenCompass, VLMEv
+```
+
+<a id="c6-s6"></a>
+
+### <strong>先用公开题库，测一测基础能力</strong>
+
+安装完成后，我们可以使用一个公开数据进行评测，比如 math&#95;500，模型采用 Qwen3-0.6B，为了快速测试，我们可以只选择 10 条数据进行评测，评测命令如下：
+
+```text
+!evalscope eval --model Qwen/Qwen3-0.6B --datasets math_500 --limit 10
+```
+
+`--model` 参数指定模型名称或者本地模型路径，<br>
+`--datasets` 指定评测数据集 ，<br>
+`--limit`指定只测试前多少条 。
+
+输出结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c06-5396601da03fdd.webp>)
+
+![正文配图](<../../assets/manuscript-20260914/c06-1377e09547df87.webp>)
+
+我们可以在对应的目录下查看评测结果，`eval_log.log`记录了 10 条数据的评测结果。
+
+![正文配图](<../../assets/manuscript-20260914/c06-a8bb210e3c0a60.webp>)
+
+<a id="c6-s7"></a>
+
+### <strong>换成业务数据，看看检索效果</strong>
+
+为了评测模型在业务数据的效果，我们可以自定义一些数据进行评测，本章采用某运营商公开的检索数据进行评测，主要测试`Qwen3-Embedding-0.6B`模型效果。
+
+数据形式如下：
+
+```text
+retrieval_data1
+├── corpus.jsonl
+├── queries.jsonl
+└── qrels.jsonl
+   
+```
+
+其中`corpus.jsonl`文档库数据，数据形式如下：包括`{"_id": "xxx", "text": "xxx"}`，&#95;id 为语料库的 id，text 为语料库的文本。形式如下：
+
+![正文配图](<../../assets/manuscript-20260914/c06-55127d99247885.webp>)
+
+`queries.jsonl`为查询文件，每行包括`{"_id": "xxx", "text": "xxx"}`，&#95;id 为查询数据的 id，text 为语查询文本。形式如下：
+
+![正文配图](<../../assets/manuscript-20260914/c06-ae7febb9ef1efc.webp>)
+
+`qrels.jsonl` 是标准答案文件，也就是这个问题对应的正确文档，每行包括`{"query-id": "xxx", "corpus-id": "xxx","score":1}`，`query-id`为查询数据的 id，`corpus-id`为文档库 id,`score`为相关性得分。形式如下：
+
+![正文配图](<../../assets/manuscript-20260914/c06-5f19142927756d.webp>)
+
+把这三个文件直接右击上传到指定目录下即可，
+
+![正文配图](<../../assets/manuscript-20260914/c06-8f6fbe965e2a77.webp>)
+
+<p></p>
+
+安装`mteb`包
+
+```text
+!pip install mteb
+```
+
+![正文配图](<../../assets/manuscript-20260914/c06-f36e3c459d3a19.webp>)
+
+安装`langchain_core`包
+
+```text
+!pip install langchain_core
+```
+
+![正文配图](<../../assets/manuscript-20260914/c06-1c64b252b9549f.webp>)
+
+接下来，我们可以评价 Embedding 的检索效果，代码如下：
+
+```python
+from evalscope.run import run_task
+
+task_cfg = {
+    "work_dir": "outputs",
+
+    "eval_backend": "RAGEval",
+
+    "eval_config": {
+
+        "tool": "MTEB",
+
+        "models": [
+            {
+                "model_name_or_path": "Qwen/Qwen3-Embedding-0.6B",
+
+                "max_seq_length": 512,
+
+                "model_kwargs": {
+                    "torch_dtype": "auto"
+                },
+
+                "encode_kwargs": {
+                    "batch_size": 8,
+                },
+            }
+        ],
+
+        "eval": {
+
+            "custom_tasks": [
+                {
+                    "name": "MyRetrieval",
+                    "data_path": "./retrieval_data1"
+                }
+            ],
+
+            "overwrite_results": True,
+
+            "verbosity": 2
+        },
+    },
+}
+
+run_task(task_cfg=task_cfg)
+```
+
+执行结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c06-5d36797f262d49.webp>)
+
+<a id="c6-s8"></a>
+
+### <strong>不仅能测效果，还能测试性能</strong>
+
+完成模型效果测试之后，还可以继续进行性能压测。如果模型已经通过 vLLM 等推理框架部署，可以使用 EvalScope 向模型服务发送不同并发量的请求。
+
+例如，可以分别设置 1、10、50、100 等不同并发量，观察并发增加之后模型的吞吐量、首 Token 延迟和请求成功率。EvalScope 的性能测试结果能够统计 RPS、输出吞吐量、平均延迟以及 P50、P99 等指标，并将结果保存为测试报告。
+
+这个镜像下操作，默认安装包可能会报错，通过降低 modelscope 版本即可
+
+```text
+!python -m pip install --no-cache-dir --force-reinstall "modelscope==1.37.1"
+```
+
+打开 Notebook，在终端中用 vLLM 启动 Qwen3.5-2B
+
+```text
+CUDA_VISIBLE_DEVICES=0 \
+vllm serve Qwen/Qwen3-0.6B \
+    --served-model-name qwen3-0.6b \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --gpu-memory-utilization 0.6
+```
+
+![正文配图](<../../assets/manuscript-20260914/c06-59ca2059927dea.webp>)
+
+![正文配图](<../../assets/manuscript-20260914/c06-ef3bfe899faf9c.webp>)
+
+模型启动完成后，需要测试下接口是否可以调通，输入下面代码：
+
+```cpp
+import requests
+
+url = "http://127.0.0.1:8000/v1/chat/completions"
+
+data = {
+    "model": "qwen3-0.6b",
+    "messages": [
+        {
+            "role": "user",
+            "content": "你好，请介绍一下自己"
+        }
+    ],
+    "max_tokens": 100
+}
+
+response = requests.post(url, json=data)
+
+print("状态码:", response.status_code)
+print(response.text)
+```
+
+如果可以调通，会显示模型输出结果
+
+![正文配图](<../../assets/manuscript-20260914/c06-f82a1385ef78e1.webp>)
+
+接下来，就是使用 EvalScope 评测性能，一般我们比较关注的指标就是首字出现的时间（TTFT）以及单 Token 输出耗时（TPOT）等指标。
+
+```sql
+!evalscope perf \
+    --model qwen3-0.6b \
+    --url http://127.0.0.1:8000/v1/chat/completions \
+    --api openai \
+    --api-key sk-123456 \
+    --dataset random \
+    --tokenizer-path Qwen/Qwen3-0.6B \
+    --min-prompt-length 1024 \
+    --max-prompt-length 1024 \
+    --min-tokens 1024 \
+    --max-tokens 1024 \
+    --parallel 1 2 4 8 \
+    --number 10 20 50 100
+```
+
+其中，相关参数说明：
+
+- `--model qwen3.5-2b`：模型名称，需要和 vllm 推理服务中配置的模型名称保持一致
+- `--url` [http://127.0.0.1:8000/v1/chat/completions](<http://127.0.0.1:8000/v1/chat/completions>)：模型服务的实际接口地址
+- `--api-key sk-123456`：API 鉴权密钥。如果服务端要求鉴权则必须传入；若未配置，该参数可省略。
+- `--dataset random`：指定测试数据集为随机生成模式，无需准备本地测试文件。
+- `--tokenizer-path Qwen/Qwen3.5-2B`：指定分词器（Tokenizer）的路径或 Hugging Face 模型名称，用于精确控制生成文本的 Token 长度。
+- `--min-prompt-length 1024` 与 `--max-prompt-length 1024`：控制输入提示词的长度区间。两者均设为 1024，表示固定每条请求的输入长度为 1024 个 Token。
+- `--min-tokens 1024` 与 `--max-tokens 1024`：控制模型生成的输出长度区间。两者均设为 1024，表示强制模型每次输出固定的 1024 个 Token（忽略结束符）。
+- `--parallel 1 2 4 8`：设置并发数梯度。压测时将依次模拟 1、2、4、8 个用户同时发起请求，以观察系统在不同并发压力下的表现。
+- `--number 10 20 50 100`：设置各并发梯度下的总请求数。该列表与 `--parallel` 一一对应，例如在 1 并发时累计发送 10 个请求，在 8 并发时累计发送 100 个请求。
+
+![正文配图](<../../assets/manuscript-20260914/c06-f8a82974fbf4aa.webp>)
+
+`benchmark.log`的结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c06-2dd7dcab8a21d7.webp>)
+
+EvalScope 给我们提供了一种快速评测模型的方法，我们可以在对应的输出文件夹中看到相关 html 报告内容。更多 EvalScope 的用法，可以在 https://evalscope.readthedocs.io/zh-cn/v1.6.1/get_started/introduction.html 查看。
+
+<p></p>
+
+具体实验过程，可参考：https://modelscope.cn/gallery/liucong/5a794182-147f-4c97-83c5-233ca6965f4b
+
+<p></p>
+
+<a id="c6-s9"></a>
+
+## 彩蛋
+
+<strong>快用你自己真实的业务数据，来测测现在开源模型的效果～</strong>
+
+<p></p>

@@ -1,0 +1,22 @@
+.contributor-wall{grid-column:1/-1;background:#fff}
+.contributor-heading{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:28px}
+.contributor-heading p{margin-bottom:0}
+.contributor-heading>span{font-size:12px;color:var(--muted);white-space:nowrap}
+.contributor-profiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 22px}
+.contributor-profile{display:block;min-width:0;color:var(--heading);border-radius:16px}
+.contributor-profile>img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:contain;border-radius:16px;border:1px solid var(--border)}
+.contributor-profile>span{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 2px;font-size:14px}
+.contributor-profile small{color:var(--brand);font-size:12px;white-space:nowrap}
+.contributor-profile:hover>img{border-color:var(--brand)}
+.contributor-code-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;border-top:1px solid var(--border);margin-top:30px;padding-top:24px}
+.contributor-code-heading h3{font-size:19px;margin:0}
+.contributor-code-heading .text-link{font-size:13px}
+.contributor-github{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px}
+.contributor-github>a{display:flex;align-items:center;gap:12px;padding:16px 10px;color:var(--heading);border:1px solid var(--border);border-radius:12px}
+.contributor-github>a:hover{border-color:var(--brand)}
+.contributor-github img{width:48px;height:48px;border-radius:50%;object-fit:cover}
+.contributor-github strong{font-size:14px;overflow-wrap:anywhere}
+.contributor-github small{display:block;color:var(--brand);font-size:12px;margin-top:5px}
+@media(max-width:1000px){.contributor-github{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.contributor-heading{display:block}.contributor-heading>span{display:block;margin-top:14px}.contributor-profiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 12px}.contributor-profile>span{display:block;font-size:12px}.contributor-profile small{display:block;margin-top:5px}.contributor-code-heading{align-items:start;flex-direction:column;gap:4px}.contributor-github{gap:10px}.contributor-github>a{gap:8px;padding:12px 8px}.contributor-github img{width:34px;height:34px}.contributor-github strong{font-size:12px}}
+@media(max-width:420px){.contributor-profiles{grid-template-columns:1fr}}

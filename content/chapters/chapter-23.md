@@ -1,0 +1,601 @@
+<!-- Generated from ../source-html/chapter-23.html; do not edit independently. -->
+
+# 一张商品营销图，从生成到修改怎么做？
+
+过去制作一张商品宣传海报，通常需要经过素材准备、背景设计、商品排版、文案添加和尺寸调整等多个环节。如果同一款商品还需要投放到多个平台，设计人员往往还要针对不同尺寸重新调整画面。
+
+现在通过文生图、图生图、局部编辑和模型微调等技术，可以将创意生成、商品设计、图片修改和尺寸适配串联起来，形成一条相对完整的营销内容生产流程。
+
+例如，一款饮料需要制作“夏日营销”主题海报，希望画面中包含冰块、水花、柠檬和绿叶等元素，可以先通过文字描述快速生成初始营销画面，再结合商品图片进行图生图编辑，加入品牌 Logo，并根据实际需求继续修改局部元素。最后，还可以将同一张营销图片扩展为不同尺寸，用于社交媒体、短视频和网页广告等不同场景。
+
+本章将以 FRESH DAY 夏日饮料营销图为例，介绍如何基于 ModelScope 中的开源图像生成模型搭建一条简的 AIGC 营销内容生产线。实验从文生图开始，逐步介绍图生图、商品主体保持、局部编辑、尺寸适配以及品牌风格 LoRA 等内容。
+
+<p></p>
+
+<a id="c23-s1"></a>
+
+## 先用文字描述，把营销创意画出来
+
+文生图（Text-to-Image）是指根据文字描述直接生成图片。用户不需要准备完整的设计素材，只需要通过 Prompt 描述想要的画面内容，例如主题、主体、背景、色彩、构图和视觉风格等，模型就可以根据这些信息生成对应的图片。
+
+对于营销内容生产来说，文生图比较适合用于创意探索和初始视觉方案生成。例如，在制作夏日饮料海报之前，可以先告诉模型“清爽的夏日氛围、冰块、水花、柠檬、蓝绿色调、商业摄影风格”等要求，让模型快速生成一个完整的营销画面。相比从空白画布开始设计，这种方式能够更快地看到不同创意方案。
+
+目前开源社区已经提供了 Stable Diffusion、FLUX、Qwen-Image、Z-Image-Turbo 等多种图像生成模型。不同模型在画面质量、Prompt 理解、文字生成能力和硬件资源需求等方面存在差异
+
+本节选择 ModelScope 上的 Z-Image-Turbo 模型完成文生图实验。Turbo 版本重点优化了生成效率，可以通过较少的推理步数完成图片生成，因此比较适合个人开发者以及 GPU 资源有限的实验环境。
+
+1）安装环境
+
+我们使用 DiffSynth-Studio 框架进行文生图，下载 DiffSynth-Studio
+
+```text
+!git clone https://github.com/modelscope/DiffSynth-Studio.git  
+```
+
+![正文配图](<../../assets/manuscript-20260914/c22-e33b489045b898.webp>)
+
+2）进入 DiffSynth-Studio 目录
+
+```text
+%cd DiffSynth-Studio
+```
+
+![正文配图](<../../assets/manuscript-20260914/c22-9475639db44bdf.webp>)
+
+3\) 安装
+
+```text
+%pip install -e .
+```
+
+![正文配图](<../../assets/manuscript-20260914/c22-e472c79cee1dbe.webp>)
+
+4\) 在 Cell 单元中输入下面代码，进行文生图。
+
+```python
+import torch
+from modelscope import ZImagePipeline
+pipe = ZImagePipeline.from_pretrained(
+    "Tongyi-MAI/Z-Image-Turbo",
+    torch_dtype=torch.bfloat16,
+    low_cpu_mem_usage=False,
+)
+pipe.to("cuda")
+print(f"模型所在设备: {pipe.device}")
+
+prompt = """ 夏日饮料商业宣传海报，
+ 清爽明亮的夏日氛围， 背景包含冰块、水花、柠檬和绿色树叶， 蓝绿色清爽色调， 商业广告摄影风格， 画面中央预留饮料商品展示区域， 背景简洁，光影自然， 高质量，细节清晰。 """
+image = pipe(
+    prompt=prompt,
+    height=1024,
+    width=1024,
+    num_inference_steps=9, 
+    guidance_scale=0.0, 
+    generator=torch.Generator("cuda").manual_seed(42),
+).images[0]
+
+print("88888888888888888888888")
+#display(image)
+image.save("summer_drink_poster.png")
+```
+
+执行完成后，可以在工作空间中看到刚保存的图片。
+
+![正文配图](<../../assets/manuscript-20260914/c22-875c2e48ff0c97.webp>)
+
+生成的图片效果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c22-9c80bf9a063d2d.webp>)
+
+对于初学者来说，不需要一开始就编写非常复杂的 Prompt。只要把需求描述清楚，再根据生成结果逐步增加细节即可。
+
+<a id="c23-s2"></a>
+
+## 有了参考图，再加品牌和营销元素
+
+文生图非常适合快速生成营销创意和背景方案，但它存在一个明显的问题：如果直接要求模型生成具体商品，商品包装、Logo 和文字可能与真实商品存在差异，在正式的商品营销场景中，还需要结合真实商品图片进一步处理。
+
+文生图主要依赖文字描述，而图生图（Image-to-Image）会同时输入参考图片和文字描述。模型可以参考原图中的商品主体、包装和构图，再根据 Prompt 对背景、光影和营销元素进行调整。
+
+本节选择 SenseNova-U1.5-8B-MoT 作为图像编辑模型。该模型支持文生图和图像编辑等任务，可以同时理解输入图片和文字指令，并根据 Prompt 对原图中的指定内容进行调整。相比仅根据文字生成图片，SenseNova-U1.5-8B-MoT 能够利用输入图片中的视觉信息，在保留原有主体和整体结构的基础上，对商品包装、背景、颜色和装饰元素等内容进行修改，因此比较适合商品营销图片的生成与编辑。
+
+实验部分继续使用上一节生成的夏日饮料图片作为输入，通过图生图模型对其进行编辑。在尽量保留饮料瓶主体和整体结构的基础上，为瓶身增加“FRESH DAY” 品牌 Logo，并加入冰块、水花、柠檬等夏日元素，最终生成一张更加完整的商品营销宣传图，默认的 SenseNova-U1.5-8B-MoT 加载方式，会导致显存不足，本次代码中采用低显存加载方式，从而降低显存占用。
+
+代码如下：
+
+```python
+from diffsynth.pipelines.sensenova_u1_image import (
+    SenseNovaU1ImagePipeline,
+    ModelConfig
+)
+from PIL import Image
+import torch
+import os
+
+MODEL_ID = "SenseNova/SenseNova-U1.5-8B-MoT"
+INPUT_IMAGE = "/mnt/workspace/summer_drink_poster.png"
+OUTPUT_IMAGE = "/mnt/workspace/drink_fresh_day_ad.png"
+
+vram_config = {
+    "offload_dtype": "disk",
+    "offload_device": "disk",
+    "onload_dtype": "disk",
+    "onload_device": "disk",
+
+    # 真正需要计算时再以 BF16 加载到 GPU
+    "preparing_dtype": torch.bfloat16,
+    "preparing_device": "cuda",
+
+    "computation_dtype": torch.bfloat16,
+    "computation_device": "cuda",
+}
+
+print("正在加载 SenseNova-U1.5-8B-MoT...")
+
+pipe = SenseNovaU1ImagePipeline.from_pretrained(
+    torch_dtype=torch.bfloat16,
+    device="cuda",
+
+    model_configs=[
+        ModelConfig(
+            model_id=MODEL_ID,
+            origin_file_pattern="model*.safetensors",
+            **vram_config
+        ),
+    ],
+
+    tokenizer_config=ModelConfig(
+        model_id=MODEL_ID,
+        origin_file_pattern="./"
+    ),
+    vram_limit=(
+        torch.cuda.mem_get_info("cuda")[1] / (1024 ** 3)
+        - 0.5
+    ),
+)
+
+print("模型加载完成。")
+
+if not os.path.exists(INPUT_IMAGE):
+    raise FileNotFoundError(
+        f"找不到输入图片：{INPUT_IMAGE}"
+    )
+
+edit_image = Image.open(INPUT_IMAGE).convert("RGB")
+
+print(
+    f"输入图片尺寸："
+    f"{edit_image.width} × {edit_image.height}"
+)
+
+prompt = """
+这是一项饮料商品图像编辑任务。
+
+请基于输入的饮料瓶商品图，生成一张专业、清爽的夏日饮料营销广告图。
+
+请重点保留原图中的饮料瓶主体。
+尽量保持饮料瓶原有的瓶身形状、瓶盖、包装结构、瓶身比例、
+材质质感和整体商品外观，不要重新生成或替换成另一款饮料瓶。
+饮料瓶应保持清晰完整，并作为画面的视觉中心。
+
+在饮料瓶正面的标签区域，为这款饮料增加一个新的品牌标识：
+“FRESH DAY”。
+
+“FRESH DAY”是该饮料的品牌名称。
+请将品牌 Logo 自然地设计在瓶身正面，使它看起来像原本就印刷
+在商品包装上的真实品牌标识，而不是悬浮在画面上的普通文字。
+
+品牌 Logo 采用简洁、现代、清新的视觉设计风格。
+使用清晰、醒目的英文字体，并搭配一个简约的小叶子图形，
+体现自然、健康、清爽和年轻化的品牌感觉。
+
+“FRESH DAY”文字应尽量保持完整、清晰、容易识别。
+不要生成其他品牌名称，不要添加无关文字，
+不要在瓶身之外重复出现“FRESH DAY”。
+
+在保留饮料瓶主体的基础上，对周围的营销场景进行优化。
+
+在饮料瓶周围加入少量透明冰块、清爽自然的水花、
+瓶身冷凝水珠以及少量新鲜柠檬片，
+突出饮料冰凉、清爽、新鲜的感觉。
+
+使用明亮自然的商业产品摄影光线，
+突出瓶身的透明感、冷凝水珠和产品质感。
+背景保持简洁、干净，不要加入过多复杂元素。
+
+整体画面采用清新、明亮、高级的夏日商业广告风格，
+主体突出，构图简洁，具有真实商业产品摄影的质感。
+
+最终效果应像一张真实饮料品牌发布的专业夏日营销广告，
+而不是插画、卡通或重新设计的饮料产品。
+"""
+
+print("开始生成夏日饮料营销图...")
+
+image = pipe(
+    prompt=prompt,
+
+    # 原始商品图
+    edit_image=edit_image,
+
+    # 固定随机种子，方便实验复现
+    seed=42,
+
+    # 3:4 竖版营销图片
+    height=1536,
+    width=1152,
+
+    num_inference_steps=50,
+    cfg_scale=4.0,
+    shift=3.0,
+)
+
+image.save(OUTPUT_IMAGE)
+
+print(
+    f"生成完成，图片已保存至：{OUTPUT_IMAGE}"
+)
+```
+
+执行结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c22-0011e2ac818bb0.webp>)
+
+最终生成的效果图为：
+
+![正文配图](<../../assets/manuscript-20260914/c22-3dcd4196c2b35a.webp>)
+
+相比完全从文字生成，图生图能够利用原始图片中的视觉信息，更适合已经拥有商品素材或参考设计稿的场景。从上面生成的图中也可以看出，这个和真实想要的图还是有差距的，即使提供了真实商品图片，模型也可能重新绘制商品的部分内容。在实际使场景中还需要进一步考虑商品主体保持与局部编辑问题。
+
+<a id="c23-s3"></a>
+
+## 只想改一处，怎样尽量保住商品原样？
+
+在商品营销图片的实际应用中，除了追求画面美观，还需要保证商品信息的准确性。饮料瓶的外观、包装结构、品牌 Logo 等内容通常属于商品的核心视觉信息，如果在图像编辑过程中发生明显变化，生成的图片就可能与实际商品不一致。在使用图像生成模型进行编辑时，需要明确区分需要保留的内容和允许修改的内容。例如，可以要求模型保持饮料瓶、品牌 Logo 和整体构图不变，只调整背景、装饰元素或局部物体。通过在 Prompt 中明确这些约束，可以减少模型对商品主体的重新生成，使编辑结果更加可控。
+
+本节继续使用上一节生成的 FRESH DAY 饮料营销图进行局部编辑。在保持饮料瓶主体、品牌 Logo、冰块、水花和整体构图基本不变的情况下，将画面右下角的黄色柠檬修改为绿色青柠。通过这一示例，可以进一步理解如何利用 Prompt 实现更加可控的图像编辑。
+
+```python
+from diffsynth.pipelines.sensenova_u1_image import (
+    SenseNovaU1ImagePipeline,
+    ModelConfig
+)
+from PIL import Image
+import torch
+import os
+
+MODEL_ID = "SenseNova/SenseNova-U1.5-8B-MoT"
+INPUT_IMAGE = "/mnt/workspace/drink_fresh_day_ad.png"
+OUTPUT_IMAGE = "/mnt/workspace/drink_fresh_day_lime.png"
+
+vram_config = {
+    "offload_dtype": "disk",
+    "offload_device": "disk",
+    "onload_dtype": "disk",
+    "onload_device": "disk",
+
+    "preparing_dtype": torch.bfloat16,
+    "preparing_device": "cuda",
+
+    "computation_dtype": torch.bfloat16,
+    "computation_device": "cuda",
+}
+
+print("正在加载模型...")
+
+pipe = SenseNovaU1ImagePipeline.from_pretrained(
+    torch_dtype=torch.bfloat16,
+    device="cuda",
+
+    model_configs=[
+        ModelConfig(
+            model_id=MODEL_ID,
+            origin_file_pattern="model*.safetensors",
+            **vram_config
+        ),
+    ],
+
+    tokenizer_config=ModelConfig(
+        model_id=MODEL_ID,
+        origin_file_pattern="./"
+    ),
+
+    vram_limit=(
+        torch.cuda.mem_get_info("cuda")[1] / (1024 ** 3)
+        - 0.5
+    ),
+)
+
+print("模型加载完成。")
+
+if not os.path.exists(INPUT_IMAGE):
+    raise FileNotFoundError(
+        f"找不到输入图片：{INPUT_IMAGE}"
+    )
+
+edit_image = Image.open(INPUT_IMAGE).convert("RGB")
+
+print(
+    f"输入图片尺寸："
+    f"{edit_image.width} × {edit_image.height}"
+)
+
+prompt = """
+这是一项局部图像编辑任务。
+
+请将图片右下角的黄色柠檬修改为新鲜的绿色青柠。
+
+保持原有水果的位置、大小、形状、切面结构和摆放角度基本不变，
+主要修改水果的颜色和外观，使黄色果皮和果肉自然变成绿色青柠。
+
+除右下角的柠檬外，不要修改图片中的其他内容。
+
+严格保持饮料瓶主体不变，包括瓶子的形状、瓶盖、瓶身颜色、
+包装结构和整体比例。
+
+保持瓶身上的“FRESH DAY”品牌 Logo、字体、位置和标签设计不变。
+
+保持原图中的冰块、水花、冷凝水珠、背景绿叶、
+光照效果、背景颜色以及整体构图不变。
+
+最终只改变右下角水果的视觉效果，
+使其从黄色柠檬自然变为绿色青柠，
+同时保持整张饮料营销图的原有风格和商业摄影质感。
+"""
+
+print("开始执行局部图像编辑...")
+
+image = pipe(
+    prompt=prompt,
+    edit_image=edit_image,
+
+    seed=42,
+    height=1536,
+    width=1152,
+
+    num_inference_steps=50,
+    cfg_scale=4.0,
+    shift=3.0,
+)
+
+image.save(OUTPUT_IMAGE)
+
+print(
+    f"局部编辑完成，图片已保存至：{OUTPUT_IMAGE}"
+)
+```
+
+代码执行结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c22-d8b8569422064f.webp>)
+
+生成的图片如下,可以看出黄色柠檬已经换成了绿色，但是其他部分也有变化，实际使用场景，我们可以通过修改提示词或者部署效果更好的模型来获得更好的图片生成效果。
+
+![正文配图](<../../assets/manuscript-20260914/c22-6d6c621af3511f.webp>)
+
+<a id="c23-s4"></a>
+
+## 竖版还要变横版，试试扩图和尺寸适配
+
+商品营销图片完成后，通常还需要发布到不同的平台。由于各平台的展示形式不同，对图片尺寸和画面比例的要求也有所差异。社交媒体常使用 1:1 或 4:5 的图片，短视频平台更适合 9:16 的竖版画面，而网页 Banner、横版广告等场景则通常采用 16:9 的比例。如果直接对原图进行缩放，可能会导致商品主体被拉伸或压缩，我们需要在保持商品主体不变的情况下，可以利用图像编辑模型对画面进行扩图，根据目标比例向图片四周补充背景和装饰内容。
+
+扩图与普通的图片缩放不同。它不是简单改变原图的长宽，而是根据原有画面的内容和风格生成新的区域。例如，将一张竖版饮料营销图转换为 16:9 横版时，可以保持饮料瓶的大小和比例基本不变，同时向左右扩展背景、水花、冰块和绿叶等内容，使新增区域与原图自然衔接。
+
+本部分仍然使用上一节编辑后的 FRESH DAY 饮料营销图，通过设置不同的输出尺寸，并在 Prompt 中要求模型保持饮料瓶、品牌 Logo 和整体视觉风格不变，分别生成 1:1、4:5、9:16 和 16:9 等不同比例的营销图片，使同一份商品素材能够适配不同的平台和展示场景，代码如下：
+
+```python
+from diffsynth.pipelines.sensenova_u1_image import (
+    SenseNovaU1ImagePipeline,
+    ModelConfig
+)
+
+from PIL import Image
+import torch
+import os
+
+MODEL_ID = "SenseNova/SenseNova-U1.5-8B-MoT"
+INPUT_IMAGE = "/mnt/workspace/drink_fresh_day_lime.png"
+
+OUTPUT_DIR = "/mnt/workspace/platform_images"
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+vram_config = {
+    "offload_dtype": "disk",
+    "offload_device": "disk",
+    "onload_dtype": "disk",
+    "onload_device": "disk",
+
+    "preparing_dtype": torch.bfloat16,
+    "preparing_device": "cuda",
+
+    "computation_dtype": torch.bfloat16,
+    "computation_device": "cuda",
+}
+
+print("正在加载模型...")
+
+pipe = SenseNovaU1ImagePipeline.from_pretrained(
+    torch_dtype=torch.bfloat16,
+    device="cuda",
+
+    model_configs=[
+        ModelConfig(
+            model_id=MODEL_ID,
+            origin_file_pattern="model*.safetensors",
+            **vram_config
+        ),
+    ],
+
+    tokenizer_config=ModelConfig(
+        model_id=MODEL_ID,
+        origin_file_pattern="./"
+    ),
+
+    vram_limit=(
+        torch.cuda.mem_get_info("cuda")[1] / (1024 ** 3)
+        - 0.5
+    ),
+)
+
+print("模型加载完成。")
+
+edit_image = Image.open(INPUT_IMAGE).convert("RGB")
+
+print(
+    f"原始图片尺寸："
+    f"{edit_image.width} × {edit_image.height}"
+)
+
+platform_sizes = {
+    # 1:1 方图
+    "square_1_1": (1024, 1024),
+
+    # 4:5 竖图
+    "portrait_4_5": (1024, 1280),
+
+    # 9:16 短视频竖图
+    "vertical_9_16": (1152, 2048),
+
+    # 16:9 横版
+    "banner_16_9": (2048, 1152),
+}
+
+prompt = """
+这是一项商品营销图片的扩图与尺寸适配任务。
+
+请严格保留原图中的饮料瓶主体，包括瓶身形状、瓶盖、
+瓶身颜色、包装标签、“FRESH DAY”品牌 Logo、
+冷凝水珠和整体产品外观。
+
+根据新的画布比例重新调整画面构图，
+让饮料瓶始终作为画面的核心视觉主体。
+
+如果画布变宽，请自然扩展左右两侧的背景，
+补充与原图一致的浅色背景、水花、冰块、绿叶或水果元素，
+保持商业产品摄影风格一致。
+
+如果画布变高，请自然扩展画面的上方和下方区域，
+保持瓶子的完整比例，不要拉伸或压缩商品主体。
+
+新增的背景和装饰元素应自然衔接原图，
+保持原有光照方向、色彩、景深和清爽夏日氛围一致。
+
+整体构图应简洁、平衡，
+适合作为饮料品牌营销广告使用。
+
+不要添加新的品牌、文字或无关元素。
+"""
+
+for name, (width, height) in platform_sizes.items():
+
+    print(
+        f"\n正在生成：{name} "
+        f"{width} × {height}"
+    )
+
+    image = pipe(
+        prompt=prompt,
+
+        edit_image=edit_image,
+
+        seed=42,
+
+        width=width,
+        height=height,
+
+        num_inference_steps=50,
+        cfg_scale=4.0,
+        shift=3.0,
+    )
+
+    output_path = os.path.join(
+        OUTPUT_DIR,
+        f"{name}.png"
+    )
+
+    image.save(output_path)
+
+    print(
+        f"已保存：{output_path}"
+    )
+
+print("\n所有平台尺寸生成完成。")
+```
+
+代码执行结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c22-1b2439ea391bf2.webp>)
+
+最终生成的效果图如下，可以看出品牌 log 都是保持了，整体生成效果还不错。
+
+![正文配图](<../../assets/manuscript-20260914/c22-341b9f5b1edc71.webp>)
+
+<a id="c23-s5"></a>
+
+## 想让一组图片风格接近，再试试 LoRA
+
+使用文生图和图生图模型，可以快速生成不同类型的营销图片，但由于每次生成都具有一定的随机性，即使使用相同或相似的 Prompt，不同批次生成的图片在色彩搭配、构图方式、光影效果和整体视觉风格上仍可能存在差异。
+
+对于企业营销而言，通常希望不同宣传素材保持相对统一的品牌视觉风格。本节引入 LoRA 微调，通过准备一组具有统一视觉风格的营销图片对模型进行训练，使模型进一步学习特定的色彩、构图和画面风格，从而在后续生成过程中更稳定地呈现所需的品牌视觉特征。
+
+本实验选择对 Z-Image-Turbo 进行 LoRA 微调。主要原因是该模型能够满足前面文生图实验的需求，同时相比本章图生图部分使用的 SenseNova-U1.5-8B-MoT，训练所需的显存资源更低，更适合在 24 GB 显存的单卡环境中完成 LoRA 微调实验。如果具备更充足的 GPU 显存和计算资源，也可以进一步尝试对 SenseNova-U1.5-8B-MoT 进行 LoRA 微调。
+
+```sql
+!accelerate launch examples/z_image/model_training/train.py \
+  --dataset_base_path /mnt/workspace/train_data \
+  --dataset_metadata_path /mnt/workspace/train_data/metadata_training.csv \
+  --max_pixels 589824 \
+  --dataset_repeat 50 \
+  --model_id_with_origin_paths "Tongyi-MAI/Z-Image-Turbo:transformer/*.safetensors,Tongyi-MAI/Z-Image-Turbo:text_encoder/*.safetensors,Tongyi-MAI/Z-Image-Turbo:vae/diffusion_pytorch_model.safetensors" \
+  --learning_rate 1e-4 \
+  --num_epochs 2 \
+  --remove_prefix_in_ckpt "pipe.dit." \
+  --output_path "/mnt/workspace/drink_lora" \
+  --lora_base_model "dit" \
+  --lora_target_modules "to_q,to_k,to_v,to_out.0,w1,w2,w3" \
+  --lora_rank 16 \
+  --use_gradient_checkpointing \
+  --dataset_num_workers 8
+```
+
+训练结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c22-356ea5fe353e11.webp>)
+
+接下来，使用训练好的模型进行推理，推理命令如下：
+
+```python
+from diffsynth.pipelines.z_image import ZImagePipeline, ModelConfig
+import torch
+
+pipe = ZImagePipeline.from_pretrained(
+    torch_dtype=torch.bfloat16,
+    device="cuda",
+    model_configs=[
+        ModelConfig(model_id="Tongyi-MAI/Z-Image-Turbo", origin_file_pattern="transformer/*.safetensors"),
+        ModelConfig(model_id="Tongyi-MAI/Z-Image-Turbo", origin_file_pattern="text_encoder/*.safetensors"),
+        ModelConfig(model_id="Tongyi-MAI/Z-Image-Turbo", origin_file_pattern="vae/diffusion_pytorch_model.safetensors"),
+    ],
+    tokenizer_config=ModelConfig(model_id="Tongyi-MAI/Z-Image-Turbo", origin_file_pattern="tokenizer/"),
+)
+pipe.load_lora(pipe.dit, "/mnt/workspace/drink_lora/epoch-1.safetensors")
+prompt = """
+青柠气泡水商品广告，竖版构图。一只修长的半透明绿色玻璃瓶居中直立，完整展示瓶身，配有绿色金属皇冠瓶盖。瓶身覆盖细密的凝结水珠，白色标签上印有绿色中文“青柠气泡水”，搭配青柠与绿叶图案。
+
+玻璃瓶放置在浅绿色半透明玻璃展台上，底部点缀少量透明冰块、半个青柠和新鲜绿叶。背景为浅薄荷绿渐变色
+"""
+image = pipe(prompt=prompt, seed=42, rand_device="cuda")
+image.save("/mnt/workspace/drink_gen.png")
+print("图片保存成功")
+```
+
+代码输出结果如下：
+
+![正文配图](<../../assets/manuscript-20260914/c22-1b27cb7e7f357c.webp>)
+
+生成的图片如下，整体来说和 prompt 要求很接近，但是由于显存的原因，图片分辨率并不是特别高。
+
+![正文配图](<../../assets/manuscript-20260914/c22-85e859f818d78f.webp>)
+
+具体实验数据以及代码，可参考：https://modelscope.cn/gallery/liucong/45785011-5e64-485c-883b-92a8b2d52ab7

@@ -1,0 +1,135 @@
+/* Language selector, translation notice, and the extra room the wider Latin labels need.
+   Shared by the book and the analytics dashboard. */
+.language-switcher { display: inline-flex; align-items: center; }
+.language-picker {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 4px 10px;
+  border: 1px solid #e5dff0; border-radius: 999px; background: #fff; color: #584b6e; cursor: pointer;
+}
+.language-picker:hover { border-color: #a58adf; background: #f8f6fc; }
+.language-select {
+  appearance: none; -webkit-appearance: none; border: 0; margin: 0; padding: 2px 20px 2px 0;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a7c9b' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 3px center / 9px 6px;
+  color: inherit; font: inherit; font-size: 13px; line-height: 1.5; white-space: nowrap; cursor: pointer;
+}
+.language-select:focus-visible { outline: 2px solid #7048e8; outline-offset: 3px; border-radius: 4px; }
+.header-account-area .language-switcher { margin-right: 4px; }
+
+#siteMenu .language-switcher { margin: 14px 0 4px; }
+#siteMenu .language-picker { width: 100%; justify-content: flex-start; padding-inline: 14px; }
+.dashboard-actions { display: inline-flex; align-items: center; gap: 14px; }
+
+.translation-notice {
+  margin: 0 0 30px; padding: 12px 16px; border: 1px solid #e6ddf7; border-left: 3px solid #a58adf;
+  border-radius: 10px; background: #f8f5fd; color: #5b4a75; font-size: 13px; line-height: 1.7;
+}
+
+/* --- Latin editions only -------------------------------------------------------
+   Chinese labels are four characters wide at most, so the original layout was built
+   with much less chrome. Everything below is scoped to :lang(en)/:lang(es) so the
+   Chinese edition keeps the pixel-exact layout it shipped with. */
+html:lang(en) .app-header, html:lang(es) .app-header { --latin-chrome: 1; }
+
+html:lang(en) .app-header, html:lang(es) .app-header { padding-inline: max(24px, calc((100vw - 1340px) / 2)); }
+html:lang(en) .desktop-nav, html:lang(es) .desktop-nav { gap: 18px; }
+html:lang(en) .app-header .reading-account .discussion-login,
+html:lang(en) .app-header .reading-account .account-pending,
+html:lang(es) .app-header .reading-account .discussion-login,
+html:lang(es) .app-header .reading-account .account-pending {
+  display: block; min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; text-align: center;
+}
+html:lang(en) .path-tabs, html:lang(es) .path-tabs { width: auto; overflow: visible; }
+html:lang(en) .path-cards h3, html:lang(es) .path-cards h3 { white-space: normal; }
+html:lang(en) .home-facts strong, html:lang(en) .fact-label,
+html:lang(es) .home-facts strong, html:lang(es) .fact-label { white-space: normal; overflow-wrap: break-word; }
+html:lang(en) .home-fact, html:lang(es) .home-fact { min-width: 0; }
+html:lang(en) .contributor-profile > span, html:lang(en) .contributor-profile small,
+html:lang(es) .contributor-profile > span, html:lang(es) .contributor-profile small { white-space: normal; }
+html:lang(en) .contributor-profile > span, html:lang(es) .contributor-profile > span { flex-wrap: wrap; }
+html:lang(en) .contributor-profile small, html:lang(es) .contributor-profile small { text-align: right; }
+
+html:lang(en) .app-header > .wordmark, html:lang(es) .app-header > .wordmark,
+html:lang(en) .reader-search-trigger, html:lang(es) .reader-search-trigger,
+html:lang(en) .reader-overview, html:lang(es) .reader-overview,
+html:lang(en) .home-fact > *, html:lang(es) .home-fact > * { min-width: 0; }
+/* The brand never truncates: the account chip is the element that yields instead. */
+html:lang(en) .app-header > .wordmark, html:lang(es) .app-header > .wordmark { flex-shrink: 0; }
+/* The search strip is the flexible part of the reader bar and absorbs the squeeze;
+   the account area keeps its own width so its links never spill out of the bar. */
+html:lang(en) .reader-header-tools, html:lang(es) .reader-header-tools { min-width: 0; }
+
+/* Above the reader's own breakpoints the longer Latin wordmark needs one step down;
+   below them the original responsive scaling takes over again. */
+@media (min-width: 901px) {
+  html:lang(en) .app-header > .wordmark, html:lang(es) .app-header > .wordmark { font-size: 21px; letter-spacing: .05em; }
+}
+html:lang(en) .app-header > .wordmark > span, html:lang(es) .app-header > .wordmark > span,
+html:lang(en) .reader-search-trigger span, html:lang(es) .reader-search-trigger span,
+html:lang(en) .reader-overview, html:lang(es) .reader-overview,
+html:lang(en) .home-facts strong > span, html:lang(es) .home-facts strong > span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html:lang(en) .home-fact > *, html:lang(es) .home-fact > * { min-width: 0; }
+
+@media (max-width: 900px) {
+  /* Too narrow for the full Latin bar: the wordmark steps down, the social links and the
+     selector move into the menu dialog, and the account chip shrinks. */
+  html:lang(en) .app-header > .wordmark, html:lang(es) .app-header > .wordmark { font-size: 17px; letter-spacing: .04em; }
+  html:lang(en) .app-header .language-switcher, html:lang(es) .app-header .language-switcher { display: none; }
+  html:lang(en) .app-header .header-external-links, html:lang(es) .app-header .header-external-links { display: none; }
+  html:lang(en) .app-header .reading-account .discussion-login,
+  html:lang(en) .app-header .reading-account .account-pending,
+  html:lang(es) .app-header .reading-account .discussion-login,
+  html:lang(es) .app-header .reading-account .account-pending { max-width: 96px; }
+  html:lang(en) .path-tabs, html:lang(es) .path-tabs { flex-wrap: wrap; border-radius: 24px; }
+  html:lang(en) .path-tabs button, html:lang(es) .path-tabs button { flex: 1 1 45%; min-height: 46px; font-size: 14px; }
+}
+
+/* Latin navigation needs the compact menu earlier than the Chinese layout does. */
+@media (min-width: 1101px) and (max-width: 1400px) {
+  html:lang(en) .desktop-nav, html:lang(es) .desktop-nav { display: none; }
+  html:lang(en) .app-header .mobile-menu, html:lang(es) .app-header .mobile-menu {
+    display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--text); font-size: 15px;
+  }
+  html:lang(en) .app-header .mobile-menu img, html:lang(es) .app-header .mobile-menu img { width: 22px; height: 22px; }
+  html:lang(en) .header-account-area, html:lang(es) .header-account-area { margin-left: auto; }
+  html:lang(en) .app-header .reading-account, html:lang(es) .app-header .reading-account { margin-left: 0; }
+}
+
+/* Between the phone and desktop layouts the bar carries the selector, the social links
+   and the account chip, so the chip yields first. */
+@media (min-width: 561px) and (max-width: 1100px) {
+  html:lang(en) .app-header .reading-account .discussion-login,
+  html:lang(en) .app-header .reading-account .account-pending,
+  html:lang(es) .app-header .reading-account .discussion-login,
+  html:lang(es) .app-header .reading-account .account-pending { max-width: 108px; }
+}
+
+@media (max-width: 700px) {
+  .language-picker { min-height: 34px; padding: 3px 8px; }
+  .language-select { font-size: 12px; }
+  /* Phones keep only the menu button in the bar; the selector lives inside that dialog. */
+  .header-account-area .language-switcher { display: none; }
+  html:lang(en) .app-header .reading-account .discussion-login,
+  html:lang(en) .app-header .reading-account .account-pending,
+  html:lang(es) .app-header .reading-account .discussion-login,
+  html:lang(es) .app-header .reading-account .account-pending { max-width: 34vw; padding: 7px 9px; }
+}
+
+/* Too narrow for the full Latin wordmark next to the account chip: the book mark stays,
+   the wordmark itself is carried by the link's accessible name instead. */
+@media (max-width: 560px) {
+  html:lang(en) .app-header > .wordmark > span,
+  html:lang(es) .app-header > .wordmark > span { display: none; }
+}
+
+/* The three statistics no longer fit side by side in three Latin columns. */
+@media (max-width: 430px) {
+  html:lang(en) .home-facts > .container, html:lang(es) .home-facts > .container { grid-template-columns: 1fr; }
+  html:lang(en) .home-fact + .home-fact, html:lang(es) .home-fact + .home-fact { border-left: 0; border-top: 1px solid var(--border); }
+}
+
+/* The reader bar needs room for the search box: the secondary "explore" link yields. */
+@media (max-width: 1200px) {
+  html:lang(en) .reader-overview, html:lang(es) .reader-overview { display: none; }
+}

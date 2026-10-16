@@ -1,0 +1,11 @@
+Paper Planes 风格网站素材说明
+
+hero.webp / mobile-hero.webp：桌面与手机首页折纸书天空。
+sky.webp：子页面天空及页脚背景。
+seedling.webp / mountain.webp / plane.webp：三条学习路径插画。
+documents.webp / voice.webp / photo.webp / campaign.webp / bridge.webp / cubes.webp：六个实践场景插画。
+以上 WebP 由 OpenAI 内置 imagegen 基于本项目已确认设计稿单独生成，并在本机压缩。仅用于概念视觉展示。
+
+menu.svg、search.svg、close.svg 以及 ../home/arrow.svg、../home/chevron.svg 使用 Remix Icon 4.6.0，Apache License 2.0；许可全文见 ../home/REMIX-LICENSE。
+字体使用系统中文无衬线字体 PingFang SC / Microsoft YaHei，未新增远程字体依赖。
+正文图片和附件保留用户飞书稿件导出的本地文件，著作权属于原作者或相应权利人。

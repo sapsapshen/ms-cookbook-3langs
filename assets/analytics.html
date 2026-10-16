@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN" data-i18n-title="analytics.pageTitle" data-i18n-description="analytics.description">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#6b48e8">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="魔搭紫皮书站点访问统计面板。">
+  <link rel="icon" href="assets/brand/book-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/analytics.css?v=c9ba86246885">
+  <link rel="stylesheet" href="assets/i18n.css?v=63805f863fe8">
+  <title>访问统计｜魔搭紫皮书</title>
+</head>
+<body>
+  <div class="dashboard" id="dashboardView">
+    <header class="dashboard-header">
+      <a class="analytics-brand" href="/"><img src="assets/brand/book-mark.svg" alt="" width="30" height="30" data-i18n="common.siteName">魔搭紫皮书</a>
+      <div class="dashboard-actions"><span class="language-switcher" data-language-switcher></span><a class="quiet-button" href="/" data-i18n="analytics.back">返回紫皮书</a></div>
+    </header>
+    <main class="dashboard-main">
+      <section class="dashboard-heading">
+        <div><p class="eyebrow">SITE ANALYTICS</p><h1 data-i18n="analytics.title">访问统计</h1><p id="updatedAt" data-i18n="analytics.loading">正在加载数据…</p></div>
+        <div class="range-controls" aria-label="统计时间范围" data-i18n-attr="aria-label:a11y.range">
+          <div class="range-buttons"><button type="button" data-days="1" data-i18n="analytics.today">今天</button><button type="button" data-days="7" class="active" data-i18n="analytics.last7">近 7 天</button><button type="button" data-days="30" data-i18n="analytics.last30">近 30 天</button></div>
+          <div class="custom-range"><label><span data-i18n="analytics.startDate">开始</span><input id="rangeStart" type="date"></label><span data-i18n="analytics.to">至</span><label><span data-i18n="analytics.endDate">结束</span><input id="rangeEnd" type="date"></label><button type="button" id="applyRange" data-i18n="analytics.query">查询</button></div>
+        </div>
+      </section>
+      <p class="dashboard-status" id="dashboardStatus" role="status"></p>
+
+      <section class="metric-grid" aria-label="访问概况" data-i18n-attr="aria-label:a11y.overview">
+        <article class="lifetime-metric"><span data-i18n="analytics.lifetimePv">累计 PV</span><strong id="lifetimePv">—</strong><small id="lifetimePvSince" data-i18n="analytics.sinceEnabled">从统计启用日起累计</small></article>
+        <article class="lifetime-metric"><span data-i18n="analytics.lifetimeUv">累计 UV</span><strong id="lifetimeUv">—</strong><small id="lifetimeUvSince" data-i18n="analytics.sinceEnabled">从统计启用日起累计</small></article>
+        <article><span data-i18n="analytics.todayPv">今日 PV</span><strong id="todayPv">—</strong><small data-i18n="analytics.todayPvNote">今天的页面浏览次数</small></article>
+        <article><span data-i18n="analytics.todayUv">今日 UV</span><strong id="todayUv">—</strong><small data-i18n="analytics.todayUvNote">今天的匿名访客数</small></article>
+        <article><span id="rangePvLabel">近 7 天 PV</span><strong id="rangePv">—</strong><small id="rangePvCompare" data-i18n="analytics.calculating">正在计算</small></article>
+        <article><span id="rangeUvLabel">近 7 天 UV</span><strong id="rangeUv">—</strong><small id="rangeUvCompare" data-i18n="analytics.calculating">正在计算</small></article>
+      </section>
+
+      <section class="panel hourly-panel" aria-labelledby="hourlyTitle">
+        <header><div><h2 id="hourlyTitle" data-i18n="analytics.hourlyTitle">每小时访问趋势</h2><p id="hourlyMeta" data-i18n="analytics.hourlyLoading">正在加载小时数据…</p></div><div class="legend"><span class="pv-dot">PV</span><span class="uv-dot">UV</span></div></header>
+        <div class="hourly-toolbar" aria-label="小时统计日期" data-i18n-attr="aria-label:a11y.hourlyDate">
+          <div class="hourly-buttons"><button type="button" data-hour-offset="0" class="active" data-i18n="analytics.today">今天</button><button type="button" data-hour-offset="-1" data-i18n="analytics.yesterday">昨天</button></div>
+          <label><span data-i18n="analytics.specificDate">指定日期</span><input id="hourlyDate" type="date"></label><button type="button" id="applyHourlyDate" data-i18n="analytics.view">查看</button>
+        </div>
+        <p class="hourly-note" id="hourlyNote"></p>
+        <div class="chart-wrap"><svg id="hourlyChart" viewBox="0 0 800 280" role="img" aria-label="每小时 PV 和 UV 趋势" data-i18n-attr="aria-label:a11y.hourlyChart"></svg></div>
+        <p class="hourly-detail" id="hourlyDetail" aria-live="polite" data-i18n="analytics.hourlyDetail">悬停、点击或聚焦数据点，可查看该小时的准确 PV/UV。</p>
+      </section>
+
+      <section class="panel trend-panel" aria-labelledby="trendTitle">
+        <header><div><h2 id="trendTitle" data-i18n="analytics.trendTitle">每日访问趋势</h2><p id="trendRange"></p></div><div class="legend"><span class="pv-dot">PV</span><span class="uv-dot">UV</span></div></header>
+        <div class="chart-wrap"><svg id="trendChart" viewBox="0 0 800 280" role="img" aria-label="每日 PV 和 UV 趋势" data-i18n-attr="aria-label:a11y.trendChart"></svg></div>
+      </section>
+
+      <section class="panel pages-panel" aria-labelledby="pagesTitle">
+        <header><div><h2 id="pagesTitle" data-i18n="analytics.pagesTitle">热门页面</h2><p data-i18n="analytics.pagesSubtitle">按所选时间范围内的 PV 排序</p></div></header>
+        <div class="table-wrap"><table><thead><tr><th data-i18n="analytics.thPage">页面</th><th>PV</th><th>UV</th><th data-i18n="analytics.thShare">PV 占比</th></tr></thead><tbody id="pagesBody"></tbody></table></div>
+        <p class="empty-pages" id="emptyPages" hidden data-i18n="analytics.emptyPages">所选时间范围内还没有访问数据。</p>
+      </section>
+      <footer data-i18n="analytics.footerNote">累计指标持续增长 · 今日指标每日 0 点重新计算 · 小时明细保留 90 天 · 近 N 天为滚动窗口 · UV 为匿名浏览器标识的估算结果 · 统计时区：Asia/Shanghai</footer>
+    </main>
+  </div>
+  <script src="assets/i18n.js?v=07e6cc450b7e"></script><script src="assets/locale/zh.js?v=4e2f8c9103fc"></script><script src="assets/locale/en.js?v=e7fb3e329325"></script><script src="assets/locale/es.js?v=4a39195de360"></script><script src="assets/language-switcher.js?v=67243aed212a"></script>
+  <script src="assets/analytics-dashboard.js?v=9461a247a720"></script>
+</body></html>

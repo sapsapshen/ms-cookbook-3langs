@@ -1,0 +1,21 @@
+使用内置 image_gen 生成，沿用 Anthropic-art 手绘风格。场景专用配图，替换通用图标。
+
+## fitness
+
+Use case: stylized-concept. Create one website editorial icon, 4:3 landscape. Attached image is STYLE REFERENCE ONLY; replace subject entirely with: One single recognizable dumbbell, diagonally tilted, two chunky weight plates on each end and short grip joining them. One tiny purple stripe on grip. No other objects. Match the reference thick near-black #141413 irregular hand-drawn gestural outlines, rounded imperfect strokes, deliberate asymmetry, sparse flat ivory #FAF9F5 within object silhouettes. Pure white background #FFFFFF, centered object cluster with generous margins. ONLY color is specified TINY ModelScope purple #624AFF detail, under 1% canvas. Keep clear at 120px thumbnail. No shadows, gradients, 3D, texture, text, logos, people, mascots or Dada. Maintain a quiet sparse editorial visual.
+
+## service
+
+Use case: stylized-concept. Create one website editorial icon, 4:3 landscape. Attached image is STYLE REFERENCE ONLY; replace subject entirely with: Customer service quality checking: one recognizable call-center headset with boom microphone, beside a small checklist card with two black ticks and a single tiny purple checkmark. Keep a simple cohesive cluster. Match the reference thick near-black #141413 irregular hand-drawn gestural outlines, rounded imperfect strokes, deliberate asymmetry, sparse flat ivory #FAF9F5 within object silhouettes. Pure white background #FFFFFF, centered object cluster with generous margins. ONLY color is specified TINY ModelScope purple #624AFF detail, under 1% canvas. Keep clear at 120px thumbnail. No shadows, gradients, 3D, texture, text, logos, people, mascots or Dada. Maintain a quiet sparse editorial visual.
+
+## speech
+
+Use case: stylized-concept. Create one website editorial icon, 4:3 landscape. Attached image is STYLE REFERENCE ONLY; replace subject entirely with: A simple upright microphone on a small stand, two short curved sound waves on each side suggesting listening and speaking. One tiny purple indicator dot on microphone. No speech text. Match the reference thick near-black #141413 irregular hand-drawn gestural outlines, rounded imperfect strokes, deliberate asymmetry, sparse flat ivory #FAF9F5 within object silhouettes. Pure white background #FFFFFF, centered object cluster with generous margins. ONLY color is specified TINY ModelScope purple #624AFF detail, under 1% canvas. Keep clear at 120px thumbnail. No shadows, gradients, 3D, texture, text, logos, people, mascots or Dada. Maintain a quiet sparse editorial visual.
+
+## knowledge
+
+Use case: stylized-concept. Create one website editorial icon, 4:3 landscape. Attached image is STYLE REFERENCE ONLY; replace subject entirely with: An open reference book with a small speech bubble above its right page containing a single question mark drawn black, tiny purple bookmark in the book. Clear knowledge question-answering metaphor. Match the reference thick near-black #141413 irregular hand-drawn gestural outlines, rounded imperfect strokes, deliberate asymmetry, sparse flat ivory #FAF9F5 within object silhouettes. Pure white background #FFFFFF, centered object cluster with generous margins. ONLY color is specified TINY ModelScope purple #624AFF detail, under 1% canvas. Keep clear at 120px thumbnail. No shadows, gradients, 3D, texture, text, logos, people, mascots or Dada. Maintain a quiet sparse editorial visual.
+
+## product
+
+Use case: stylized-concept. Create one website editorial icon, 4:3 landscape. Attached image is STYLE REFERENCE ONLY; replace subject entirely with: Product image creation: a simple unbranded pump bottle inside a hand-drawn picture frame with one paintbrush diagonally at lower right, brush tip tiny purple. This is a product marketing visual, no landscape image and no play button. Match the reference thick near-black #141413 irregular hand-drawn gestural outlines, rounded imperfect strokes, deliberate asymmetry, sparse flat ivory #FAF9F5 within object silhouettes. Pure white background #FFFFFF, centered object cluster with generous margins. ONLY color is specified TINY ModelScope purple #624AFF detail, under 1% canvas. Keep clear at 120px thumbnail. No shadows, gradients, 3D, texture, text, logos, people, mascots or Dada. Maintain a quiet sparse editorial visual.

@@ -1,0 +1,99 @@
+<article>
+<h1>把模型放到云端跑，用 Notebook 试试 CPU 和 GPU</h1>
+<p>笔记本上的模型跑起来了，想试更大的模型，或者做一次图片生成，却不一定有合适的硬件。还可以把计算放到云端，让服务器来承担这些工作。</p>
+<p />
+<p>云服务器可以按需要配置。这里继续使用魔搭 Notebook，直接在浏览器里选择 CPU 或 GPU 运行实例，下载模型并执行代码。页面开在自己的电脑上，模型运行在连接的云端实例里。</p>
+<p />
+<p>这一篇做两个实验。先用 CPU 运行 0.5B 级模型，判断一句评价的情感；再用 GPU 运行图像生成模型，把文字描述变成图片。分别展示两种资源下的使用方法，任务和模型都不同，不能用运行耗时直接比较 CPU 与 GPU 谁更快。</p>
+<p />
+<p><b>其他云服务器资源，我们会后续补充。</b></p>
+<p />
+<h2>打开 Notebook，选择这次要用的运行实例</h2>
+<p>从魔搭模型页面进入“Notebook 快速开发”，再点击“连接运行时”。这次先选择 CPU 实例完成情感分析，再切换到 GPU 实例做图片生成。Notebook 的页面操作可以参照【30 分钟带你快速看到第一个结果】内容</p>
+<p />
+<p>切换实例后，原来的 Python 进程和已加载模型不会自动搬到新实例里，需要在当前环境重新检查依赖，并从头执行对应实验的代码。</p>
+<p />
+<h2>先用 CPU，判断一句评价是正面还是负面</h2>
+<p>以 <a href="https://www.modelscope.cn/models/Qwen/Qwen2.5-0.5B-Instruct" target="_blank" rel="noopener noreferrer">Qwen/Qwen2.5-0.5B-Instruct</a> 模型为例，介绍如何在 CPU 上使用 0.5B 级的模型做情感分析任务。</p>
+<p>启动 CPU 实例后，进入 notebook 开发环境。模型加载及推理代码如下：</p>
+<pre data-language="Python"><code>from modelscope import AutoModelForCausalLM, AutoTokenizer
+model_name = "Qwen/Qwen2.5-0.5B-Instruct"
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype="auto",
+    device_map="cpu" 
+    # device_map="cpu" # gpu推理
+)
+print(f"模型所在设备: {model.device}")
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+# 提示词
+prompt = f"""你是一个文本情感分类专家。请将以下用户评价分类为【正面】、【负面】或【中性】。仅输出这三个词之一，不要包含任何解释、标点或额外文字。
+评价内容：今天的电影真难看，浪费时间。
+分类结果："""
+
+messages = [
+    {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
+    {"role": "user", "content": prompt}
+]
+text = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True
+)
+model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+
+generated_ids = model.generate(
+    **model_inputs,
+    max_new_tokens=512
+)
+generated_ids = [
+    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+]
+
+response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+print("response: ", response )</code></pre>
+<p>结果展示：</p>
+<img src="../../assets/manuscript-20260914/c10-13fa64bd7dfeaa.webp" alt="正文配图" class="article-image" loading="lazy" decoding="async" />
+<h2>换到 GPU，把文字描述变成图片</h2>
+<p>使用 <a href="https://www.modelscope.cn/models/Tongyi-MAI/Z-Image-Turbo" target="_blank" rel="noopener noreferrer">Tongyi-MAI/Z-Image-Turbo</a> 模型演示如何在 GPU 上加载模型，完成图片生成任务。</p>
+<p>启动 GPU 实例后，进入 notebook 开发环境。</p>
+<p>按照模型卡片，需要在终端安装最新版 diffusers。</p>
+<pre data-language="Plain Text"><code>!pip3 install git+https://github.com/huggingface/diffusers</code></pre>
+<p>安装完成：</p>
+<img src="../../assets/manuscript-20260914/c10-187e1d063093cf.webp" alt="正文配图" class="article-image" loading="lazy" decoding="async" />
+<p>模型加载及推理代码如下：</p>
+<pre data-language="Python"><code>import torch
+from modelscope import ZImagePipeline
+
+# 1. 模型加载
+pipe = ZImagePipeline.from_pretrained(
+    "Tongyi-MAI/Z-Image-Turbo",
+    torch_dtype=torch.bfloat16,
+    low_cpu_mem_usage=False,
+)
+pipe.to("cuda")
+print(f"模型所在设备: {pipe.device}")
+
+prompt = "一位年轻的中国女子，身着一袭红色汉服，衣袂间绣满精致繁复的纹样。她的妆容精致无瑕，额间一抹红色花钿，更添几分古典风韵。高耸的发髻华美端庄，上缀金色凤冠，簪以红花与珠串，摇曳生姿。她手中执一柄圆形折扇，扇面上绘有仕女、古树与飞鸟，意境悠然。一盏霓虹闪电造型的灯盏悬于她伸出的左掌之上，散发着明亮的暖黄色光芒。夜色温柔，灯火朦胧，远处西安大雁塔的塔身层层叠叠，隐现于柔和的光晕之中，背景光斑斑斓，如梦似幻。"
+# 2. 生成图片
+image = pipe(
+    prompt=prompt,
+    height=1024,
+    width=1024,
+    num_inference_steps=9, 
+    guidance_scale=0.0, 
+    generator=torch.Generator("cuda").manual_seed(42),
+).images[0]
+print("图片已生成")
+
+image.save("image-古风.png")
+print("图片保存成功！")</code></pre>
+<p>结果展示：</p>
+<img src="../../assets/manuscript-20260914/c10-89687fab7e866d.webp" alt="正文配图" class="article-image" loading="lazy" decoding="async" />
+<p>生成的图片：</p>
+<img src="../../assets/manuscript-20260914/c10-47e02eaf05ba4a.webp" alt="正文配图" class="article-image" loading="lazy" decoding="async" />
+<p />
+<p>本章代码及相关文件见：https://www.modelscope.cn/gallery/liucong/4a8eb492-54dc-4062-82c0-65b17fd94d5f</p>
+<p />
+</article>

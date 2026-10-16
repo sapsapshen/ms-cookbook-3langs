@@ -1,0 +1,18 @@
+{
+ "0": "El modelo funciona en tu portátil, pero quieres probar uno más grande o hacer una generación de imágenes y puede que no tengas el hardware adecuado. También puedes llevar el cálculo a la nube y dejar que un servidor se encargue de ese trabajo.",
+ "1": "Los servidores en la nube se pueden configurar según la necesidad. Aquí seguimos usando ModelScope Notebook: elige en el navegador una instancia de CPU o de GPU, descarga el modelo y ejecuta el código. La página está en tu propio equipo; el modelo se ejecuta en la instancia en la nube a la que te conectas.",
+ "2": "Esta parte hace dos experimentos. Primero usa la CPU para ejecutar un modelo de la clase 0.5B y juzgar el sentimiento de una opinión; después usa la GPU para ejecutar un modelo de generación de imágenes y convertir una descripción de texto en una imagen. Muestran cómo trabajar con los dos tipos de recurso; las tareas y los modelos son distintos, así que no se puede comparar directamente la velocidad de CPU y GPU por el tiempo de ejecución.",
+ "3": "<b>Otros recursos de servidores en la nube se añadirán más adelante.</b>",
+ "5": "Desde la página de un modelo en ModelScope, entra en «Inicio rápido de Notebook» y pulsa «Conectar instancia de ejecución». Esta vez elige primero una instancia de CPU para completar el análisis de sentimiento y después cambia a una instancia de GPU para la generación de imágenes. Para las operaciones del Notebook puedes consultar «Ver tu primer resultado en 30 minutos».",
+ "6": "Al cambiar de instancia, el proceso de Python anterior y los modelos ya cargados no pasan automáticamente a la instancia nueva: hay que volver a comprobar las dependencias en el entorno actual y ejecutar desde el principio el código del experimento correspondiente.",
+ "8": "Tomando como ejemplo el modelo <a href=\"https://www.modelscope.cn/models/Qwen/Qwen2.5-0.5B-Instruct\" target=\"_blank\" rel=\"noopener noreferrer\">Qwen/Qwen2.5-0.5B-Instruct</a>, aquí se explica cómo usar en la CPU un modelo de clase 0.5B para una tarea de análisis de sentimiento.",
+ "9": "Tras iniciar la instancia de CPU, entra en el entorno de desarrollo del notebook. El código de carga e inferencia del modelo es el siguiente:",
+ "10": "Resultado:",
+ "12": "Con el modelo <a href=\"https://www.modelscope.cn/models/Tongyi-MAI/Z-Image-Turbo\" target=\"_blank\" rel=\"noopener noreferrer\">Tongyi-MAI/Z-Image-Turbo</a> se muestra cómo cargar un modelo en la GPU y completar una tarea de generación de imágenes.",
+ "13": "Tras iniciar la instancia de GPU, entra en el entorno de desarrollo del notebook.",
+ "14": "Según la model card, hay que instalar en la terminal la última versión de diffusers.",
+ "15": "Instalación completada:",
+ "16": "El código de carga e inferencia del modelo es el siguiente:",
+ "17": "La imagen generada:",
+ "18": "El código y los archivos relacionados de este capítulo están en: https://www.modelscope.cn/gallery/liucong/4a8eb492-54dc-4062-82c0-65b17fd94d5f"
+}

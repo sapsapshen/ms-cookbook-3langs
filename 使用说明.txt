@@ -1,0 +1,20 @@
+魔搭紫皮书 · 本地阅读版
+内容快照：2026-09-16
+项目：https://github.com/modelscope/ms-cookbook
+
+保留 assets 文件夹的位置，解压后在网站文件夹打开终端，运行：
+python3 -m http.server 4173 --bind 127.0.0.1
+然后访问 http://127.0.0.1:4173/#home
+如提示端口已使用，可将 4173 改为 4174，并访问对应端口。
+
+网站包含首页、全书目录、四条阅读路径、五个已可读场景入口、社区共建和章节阅读页。
+新版内容共 8 篇、34 章，其中 33 章可读。
+第 24 章《开源模型也能做出像样的 AI 视频吗？》保留原稿的 MiniMax H3 部署教程即将更新说明，并标注待补充。
+保留 349 处正文图片、12 个附件链接（6 个视频、5 个音频、1 个 Markdown 文件）、291 段代码、28 张正文表格和 12 个嵌入表格的内容。
+支持全文关键词搜索、章节目录、上下章、代码复制、图片放大和手机阅读。
+公式使用随网站打包的 KaTeX 渲染，正文图片和附件均保存在本地。
+
+建议使用上述 HTTP 方式预览。使用 node scripts/check-site.mjs 校验正文资源与本地链接。
+本版为内容快照，后续原稿改动需明确同步。GitHub 阅读版位于 content/chapters/*.md；构建源文件位于 content/source-html/*.html，修改后运行 python3 scripts/build-content.py 同时生成 Markdown 和站点数据。
+GitHub、魔搭开发者实践及其他外部链接需要联网。社区投稿方式见 CONTRIBUTING.md。
+保留原有紫色视觉设计，页面背景已移除纸飞机，搭搭素材及其许可位于 assets/dada/。本次素材说明见 assets/review/ATTRIBUTION.md。

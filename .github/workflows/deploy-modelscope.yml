@@ -1,0 +1,64 @@
+name: Deploy to ModelScope Studio
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'tests/**'
+      - 'index.html'
+      - 'favicon.svg'
+      - 'assets/**'
+      - 'content/**'
+      - 'chapters/**'
+      - 'CONTRIBUTING.md'
+      - 'scripts/build-content.py'
+      - 'scripts/chapter_markdown.py'
+      - 'scripts/test_chapter_markdown.py'
+      - 'scripts/build-content.mjs'
+      - 'scripts/check-site.mjs'
+      - 'README*.md'
+      - 'LICENSE'
+      - 'scripts/deploy-modelscope.mjs'
+      - '.github/workflows/deploy-modelscope.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modelscope-ms-cookbook
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Verify reading community API
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -r requirements.txt pytest
+          .venv/bin/python -m pytest tests -q
+      - name: Verify chapter data and local resources
+        run: |
+          python3 scripts/test_chapter_markdown.py
+          node scripts/build-content.mjs --check
+          python3 scripts/build-i18n.py --check
+          node scripts/check-site.mjs
+      - name: Sync and deploy the website
+        env:
+          MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
+          MODELSCOPE_STUDIO: ms-cookbook-team/ms-cookbook
+        run: node scripts/deploy-modelscope.mjs

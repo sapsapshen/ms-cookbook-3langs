@@ -1,1 +1,75 @@
-[]
+[
+  {
+    "id": "ch07-ex01",
+    "chapter": "chapter-7",
+    "type": "code",
+    "difficulty": 1,
+    "minutes": 5,
+    "objective": "Construir una presentación con una f-string",
+    "prompt": "Dos variables ya están definidas: `name` con tu nombre y `role` con lo que quieres aprender. El starter define los fragmentos de frase `HEAD` y `MID` (su significado está en los comentarios). Imprime toda la frase en una sola línea con una f-string, interpolando las cuatro partes en orden.",
+    "starter": "HEAD = \"我是\"      # \"Soy\"\nMID = \"，我想学\"    # \"quiero aprender\"\nname = \"\"\nrole = \"\"\n# imprime HEAD + name + MID + role en una línea, usando una f-string\n",
+    "checks": [
+      {
+        "kind": "stdout_matches",
+        "pattern": "我是.{1,20}，我想学.{1,30}",
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Se usaron realmente dos variables en lugar de escribir el texto dentro de la cadena?"
+    },
+    "reference": "name = \"Mian\"\nrole = \"desarrollo de agentes\"\nprint(f\"{HEAD}{name}{MID}{role}\")",
+    "explanation": "Una f-string incrusta valores con {} y evita concatenar a mano. Asigna name y role antes de imprimir, si no la frase queda con huecos. La línea impresa se mantiene en chino a propósito, para que la comprobación la valide literalmente."
+  },
+  {
+    "id": "ch07-ex02",
+    "chapter": "chapter-7",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "Calcular los bytes necesarios para cargar un modelo en VRAM",
+    "prompt": "Un modelo tiene 7 mil millones de parámetros y se carga en precisión fp16 (2 bytes por parámetro). Calcula el tamaño total de los pesos y guárdalo en `weight_bytes`.",
+    "starter": "params_billion = 7\nbytes_per_param = 2\n# calcula y asigna weight_bytes\n",
+    "checks": [
+      {
+        "kind": "var_equals",
+        "name": "weight_bytes",
+        "value": 14000000000,
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende la persona que el número de parámetros está en miles de millones?"
+    },
+    "reference": "weight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
+    "explanation": "7 mil millones = 7 x 10^9. Multiplicado por 2 bytes da 1,4 x 10^10 bytes, unos 13 GB. Eso son solo los pesos; un despliegue real también necesita la caché KV y las activaciones."
+  },
+  {
+    "id": "ch07-ex03",
+    "chapter": "chapter-7",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 3,
+    "objective": "Detectar qué código muestra la respuesta del modelo",
+    "prompt": "¿Cuáles de estos producen salida visible? (selección múltiple)\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` en una línea sola\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` seguido de `print(answer)`",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C y D. B es Python válido, pero Jupyter muestra la última expresión; un script normal no imprime nada.",
+    "explanation": "Hay que capturar el resultado e imprimirlo. B parece funcionar en Jupyter porque se muestra la última expresión de la celda, pero en un script .py o en una llamada al servidor no aparece nada: la causa más común de \"el modelo corrió pero no pasó nada\"."
+  }
+]

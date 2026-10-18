@@ -1,1 +1,99 @@
-[]
+[
+  {
+    "id": "ch13-ex01",
+    "chapter": "chapter-13",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Ensamblar los argumentos de un ajuste fino con ms-swift",
+    "prompt": "Construye un diccionario de argumentos llamado `args` para una ejecución `swift sft`: `model` = `Qwen/Qwen2.5-0.5B`, `dataset` = `['alpaca-gpt4-data.json']`, `output` = `output/v0-5b-lora`, `train_type` = `lora`, `max_length` = 2048. Después une `args` en una cadena de línea de comandos llamada `cmd` e imprime `cmd`.",
+    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# únelo en una cadena de comando llamada cmd\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert args['model'] == 'Qwen/Qwen2.5-0.5B'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['train_type'] == 'lora'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['max_length'] == 2048",
+        "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(args['dataset'], list) and args['dataset']",
+        "weight": 1
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 2
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que dataset es una lista y max_length es un entero?"
+    },
+    "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
+    "explanation": "ms-swift usa guiones en la línea de comandos (--train-type) mientras que el diccionario usa guiones bajos (train_type); convertirlo es parte del ejercicio. dataset debe ser una lista aunque tenga un solo archivo."
+  },
+  {
+    "id": "ch13-ex02",
+    "chapter": "chapter-13",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Separar un conjunto de datos en entrenamiento y validación",
+    "prompt": "Dado un total de muestras `total` y una proporción de validación `val_ratio` (decimal entre 0 y 1), calcula el tamaño de validación `val_size` y el de entrenamiento `train_size`. Usa división entera y asegúrate de que la suma nunca supere `total`.",
+    "starter": "def split(total, val_ratio):\n    # devuelve (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert split(1000, 0.1) == (900, 100)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(101, 0.15) == (86, 15)",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sum(split(777, 0.33)) <= 777",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Trató el resto de la división entera en lugar de redondear?"
+    },
+    "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
+    "explanation": "val_size usa int() para truncar y train_size se obtiene por resta en lugar de una segunda división, así la suma es exactamente total sin perder muestras."
+  },
+  {
+    "id": "ch13-ex03",
+    "chapter": "chapter-13",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Decidir qué hiperparámetro de LoRA cambiar",
+    "prompt": "Tras el ajuste fino el modelo se repite y se atasca en una misma frase. ¿Qué cambiarías primero: `lora_rank`, `learning_rate` o `num_epochs`? Escribe tu elección y el motivo.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿La respuesta identifica una tasa de aprendizaje demasiado alta o demasiadas épocas como causa probable, e indica la dirección del cambio y una alternativa?"
+    },
+    "reference": "Baja primero la tasa de aprendizaje (1e-4 -> 5e-5) y después reduce las épocas. lora_rank controla sobre todo capacidad y memoria, así que es una palanca débil aquí. Si la repetición persiste, deduplica los datos o usa repetition_penalty.",
+    "explanation": "La repetición indica sobreajuste o una tasa de aprendizaje excesiva, no falta de capacidad. Este ejercicio no se puede ajustar de verdad en el navegador: lo importante es escribir el «por qué», no solo el «qué»."
+  }
+]

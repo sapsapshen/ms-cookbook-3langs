@@ -1,1 +1,99 @@
-[]
+[
+  {
+    "id": "ch13-ex01",
+    "chapter": "chapter-13",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Assemble the arguments of an ms-swift fine-tuning command",
+    "prompt": "Build an argument dictionary stored as `args` for a `swift sft` run: `model` = `Qwen/Qwen2.5-0.5B`, `dataset` = `['alpaca-gpt4-data.json']`, `output` = `output/v0-5b-lora`, `train_type` = `lora`, `max_length` = 2048. Then join `args` into a command-line string stored as `cmd`, and print `cmd`.",
+    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# join into a command string stored as cmd\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert args['model'] == 'Qwen/Qwen2.5-0.5B'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['train_type'] == 'lora'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['max_length'] == 2048",
+        "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(args['dataset'], list) and args['dataset']",
+        "weight": 1
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 2
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does the learner understand dataset is a list while max_length is an integer?"
+    },
+    "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
+    "explanation": "ms-swift uses hyphens on the command line (--train-type) while the Python dict uses underscores (train_type); converting is part of the task. dataset must be a list even with a single file."
+  },
+  {
+    "id": "ch13-ex02",
+    "chapter": "chapter-13",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Split a dataset into train and validation parts",
+    "prompt": "Given a sample count `total` and a validation ratio `val_ratio` (a decimal between 0 and 1), compute the validation size `val_size` and the training size `train_size`. Use floor division, and make sure the two never exceed `total` when summed.",
+    "starter": "def split(total, val_ratio):\n    # return (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert split(1000, 0.1) == (900, 100)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(101, 0.15) == (86, 15)",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sum(split(777, 0.33)) <= 777",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Did the learner handle the remainder from floor division instead of rounding?"
+    },
+    "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
+    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than a second floor -- so the two always sum to exactly total without dropping samples."
+  },
+  {
+    "id": "ch13-ex03",
+    "chapter": "chapter-13",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Decide which LoRA hyperparameter to change",
+    "prompt": "After fine-tuning the model repeats itself and gets stuck in one sentence. Which would you change first: `lora_rank`, `learning_rate` or `num_epochs`? Write down your choice and why.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does the answer identify a too-high learning rate or too many epochs as the likely cause, and state both the direction of the change and an alternative?"
+    },
+    "reference": "Lower the learning rate first (1e-4 -> 5e-5), then cut epochs. lora_rank mostly controls capacity and memory, so it is a weak lever here. If repetition persists, dedupe the data or add repetition_penalty.",
+    "explanation": "Repetition signals overfitting or an excessive learning rate, not insufficient capacity. This one cannot actually be fine-tuned in a browser -- what matters is writing the \"why\", not just the \"what\"."
+  }
+]

@@ -1,1 +1,75 @@
-[]
+[
+  {
+    "id": "ch07-ex01",
+    "chapter": "chapter-7",
+    "type": "code",
+    "difficulty": 1,
+    "minutes": 5,
+    "objective": "用变量和 f-string 拼接一段自我介绍",
+    "prompt": "定义两个变量：`name` 存你的名字，`role` 存你想学的方向。然后打印一句话，格式为 `我是{name}，我想学{role}`。",
+    "starter": "name = \"\"\nrole = \"\"\n# 在下面打印那句话\n",
+    "checks": [
+      {
+        "kind": "stdout_matches",
+        "pattern": "我是.{1,20}，我想学.{1,30}",
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否真的用了两个变量而不是把内容写死在字符串里"
+    },
+    "reference": "name = \"沈愐\"\nrole = \"Agent 开发\"\nprint(f\"我是{name}，我想学{role}\")",
+    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用。"
+  },
+  {
+    "id": "ch07-ex02",
+    "chapter": "chapter-7",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "计算模型加载到显存需要的字节数",
+    "prompt": "一个模型有 70 亿参数，用 fp16 精度加载（每个参数 2 字节）。算出权重总字节数，存入变量 `weight_bytes`。",
+    "starter": "params_billion = 7\nbytes_per_param = 2\n# 计算并赋给 weight_bytes\n",
+    "checks": [
+      {
+        "kind": "var_equals",
+        "name": "weight_bytes",
+        "value": 14000000000,
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解了参数量单位是十亿"
+    },
+    "reference": "weight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
+    "explanation": "70 亿 = 7 × 10^9。乘以每参数 2 字节得 1.4 × 10^10 字节，约 13 GB。这只是权重，实际加载还要加 KV cache 和激活值。"
+  },
+  {
+    "id": "ch07-ex03",
+    "chapter": "chapter-7",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 3,
+    "objective": "判断哪些代码能作为模型的第一次调用",
+    "prompt": "下面哪个写法能直接得到模型输出？（多选）\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` 单独一行\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` 然后 `print(answer)`",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、C、D。B 是对的但 Jupyter 会自动显示最后一个表达式的值，在脚本环境里不会打印出来。",
+    "explanation": "推理结果一定要拿到并输出。B 在 Jupyter 里看起来\"有效\"是因为最后一个单元格表达式会回显，但在 .py 脚本或服务端调用中什么都不会输出 —— 这是新手最常见的\"模型跑了但没反应\"原因。"
+  }
+]

@@ -1,1 +1,99 @@
-[]
+[
+  {
+    "id": "ch33-ex01",
+    "chapter": "chapter-33",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Escribir la regla de aprobado o fallo de una inspección",
+    "prompt": "Un inspector de línea debe decidir si una imagen es aceptable. `defects` es el número de cajas de defectos detectadas (entero) y `area_ratio` es la proporción de área defectuosa (decimal entre 0 y 1). Escribe `judge(defects, area_ratio)`: cero defectos devuelve `\"pass\"`; exactamente un defecto con proporción de área de hasta 0,05 devuelve `\"warn\"`; cualquier otro caso devuelve `\"fail\"`.",
+    "starter": "def judge(defects, area_ratio):\n    # devuelve \"pass\" / \"warn\" / \"fail\"\n    pass\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert judge(0, 0.0) == 'pass'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(1, 0.03) == 'warn'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(1, 0.06) == 'fail'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(2, 0.01) == 'fail'",
+        "weight": 2
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Ordenó las ramas de la más estricta a la más flexible usando retornos tempranos?"
+    },
+    "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
+    "explanation": "Las cláusulas de salida anticipada se leen mejor que el anidamiento y facilitan añadir reglas. Lo clave es no meter la comprobación de área dentro de la rama de cero defectos: sin defectos, cualquier área pasa."
+  },
+  {
+    "id": "ch33-ex02",
+    "chapter": "chapter-33",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Calcular métricas de evaluación del agente inspector",
+    "prompt": "Un agente se ejecutó sobre 20 muestras de producción: 14 totalmente correctas, 3 con fallos menores que no cambian el veredicto y 3 incorrectas. Escribe `metrics(correct, minor, wrong)` que devuelva un diccionario con `accuracy` (correct / total, 3 decimales), `harm_rate` (wrong / total, 3 decimales) y `acceptable` ((correct + minor) / total, 3 decimales).",
+    "starter": "def metrics(correct, minor, wrong):\n    # devuelve {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['accuracy'] == 0.7, m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['harm_rate'] == 0.15, m",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['acceptable'] == 0.85, m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(1,0,0)\nassert m['accuracy'] == 1.0, m",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Protejo el caso de un total igual a cero?"
+    },
+    "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
+    "explanation": "round(x, 3) mantiene el resultado en 0,7 en lugar de 0,7000000000000001, lo que importa al comparar informes de evaluación. La protección contra cero también: pasar cero muestras debe devolver ceros, no romperse."
+  },
+  {
+    "id": "ch33-ex03",
+    "chapter": "chapter-33",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Diseñar una comparación controlada para evaluar agentes",
+    "prompt": "Cambiaste el prompt del agente inspector y la precisión pasó de 0,70 a 0,85. ¿Cómo sabrías si es una mejora real o ruido? Escribe al menos dos pasos concretos.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿La respuesta menciona fijar la semilla y la versión del modelo, hacer varias ejecuciones o una prueba de significación, y validar en un conjunto de reserva que nunca se usó para ajustar?"
+    },
+    "reference": "1) Fija la semilla y la versión del modelo, repite varias veces y comprueba si 0,85 es estable. 2) Valida en un conjunto de reserva que nunca se usó para ajustar, para descartar sobreajuste al conjunto de evaluación. 3) Si es posible, haz una prueba t pareada o bootstrap.",
+    "explanation": "Con 20 muestras, pasar de 0,70 a 0,85 son solo 3 muestras y probablemente cae dentro del ruido. El movimiento clave es volver a medir sobre datos que no influyeron en el cambio: es la forma más rápida de detectar sobreajuste."
+  }
+]

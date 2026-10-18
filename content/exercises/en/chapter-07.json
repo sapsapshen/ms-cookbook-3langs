@@ -1,1 +1,75 @@
-[]
+[
+  {
+    "id": "ch07-ex01",
+    "chapter": "chapter-7",
+    "type": "code",
+    "difficulty": 1,
+    "minutes": 5,
+    "objective": "Build a self-introduction with an f-string",
+    "prompt": "Two variables are given: `name` holds your name and `role` holds what you want to learn. The starter already defines the sentence fragments `HEAD` and `MID` (their meaning is in the comments). Print the whole sentence on a single line with one f-string, interpolating the four pieces in order.",
+    "starter": "HEAD = \"我是\"      # \"I am\"\nMID = \"，我想学\"    # \"I want to learn\"\nname = \"\"\nrole = \"\"\n# print HEAD + name + MID + role on one line, using an f-string\n",
+    "checks": [
+      {
+        "kind": "stdout_matches",
+        "pattern": "我是.{1,20}，我想学.{1,30}",
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Did the learner really use two variables instead of hard-coding the string?"
+    },
+    "reference": "name = \"Mian\"\nrole = \"Agent development\"\nprint(f\"{HEAD}{name}{MID}{role}\")",
+    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally."
+  },
+  {
+    "id": "ch07-ex02",
+    "chapter": "chapter-7",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "Compute the bytes needed to load a model into VRAM",
+    "prompt": "A model has 7 billion parameters loaded at fp16 precision (2 bytes per parameter). Compute the total weight size and store it in `weight_bytes`.",
+    "starter": "params_billion = 7\nbytes_per_param = 2\n# compute and assign weight_bytes\n",
+    "checks": [
+      {
+        "kind": "var_equals",
+        "name": "weight_bytes",
+        "value": 14000000000,
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does the learner understand that the parameter count is in billions?"
+    },
+    "reference": "weight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
+    "explanation": "7 billion = 7 x 10^9. Times 2 bytes each gives 1.4 x 10^10 bytes, about 13 GB. That is weights only; a real deployment also needs KV cache and activations."
+  },
+  {
+    "id": "ch07-ex03",
+    "chapter": "chapter-7",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 3,
+    "objective": "Spot which code actually prints a model response",
+    "prompt": "Which of these produce visible output? (multi-select)\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` on its own line\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` followed by `print(answer)`",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 3
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C and D. B is valid Python but Jupyter echoes the last expression; a plain script prints nothing.",
+    "explanation": "You have to capture the result and print it. B looks fine in Jupyter because the last cell expression is echoed, but in a .py script or a server call nothing is shown -- the most common \"the model ran but nothing happened\" cause."
+  }
+]

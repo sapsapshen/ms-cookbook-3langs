@@ -1,1 +1,99 @@
-[]
+[
+  {
+    "id": "ch33-ex01",
+    "chapter": "chapter-33",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Write the pass/fail rule for a production-line defect check",
+    "prompt": "A line inspector must decide whether an image is acceptable. `defects` is the number of detected defect boxes (integer) and `area_ratio` is the defect area share (a decimal between 0 and 1). Write `judge(defects, area_ratio)`: zero defects returns `\"pass\"`; exactly one defect with an area share of at most 0.05 returns `\"warn\"`; anything else returns `\"fail\"`.",
+    "starter": "def judge(defects, area_ratio):\n    # return \"pass\" / \"warn\" / \"fail\"\n    pass\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert judge(0, 0.0) == 'pass'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(1, 0.03) == 'warn'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(1, 0.06) == 'fail'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(2, 0.01) == 'fail'",
+        "weight": 2
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Did the learner order the branches from strictest to loosest using early returns?"
+    },
+    "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
+    "explanation": "Guard clauses read better than nesting and make new rules easy to add. The key point is not putting the area test inside the zero-defect branch -- with no defects, any area still passes."
+  },
+  {
+    "id": "ch33-ex02",
+    "chapter": "chapter-33",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Compute evaluation metrics for the inspection Agent",
+    "prompt": "An Agent ran over 20 production samples: 14 fully correct, 3 with minor flaws that do not change the verdict, 3 wrong. Write `metrics(correct, minor, wrong)` returning a dict with `accuracy` (correct / total, 3 decimals), `harm_rate` (wrong / total, 3 decimals) and `acceptable` ((correct + minor) / total, 3 decimals).",
+    "starter": "def metrics(correct, minor, wrong):\n    # return {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['accuracy'] == 0.7, m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['harm_rate'] == 0.15, m",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['acceptable'] == 0.85, m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(1,0,0)\nassert m['accuracy'] == 1.0, m",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Did the learner guard against a zero total?"
+    },
+    "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
+    "explanation": "round(x, 3) keeps the return value at 0.7 instead of 0.7000000000000001, which matters when diffing evaluation reports. The zero guard matters too: passing zero samples should return zeros, not crash."
+  },
+  {
+    "id": "ch33-ex03",
+    "chapter": "chapter-33",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Design a controlled comparison for Agent evaluation",
+    "prompt": "You changed the inspector Agent prompt and accuracy went from 0.70 to 0.85. How would you tell a real improvement from noise? Write at least two concrete steps.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does the answer mention fixing the seed and model version, running several trials or a significance test, and validating on a holdout set that was never used for tuning?"
+    },
+    "reference": "1) Fix the seed and model version, rerun several times, check whether 0.85 is stable. 2) Validate on a holdout set that was never used for tuning, to rule out overfitting the eval set. 3) If feasible, run a paired t-test or bootstrap for significance.",
+    "explanation": "On 20 samples, 0.70 to 0.85 is only 3 samples -- very likely inside the noise band. The core move is to retest on data that never influenced the change; that is the fastest way to catch overfitting."
+  }
+]

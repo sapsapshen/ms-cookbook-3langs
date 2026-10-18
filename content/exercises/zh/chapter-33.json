@@ -1,1 +1,99 @@
-[]
+[
+  {
+    "id": "ch33-ex01",
+    "chapter": "chapter-33",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "设计产线缺陷检测的评分函数",
+    "prompt": "产线巡检要判断一张图里是否合格。已知 `defects` 是检测到的缺陷框数量（整数），`area_ratio` 是缺陷面积占比（0 到 1 的小数）。写一个函数 `judge(defects, area_ratio)`：0 个缺陷返回 `\"pass\"`；1 个且面积占比不超过 0.05 返回 `\"warn\"`；其余返回 `\"fail\"`。",
+    "starter": "def judge(defects, area_ratio):\n    # 返回 \"pass\" / \"warn\" / \"fail\"\n    pass\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert judge(0, 0.0) == 'pass'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(1, 0.03) == 'warn'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(1, 0.06) == 'fail'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert judge(2, 0.01) == 'fail'",
+        "weight": 2
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否用早返回让条件从最严格到最宽松排列"
+    },
+    "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
+    "explanation": "早返回（guard clause）比嵌套 if 更易读，也更容易扩展新规则。关键是没有把面积条件放到 0 缺陷的分支里 —— 0 缺陷时无论面积多少都该pass。"
+  },
+  {
+    "id": "ch33-ex02",
+    "chapter": "chapter-33",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "计算巡检 Agent 的评测指标",
+    "prompt": "Agent 在 20 条产线样本上运行：14 条完全正确，3 条有轻微缺陷但不影响判断，3 条判断错误。写函数 `metrics(correct, minor, wrong)` 返回字典，包含：`accuracy`（correct / 总数，保留 3 位小数）、`harm_rate`（wrong / 总数，保留 3 位小数）、`acceptable`（(correct + minor) / 总数，保留 3 位小数）。",
+    "starter": "def metrics(correct, minor, wrong):\n    # 返回 {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['accuracy'] == 0.7, m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['harm_rate'] == 0.15, m",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(14,3,3)\nassert m['acceptable'] == 0.85, m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(1,0,0)\nassert m['accuracy'] == 1.0, m",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否处理了总数为 0 的除零情况"
+    },
+    "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
+    "explanation": "round(x, 3) 保证返回的是 0.7 而不是 0.7000000000000001，这在评测报告里对比很重要。除零保护不能省 —— 传 0 条样本时程序应该返回 0 而不是崩溃。"
+  },
+  {
+    "id": "ch33-ex03",
+    "chapter": "chapter-33",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "设计 Agent 评测的对照实验",
+    "prompt": "你改了巡检 Agent 的提示词，accuracy 从 0.70 提到 0.85。要判断这是真改进还是随机波动，你会怎么做？请写出至少两个具体步骤。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否提到固定随机种子、多次运行取平均或做显著性检验、且要跑在未参与调参的留出集上"
+    },
+    "reference": "① 固定随机种子和模型版本重跑多轮，看 0.85 是否稳定；② 在从未参与调参的留出集上验证，排除过拟合评测集；③ 若条件允许做显著性检验（配对 t 检验或 bootstrap），确认差异不是噪声。",
+    "explanation": "20 条样本上 0.70→0.85 只差 3 条样本，很可能落在随机波动范围内。核心是「换一批没调过的数据再测」—— 这是发现过拟合最快的方法。"
+  }
+]

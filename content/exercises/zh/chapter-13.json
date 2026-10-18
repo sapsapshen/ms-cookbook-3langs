@@ -1,1 +1,99 @@
-[]
+[
+  {
+    "id": "ch13-ex01",
+    "chapter": "chapter-13",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "拼装 ms-swift 微调启动命令的参数",
+    "prompt": "写出一个 `swift sft` 命令的参数字典（存为变量 `args`），包含：`model` 为 `Qwen/Qwen2.5-0.5B`，`dataset` 为 `['alpaca-gpt4-data.json']`，`output` 为 `output/v0-5b-lora`，`train_type` 为 `lora`，`max_length` 为 2048。最后把 `args` 拼成命令行字符串存入 `cmd`，并把 `cmd` 打印出来。",
+    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# 拼成命令行字符串存为 cmd\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert args['model'] == 'Qwen/Qwen2.5-0.5B'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['train_type'] == 'lora'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['max_length'] == 2048",
+        "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(args['dataset'], list) and args['dataset']",
+        "weight": 1
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 2
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 dataset 是列表而 max_length 是整数"
+    },
+    "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
+    "explanation": "ms-swift 的命令行参数用中划线（--train-type），而 Python 字典用下划线（train_type），拼命令时要做转换。dataset 必须是列表，即使只有一个文件。"
+  },
+  {
+    "id": "ch13-ex02",
+    "chapter": "chapter-13",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "按占比切分训练集与验证集",
+    "prompt": "给定一个样本数 `total` 和验证集占比 `val_ratio`（0 到 1 之间的小数），计算验证集样本数 `val_size` 与训练集样本数 `train_size`。要求用整除向下取整，且两者之和不超过 `total`。",
+    "starter": "def split(total, val_ratio):\n    # 返回 (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert split(1000, 0.1) == (900, 100)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(101, 0.15) == (86, 15)",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sum(split(777, 0.33)) <= 777",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否处理了整除导致的余数，而不是四舍五入"
+    },
+    "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
+    "explanation": "val_size 用 int() 向下取整，train_size 用减法而不是再次取整 —— 这样能保证两者之和恰好等于 total，不丢样本。"
+  },
+  {
+    "id": "ch13-ex03",
+    "chapter": "chapter-13",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "判断 LoRA 超参调整的方向",
+    "prompt": "微调后模型输出重复啰嗦、容易陷入同一句话。你会优先调整 `lora_rank`、`learning_rate`、`num_epochs` 里的哪一个？为什么？请写出你的判断和理由。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否指出 learning_rate 过高或 epochs 过多是主要原因，并说明了调整方向与替代方案"
+    },
+    "reference": "优先降 learning_rate（如 1e-4 → 5e-5），其次减 epochs。lora_rank 主要影响容量和显存，与输出重复关系较弱。如果还是重复，可加数据清洗去重或引入 repetition_penalty。",
+    "explanation": "输出重复通常是过拟合或学习率过高的信号，不是容量不足。这题跑不了真实微调，靠推理和自查 —— 重要的是写出「为什么」而不是「调哪个」。"
+  }
+]

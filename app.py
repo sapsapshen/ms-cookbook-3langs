@@ -93,6 +93,29 @@ def self_assessment_state(value):
     return value if value in SELF_ASSESSMENT_STATES else ''
 
 
+def unreadable_row_reasons(error):
+    """Where a rejected progress row went wrong, and never what it held.
+
+    pydantic's `errors()` puts the offending value under an `input` key, and for
+    this model that value is the learner's submitted source -- an answer to an
+    exercise, complete with whatever they typed into it. Logging the error object
+    whole therefore copied a reader's code (and a `selfAssessed` token, up to 16
+    characters of anything) into the application log, on a trigger as ordinary as
+    a long exercise answer or a mistyped self-assessment.
+
+    So this is an allowlist, not a denylist: only the field position and the
+    rule that rejected it survive. An allowlist is the only shape that stays
+    safe when a future validator's `errors()` grows another key carrying the
+    value -- `ctx` is the obvious candidate, since it holds whatever a custom
+    validator attached to the failure.
+
+    Two fields are the whole operational story: which field failed, and which
+    rule it broke. An operator sees `code`/`string_too_long` and knows a client
+    is sending oversized code; nothing in the log says whose code it was.
+    """
+    return [{key: detail[key] for key in ('type', 'loc') if key in detail} for detail in error.errors()[:1]]
+
+
 def migrate_exercise_progress(conn):
     """Rebuild `exercise_progress` when it still carries the two-state column.
 
@@ -805,7 +828,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                 try:
                     item=ExerciseItem.model_validate(row)
                 except ValidationError as error:
-                    skipped+=1; LOGGER.info('Skipped an unreadable progress row: %s', error.errors()[:1]); continue
+                    skipped+=1; LOGGER.info('Skipped an unreadable progress row: %s', unreadable_row_reasons(error)); continue
                 if item.chapter not in exercise_index or item.exercise not in exercise_index[item.chapter]:
                     skipped+=1; LOGGER.info('Skipped a progress row for an exercise that does not exist'); continue
                 # passed and score only ever ratchet up, exactly like the client's
@@ -884,7 +907,16 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             # reference answer over a formatting detail. Type is checked first so
             # every unparsable verdict takes the same degradation path.
             if not isinstance(verdict,dict): raise ValueError('verdict is not a JSON object')
-            score=max(0.0,min(1.0,float(verdict.get('score',0))))
+            try:
+                score=max(0.0,min(1.0,float(verdict.get('score',0))))
+            except (TypeError, ValueError):
+                # float() puts the string it could not convert into its own
+                # message, and LOGGER.exception below prints that message with
+                # its traceback. The string is the model's raw reply, and a model
+                # asked to grade an answer sometimes quotes that answer back --
+                # which would put the learner's own words into the log. `from
+                # None`, not `from conversion`: a chained cause is printed too.
+                raise ValueError('score is not a number') from None
             # feedback is prose the learner reads. A model that answers with an
             # object would otherwise hand them Python's repr, so only a real
             # string is carried over.

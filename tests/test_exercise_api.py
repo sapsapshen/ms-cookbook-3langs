@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import sqlite3
 import time
 import pytest
@@ -787,5 +788,83 @@ def test_the_batch_cap_is_a_ceiling_and_not_a_quota(site):
     client = reader(site)
     response = client.post(PROGRESS, json={'items': rows(1001)})
     assert response.status_code == 422
+
+
+# --- Review round 4: a skipped row must not carry the reader's own words into
+# the application log --------------------------------------------------
+
+MARKER = 'SECRET-MARKER-XYZ'
+
+
+def captured_log(caplog):
+    """The records as a formatter renders them, not `getMessage()`.
+
+    LOGGER.exception() appends a traceback, and the traceback is where a
+    converted value hides. Reading only `record.getMessage()` would show a clean
+    log for a leak that is really there.
+    """
+    formatter = logging.Formatter()
+    return '\n'.join(formatter.format(record) for record in caplog.records)
+
+
+@pytest.mark.parametrize('oversize', [
+    {'code': '# ' + MARKER + '\n' + 'x' * 20001},
+    {'selfAssessed': MARKER + 'SELF'},
+])
+def test_a_skipped_row_never_reaches_the_log(site, caplog, oversize):
+    """pydantic's errors() carries the rejected value under 'input', so logging
+    it wrote the learner's submitted code -- and their self-assessment -- into
+    the application log on a trigger as ordinary as a long answer."""
+    caplog.set_level(logging.INFO, logger='app')
+    client = reader(site)
+    response = client.post(PROGRESS, json={'items': [
+        dict({'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID}, **oversize),
+    ]})
+    assert response.status_code == 201
+    assert response.json() == {'saved': 0, 'skipped': 1}
+    assert MARKER not in captured_log(caplog)
+
+
+def test_the_skip_is_still_reported_to_the_operator(site, caplog):
+    """Silencing the leak by deleting the log line would pass the test above.
+    Operations still has to learn that rows are being dropped: the field and
+    the rule that rejected it are enough, and neither is the reader's."""
+    caplog.set_level(logging.INFO, logger='app')
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'code': MARKER + 'x' * 20001},
+    ]})
+    log = captured_log(caplog)
+    assert 'Skipped an unreadable progress row' in log
+    assert "'loc': ('code',)" in log
+    assert 'string_too_long' in log
+
+
+def test_an_unknown_exercise_row_is_logged_without_its_id(site, caplog):
+    """The other skip branch. It logs a fixed sentence, so this locks in that
+    the sentence stays fixed -- a row's chapter/exercise are corpus ids, not
+    reader content, but the habit is what matters here."""
+    caplog.set_level(logging.INFO, logger='app')
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [{'chapter': 'chapter-999', 'exercise': MARKER}]})
+    log = captured_log(caplog)
+    assert 'does not exist' in log
+    assert MARKER not in log
+
+
+def test_a_model_reply_that_quotes_the_answer_does_not_reach_the_log(site, monkeypatch, caplog):
+    """The same leak through the other new path.
+
+    float() puts the string it could not convert into its own ValueError, and
+    LOGGER.exception prints that message with its traceback. A model asked to
+    grade an answer sometimes quotes that answer back -- which puts the
+    learner's own words into the log, and this endpoint is the one place the
+    server ever holds them.
+    """
+    caplog.set_level(logging.INFO, logger='app')
+    echoed = json.dumps({'score': 'my answer is ' + MARKER, 'feedback': 'ok'})
+    assert grading_reply(echoed, site, monkeypatch).status_code == 503
+    assert 'Exercise grading returned an unparsable verdict' in captured_log(caplog)
+    assert MARKER not in captured_log(caplog)
 
 

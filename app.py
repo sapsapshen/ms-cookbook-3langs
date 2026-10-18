@@ -36,6 +36,66 @@ CREATE TABLE IF NOT EXISTS analytics_visitor_hourly(hour TEXT NOT NULL, visitor_
 CREATE INDEX IF NOT EXISTS analytics_visitors_hour ON analytics_visitor_hourly(hour);
 '''
 
+# The progress table's column list is one string because migrate_exercise_progress
+# has to rebuild the table to change a column's type. `self_assessed` stores the
+# client's three states verbatim: the learning map counts anything that is not
+# 'fail' as self-assessed progress, so collapsing 'fail' into a truthy value
+# reports work the reader explicitly said they did not understand.
+EXERCISE_PROGRESS_COLUMNS = '''id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  chapter TEXT NOT NULL,
+  exercise TEXT NOT NULL,
+  code TEXT NOT NULL DEFAULT '',
+  passed INTEGER NOT NULL DEFAULT 0 CHECK(passed IN (0,1)),
+  score REAL NOT NULL DEFAULT 0,
+  self_assessed TEXT NOT NULL DEFAULT '' CHECK(self_assessed IN ('','pass','partial','fail')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  updated INTEGER NOT NULL,
+  UNIQUE(user_id, chapter, exercise)'''
+
+SELF_ASSESSMENT_STATES = ('', 'pass', 'partial', 'fail')
+
+
+def self_assessment_state(value):
+    """Fold an incoming self-assessment into one of the three storable states.
+
+    The client writes 'pass' / 'partial' / 'fail' / '' and those cross the wire
+    unchanged. Anything else is dropped to '' rather than rejected: a batch is
+    all-or-nothing, so refusing an unknown token would also refuse to sync every
+    other exercise in the same request -- and the token cannot be mapped onto a
+    state anyway, because the two-state build read every assessment back as
+    'graded', which cannot be told apart from a genuine 'pass'. Claiming a pass
+    the learner never gave is the one error they cannot notice, so the claim is
+    discarded instead.
+    """
+    return value if value in SELF_ASSESSMENT_STATES else ''
+
+
+def migrate_exercise_progress(conn):
+    """Rebuild `exercise_progress` when it still carries the two-state column.
+
+    `CREATE TABLE IF NOT EXISTS` leaves an existing table alone, so a database
+    written before the three-state fix still declares
+    `self_assessed INTEGER CHECK(self_assessed IN (0,1))`. The test is on the
+    declared column type, not on stored data: a legacy row cannot be inverted
+    back into three states, because 1 stands for 'pass', 'partial' and 'fail'
+    alike, so both 0 and 1 migrate to '' (not self-assessed). Mapping 1 to
+    'pass' would preserve the original defect for every existing reader, while
+    '' is recoverable -- the learner states it again on the device that still
+    has it, and passed/score/code/attempts/updated carry over untouched.
+    """
+    columns = {row['name']: row['type'] for row in conn.execute('PRAGMA table_info(exercise_progress)')}
+    if columns.get('self_assessed') == 'TEXT': return
+    conn.executescript(f'''
+    BEGIN IMMEDIATE;
+    CREATE TABLE exercise_progress_migrated({EXERCISE_PROGRESS_COLUMNS});
+    INSERT INTO exercise_progress_migrated(id,user_id,chapter,exercise,code,passed,score,self_assessed,attempts,updated)
+      SELECT id,user_id,chapter,exercise,code,passed,score,'',attempts,updated FROM exercise_progress;
+    DROP TABLE exercise_progress;
+    ALTER TABLE exercise_progress_migrated RENAME TO exercise_progress;
+    CREATE INDEX IF NOT EXISTS exercise_progress_user ON exercise_progress(user_id, updated);
+    COMMIT;''')
+
 class Entry(BaseModel):
     kind: str
     text: str = Field(default='', max_length=2000)
@@ -107,22 +167,14 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         CREATE INDEX IF NOT EXISTS entries_user_time ON entries(user_id, created);
         CREATE TABLE IF NOT EXISTS wishes(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), text TEXT NOT NULL, created INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS wishes_user_time ON wishes(user_id, created);
-        CREATE TABLE IF NOT EXISTS exercise_progress(
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL REFERENCES users(id),
-          chapter TEXT NOT NULL,
-          exercise TEXT NOT NULL,
-          code TEXT NOT NULL DEFAULT '',
-          passed INTEGER NOT NULL DEFAULT 0 CHECK(passed IN (0,1)),
-          score REAL NOT NULL DEFAULT 0,
-          self_assessed INTEGER NOT NULL DEFAULT 0 CHECK(self_assessed IN (0,1)),
-          attempts INTEGER NOT NULL DEFAULT 0,
-          updated INTEGER NOT NULL,
-          UNIQUE(user_id, chapter, exercise));
-        CREATE INDEX IF NOT EXISTS exercise_progress_user ON exercise_progress(user_id, updated);
         CREATE TABLE IF NOT EXISTS exercise_progress_writes(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), created INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS exercise_progress_writes_user ON exercise_progress_writes(user_id, created);
         ''')
+        # IF NOT EXISTS cannot widen an existing column, so the schema above is
+        # only the shape a fresh database gets; deployed ones are rebuilt here.
+        conn.execute(f'CREATE TABLE IF NOT EXISTS exercise_progress({EXERCISE_PROGRESS_COLUMNS})')
+        conn.execute('CREATE INDEX IF NOT EXISTS exercise_progress_user ON exercise_progress(user_id, updated)')
+        migrate_exercise_progress(conn)
 
     @contextmanager
     def analytics_db():
@@ -623,7 +675,10 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         with db() as conn:
             rows=conn.execute('SELECT chapter,exercise,passed,score,code,self_assessed,attempts,updated FROM exercise_progress WHERE user_id=? ORDER BY updated DESC',(u['id'],)).fetchall()
         items=[dict(row) for row in rows]
-        for item in items: item['selfAssessed']=item.pop('self_assessed') and 'graded' or ''
+        # selfAssessed goes back exactly as stored: the client's chapterSummary
+        # counts every value except 'fail' as self-assessed progress, so a
+        # collapsed token reports work the reader said they did not understand.
+        for item in items: item['selfAssessed']=item.pop('self_assessed')
         return {'items':items}
 
     @app.post('/api/exercises/progress',status_code=201)
@@ -646,13 +701,36 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                 # merge: a device replaying a stale snapshot must not un-pass work the
                 # server already accepted, and a client's own push-back carries the
                 # merged values rather than a regressing one.
+                #
+                # self_assessed is the opposite kind of value and is deliberately
+                # NOT ratcheted. passed/score are accumulative achievements -- a pass
+                # is never revoked -- so MAX is their rule. A self-assessment is the
+                # learner's current statement about their own understanding, and it
+                # legitimately moves in both directions: 'fail' becomes 'pass' after
+                # a re-read, 'pass' becomes 'fail' after a bad day. Any merge rule
+                # the server invented here would be wrong twice over: the three
+                # states have no order ('fail' is not "less than" 'pass', and not
+                # "greater" than 'partial'), and the payload has already been
+                # arbitrated. merge() ran on the client before this request existed,
+                # timestamp arbitration decided that side, and the push-back is
+                # snapshot() reading the bucket merge() just wrote -- so the value
+                # arriving here IS the merged result. Re-deciding it server-side
+                # would apply a second, different rule to an already-decided value.
+                # Adding a `updated >= stored.updated` guard on top of that was
+                # tried and rejected: it looks safer, but a device whose clock lags
+                # would have its fresh 'fail' discarded in favour of the server's
+                # older 'pass', and merge() would then adopt that 'pass' locally --
+                # trading the reported bug for the same false progress by another
+                # route. Faithful storage plus the client's own arbitration is the
+                # only rule that cannot manufacture a pass.
                 conn.execute('''INSERT INTO exercise_progress VALUES (?,?,?,?,?,?,?,?,?,?)
                                 ON CONFLICT(user_id,chapter,exercise) DO UPDATE SET
                                 code=excluded.code,passed=MAX(exercise_progress.passed,excluded.passed),
                                 score=MAX(exercise_progress.score,excluded.score),
                                 self_assessed=excluded.self_assessed,
                                 attempts=excluded.attempts,updated=excluded.updated''',
-                             (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,1 if item.selfAssessed else 0,item.attempts,item.updated or now))
+                             (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,
+                              self_assessment_state(item.selfAssessed),item.attempts,item.updated or now))
                 saved+=1
         return {'saved':saved}
 

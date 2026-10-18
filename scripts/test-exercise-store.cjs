@@ -270,6 +270,52 @@ check("a self-assessment of 'fail' is not counted as self-assessed progress", ()
   assert.equal(summary.selfAssessed, 1);
 });
 
+/* --- Review round 2: the sync boundary ------------------------------------ */
+
+check('every self-assessment state survives a round trip through the wire', () => {
+  /* snapshot() is what the sync endpoint POSTs, so whatever it drops is lost on
+     the next merge. 'fail' in particular must stay exactly 'fail': the server
+     used to answer 'graded', which this function counts as progress. */
+  for (const state of ['pass', 'partial', 'fail', '']) {
+    const store = create({ storage: memoryStorage(), now: () => 1750000000 });
+    store.write('chapter-1', 'ch01-ex01', { passed: false, selfAssessed: state });
+    assert.equal(store.snapshot()[0].selfAssessed, state);
+    const reloaded = create({ storage: memoryStorage() });
+    reloaded.merge(store.snapshot());
+    assert.equal(reloaded.read('chapter-1', 'ch01-ex01').selfAssessed, state);
+  }
+});
+
+check("a server 'fail' merged in is still not counted as progress", () => {
+  /* The end of the bug: server answers 'fail' -> merge() adopts it ->
+     chapterSummary must not count it. With the old 'graded' mapping the row
+     arrived as a truthy non-'fail' string and counted. */
+  const store = create({ storage: memoryStorage(), now: () => 1750000000 });
+  store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0, selfAssessed: 'fail', updated: 1750000100 }]);
+  assert.equal(store.read('chapter-1', 'ch01-ex01').selfAssessed, 'fail');
+  assert.equal(store.chapterSummary('chapter-1', ['ch01-ex01']).selfAssessed, 0);
+});
+
+check("a server 'partial' merged in IS counted as progress", () => {
+  /* The other side of the same boundary: 'partial' is honest progress and must
+     not be flattened into '' along with the unreadable states. */
+  const store = create({ storage: memoryStorage(), now: () => 1750000000 });
+  store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0, selfAssessed: 'partial', updated: 1750000100 }]);
+  assert.equal(store.read('chapter-1', 'ch01-ex01').selfAssessed, 'partial');
+  assert.equal(store.chapterSummary('chapter-1', ['ch01-ex01']).selfAssessed, 1);
+});
+
+check('a self-assessment can be revised in both directions', () => {
+  /* Unlike passed/score there is nothing to latch: the learner re-reading the
+     answer turns 'fail' into 'pass', and a bad day turns it back. */
+  const store = create({ storage: memoryStorage() });
+  store.write('chapter-1', 'ch01-ex01', { selfAssessed: 'pass' });
+  store.write('chapter-1', 'ch01-ex01', { selfAssessed: 'fail' });
+  assert.equal(store.read('chapter-1', 'ch01-ex01').selfAssessed, 'fail');
+  store.write('chapter-1', 'ch01-ex01', { selfAssessed: 'partial' });
+  assert.equal(store.read('chapter-1', 'ch01-ex01').selfAssessed, 'partial');
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

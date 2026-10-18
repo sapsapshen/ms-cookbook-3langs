@@ -35,6 +35,67 @@ check('accepts boolean and object outcomes alike', () => {
   assert.equal(result.items[1].detail, 'fine');
 });
 
+/* --- strict boolean handling for object outcomes -----------------------------
+   The grader is the only authority on pass/fail, so an outcome object must
+   carry a literal `true` to count as passing. Any other value -- including
+   truthy ones like 1, 'yes' or {} -- is a malformed outcome and must fail
+   closed, otherwise a buggy sandbox runner would hand out a pass badge. */
+
+check('an outcome object with ok:true counts as passing', () => {
+  const result = G.evaluate([{ kind: 'a', weight: 1 }], [{ ok: true, detail: 'fine' }]);
+  assert.equal(result.items[0].ok, true);
+  assert.equal(result.earned, 1);
+  assert.equal(result.score, 1);
+});
+
+check('a truthy non-boolean ok is not silently treated as a pass', () => {
+  const result = G.evaluate(
+    [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }, { kind: 'c', weight: 1 }],
+    [{ ok: 1, detail: 'one' }, { ok: 'yes', detail: 'string' }, { ok: {}, detail: 'object' }]);
+  assert.deepEqual(result.items.map(item => item.ok), [false, false, false]);
+  assert.equal(result.earned, 0);
+  assert.equal(result.score, 0);
+});
+
+check('a truthy non-boolean ok never reaches the pass badge through grade', () => {
+  const exercise = { checks: [{ kind: 'stdout_equals', weight: 1 }, { kind: 'stdout_contains', weight: 1 }] };
+  const outcome = G.grade(exercise, { outcomes: [{ ok: 1 }, { ok: 'yes' }] });
+  assert.equal(outcome.score, 0);
+  assert.equal(outcome.passed, false);
+  assert.deepEqual(outcome.items.map(item => item.ok), [false, false]);
+});
+
+check('falsy ok values fail rather than pass', () => {
+  const result = G.evaluate(
+    [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }, { kind: 'c', weight: 1 }, { kind: 'd', weight: 1 }],
+    [{ ok: 0 }, { ok: '' }, { ok: false }, { ok: null }]);
+  assert.deepEqual(result.items.map(item => item.ok), [false, false, false, false]);
+  assert.equal(result.score, 0);
+});
+
+check('a missing ok field fails closed', () => {
+  const result = G.evaluate(
+    [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }],
+    [{ detail: 'no ok at all' }, {}]);
+  assert.deepEqual(result.items.map(item => item.ok), [false, false]);
+  assert.equal(result.score, 0);
+});
+
+check('strictness holds at grade level for mixed ok values', () => {
+  const exercise = { checks: [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }] };
+  const outcome = G.grade(exercise, { outcomes: [{ ok: true }, { ok: 1 }] });
+  assert.equal(outcome.score, 0.5);
+  assert.equal(outcome.passed, false);
+});
+
+check('a non-object, non-boolean outcome never passes', () => {
+  const result = G.evaluate(
+    [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }, { kind: 'c', weight: 1 }],
+    [1, 'true', null]);
+  assert.deepEqual(result.items.map(item => item.ok), [false, false, false]);
+  assert.equal(result.score, 0);
+});
+
 check('an empty check list scores zero rather than dividing by zero', () => {
   const result = G.evaluate([], []);
   assert.equal(result.total, 0);

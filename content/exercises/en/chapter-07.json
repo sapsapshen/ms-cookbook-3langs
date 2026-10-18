@@ -11,8 +11,8 @@
     "checks": [
       {
         "kind": "stdout_matches",
-        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学[\\s\\S]{1,30}",
-        "weight": 2
+        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学\\s*[^\\s]",
+        "weight": 6
       },
       {
         "kind": "assert_python",
@@ -26,13 +26,13 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
-        "weight": 3
+        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "weight": 5
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
-        "weight": 3
+        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "weight": 5
       }
     ],
     "llm_rubric": {
@@ -40,7 +40,7 @@
       "criteria": "Did the learner really use two variables instead of hard-coding the string?"
     },
     "reference": "name = \"Mian\"\nrole = \"Agent development\"\n# \\u-escapes keep this answer CJK-free while still printing the Chinese line.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
-    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally; the escape sequences above are just that same sentence written in ASCII. Grading can see three things: both variables hold non-empty strings, the printed line has the right shape, and the printed line actually carries the two values -- that last one fails the version that fills the variables in correctly but still hand-writes the literal."
+    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally; the escape sequences above are just that same sentence written in ASCII. Grading looks at three things across four assertions: both variables hold non-empty strings, the printed line has the shape \"I am ... , I want to learn ...\", and the printed line actually carries the two values. The shape assertion requires real content after the \"I want to learn\" half -- printing half a sentence fails, while splitting the name and the role onto separate lines is fine. The non-empty point is guarded twice, once by the variable itself and once by its value having to show up in the output, so leaving it blank always fails. The last one fails the version that fills the variables in correctly but still hand-writes the literal."
   },
   {
     "id": "ch07-ex02",

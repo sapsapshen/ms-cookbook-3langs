@@ -11,8 +11,8 @@
     "checks": [
       {
         "kind": "stdout_matches",
-        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学[\\s\\S]{1,30}",
-        "weight": 2
+        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学\\s*[^\\s]",
+        "weight": 6
       },
       {
         "kind": "assert_python",
@@ -26,13 +26,13 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
-        "weight": 3
+        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "weight": 5
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
-        "weight": 3
+        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "weight": 5
       }
     ],
     "llm_rubric": {
@@ -40,7 +40,7 @@
       "criteria": "¿Se usaron realmente dos variables en lugar de escribir el texto dentro de la cadena?"
     },
     "reference": "name = \"Mian\"\nrole = \"desarrollo de agentes\"\n# Los escapes \\u mantienen esta respuesta sin CJK e imprimen la frase china.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
-    "explanation": "Una f-string incrusta valores con {} y evita concatenar a mano. Asigna name y role antes de imprimir, si no la frase queda con huecos. La línea impresa se mantiene en chino a propósito, para que la comprobación la valide literalmente; las secuencias de escape son esa misma frase escrita en ASCII. La corrección puede ver tres cosas: que ambas variables tienen texto, que la línea impresa tiene la forma correcta y que la línea impresa lleva de verdad los dos valores; esto último es lo que suspende a quien rellena las variables correctamente pero escribe el texto a mano."
+    "explanation": "Una f-string incrusta valores con {} y evita concatenar a mano. Asigna name y role antes de imprimir, si no la frase queda con huecos. La línea impresa se mantiene en chino a propósito, para que la comprobación la valide literalmente; las secuencias de escape son esa misma frase escrita en ASCII. La corrección mira tres cosas con cuatro aserciones: que ambas variables tienen texto, que la línea impresa tiene la forma «Soy ... , quiero aprender ...» y que la línea impresa lleva de verdad los dos valores. La aserción de forma exige contenido real después de la parte «quiero aprender»: imprimir media frase suspende, mientras que repartir el nombre y el objetivo en líneas distintas es válido. El punto de texto no vacío está guardado dos veces, una por la propia variable y otra porque su valor tiene que aparecer en la salida, así que dejarlo en blanco siempre suspende. Esto último es lo que suspende a quien rellena las variables correctamente pero escribe el texto a mano."
   },
   {
     "id": "ch07-ex02",

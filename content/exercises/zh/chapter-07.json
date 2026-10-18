@@ -11,8 +11,8 @@
     "checks": [
       {
         "kind": "stdout_matches",
-        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学[\\s\\S]{1,30}",
-        "weight": 2
+        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学\\s*[^\\s]",
+        "weight": 6
       },
       {
         "kind": "assert_python",
@@ -26,13 +26,13 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and ''.join(name.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 name 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
-        "weight": 3
+        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 name 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
+        "weight": 5
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and ''.join(role.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 role 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
-        "weight": 3
+        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 role 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
+        "weight": 5
       }
     ],
     "llm_rubric": {
@@ -40,7 +40,7 @@
       "criteria": "是否真的用了两个变量而不是把内容写死在字符串里"
     },
     "reference": "name = \"沈愐\"\nrole = \"Agent 开发\"\nprint(f\"我是{name}，我想学{role}\")",
-    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用，否则句子里会留下空洞。自动判分看得到三件事：两个变量有没有被赋成非空字符串、打印出来的句子长什么样、以及句子里有没有真的带上这两个变量的值 —— 第三条会把「变量填对了却仍然手写字面量」这种写法判成不及格。"
+    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用，否则句子里会留下空洞。自动判分看三件事、四条判据：两个变量有没有被赋成非空字符串、打印出来的句子是不是「我是…，我想学…」这个形状、句子里有没有真的带上这两个变量的值。形状那条要求 `我想学` 后面确实有内容 —— 只打印半句会判不过，而名字和方向各自换行打印是合法的。变量非空这条由两条判据一起守着：既查变量本身非空，也查它的值真的出现在输出里，所以留空一定判不过。第三条会把「变量填对了却仍然手写字面量」这种写法判成不及格。"
   },
   {
     "id": "ch07-ex02",

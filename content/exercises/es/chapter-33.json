@@ -11,28 +11,28 @@
     "checks": [
       {
         "kind": "assert_python",
-        "code": "assert judge(0, 0.0) == 'pass'",
-        "weight": 2
+        "code": "assert judge(0, 0.0) == 'pass' and judge(0, 0.9) == 'pass'",
+        "weight": 6
       },
       {
         "kind": "assert_python",
-        "code": "assert judge(0, 0.9) == 'pass'",
-        "weight": 3
+        "code": "assert judge(0, 0.4) == 'pass'",
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert judge(1, 0.03) == 'warn'",
-        "weight": 3
+        "weight": 4
       },
       {
         "kind": "assert_python",
-        "code": "assert judge(1, 0.06) == 'fail'",
-        "weight": 3
+        "code": "assert judge(1, 0.05) == 'warn'",
+        "weight": 6
       },
       {
         "kind": "assert_python",
-        "code": "assert judge(2, 0.01) == 'fail'",
-        "weight": 2
+        "code": "assert judge(1, 0.06) == 'fail' and judge(1, 0.5) == 'fail' and judge(2, 0.01) == 'fail' and judge(3, 0.4) == 'fail'",
+        "weight": 8
       }
     ],
     "llm_rubric": {
@@ -40,7 +40,7 @@
       "criteria": "¿Ordenó las ramas de la más estricta a la más flexible usando retornos tempranos?"
     },
     "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
-    "explanation": "Las cláusulas de salida anticipada se leen mejor que el anidamiento y facilitan añadir reglas. Lo clave es no meter la comprobación de área dentro de la rama de cero defectos: sin defectos, cualquier área pasa, así que `judge(0, 0.9)` también debe devolver \"pass\". Ese caso se comprueba a propósito."
+    "explanation": "Las cláusulas de salida anticipada se leen mejor que el anidamiento y facilitan añadir reglas. Lo clave es no meter la comprobación de área dentro de la rama de cero defectos: sin defectos, cualquier área pasa, así que `judge(0, 0.9)` también debe devolver \"pass\". Ese caso se comprueba a propósito. La corrección alimenta ocho puntos de entrada: `judge(0, 0.0)`, `judge(0, 0.9)` y `judge(0, 0.4)` vigilan que cero defectos ignore el área; `judge(1, 0.03)` y `judge(1, 0.05)` vigilan la condición inclusiva «hasta 0,05», así que escribir `<` suspende; `judge(1, 0.06)`, `judge(1, 0.5)`, `judge(2, 0.01)` y `judge(3, 0.4)` vigilan el resto, que siempre es fail, y los dos puntos con varios defectos evitan que «el número manda sobre el área» se suplante memorizando esas pocas respuestas. Seguir el enunciado los pasa todos; ignorar `area_ratio`, o ignorar `defects`, baja de 0,7."
   },
   {
     "id": "ch33-ex02",
@@ -83,7 +83,7 @@
       "criteria": "¿Protejo el caso de un total igual a cero?"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "round(x, 3) mantiene el resultado en 0,7 en lugar de 0,7000000000000001, lo que importa al comparar informes de evaluación. La protección contra cero también: pasar cero muestras debe devolver ceros, no romperse, así que `metrics(0, 0, 0)` tiene que devolver tres 0.0 en lugar de lanzar ZeroDivisionError. Ese caso se comprueba a propósito."
+    "explanation": "La protección contra cero importa: pasar cero muestras debe devolver ceros, no romperse, así que `metrics(0, 0, 0)` tiene que devolver tres 0.0 en lugar de lanzar ZeroDivisionError. Ese caso se comprueba a propósito. Cada proporción se redondea a 3 decimales como pide el enunciado. La corrección compara valores exactos y, en este conjunto concreto de 20 muestras, 14/20 ya es igual a 0,7 en coma flotante binaria, así que redondear o no redondear pasa igual las tres aserciones; hace falta otro tamaño de muestra para ver qué hace el redondeo: 1/3 es 0.3333333333333333 sin él y 0,333 con él."
   },
   {
     "id": "ch33-ex03",

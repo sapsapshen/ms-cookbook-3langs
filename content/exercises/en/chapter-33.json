@@ -11,28 +11,28 @@
     "checks": [
       {
         "kind": "assert_python",
-        "code": "assert judge(0, 0.0) == 'pass'",
-        "weight": 2
+        "code": "assert judge(0, 0.0) == 'pass' and judge(0, 0.9) == 'pass'",
+        "weight": 6
       },
       {
         "kind": "assert_python",
-        "code": "assert judge(0, 0.9) == 'pass'",
-        "weight": 3
+        "code": "assert judge(0, 0.4) == 'pass'",
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert judge(1, 0.03) == 'warn'",
-        "weight": 3
+        "weight": 4
       },
       {
         "kind": "assert_python",
-        "code": "assert judge(1, 0.06) == 'fail'",
-        "weight": 3
+        "code": "assert judge(1, 0.05) == 'warn'",
+        "weight": 6
       },
       {
         "kind": "assert_python",
-        "code": "assert judge(2, 0.01) == 'fail'",
-        "weight": 2
+        "code": "assert judge(1, 0.06) == 'fail' and judge(1, 0.5) == 'fail' and judge(2, 0.01) == 'fail' and judge(3, 0.4) == 'fail'",
+        "weight": 8
       }
     ],
     "llm_rubric": {
@@ -40,7 +40,7 @@
       "criteria": "Did the learner order the branches from strictest to loosest using early returns?"
     },
     "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
-    "explanation": "Guard clauses read better than nesting and make new rules easy to add. The key point is not putting the area test inside the zero-defect branch -- with no defects, any area still passes, so `judge(0, 0.9)` has to keep returning \"pass\" too. That case is asserted on purpose."
+    "explanation": "Guard clauses read better than nesting and make new rules easy to add. The key point is not putting the area test inside the zero-defect branch -- with no defects, any area still passes, so `judge(0, 0.9)` has to keep returning \"pass\" too. That case is asserted on purpose. Grading feeds eight input points in: `judge(0, 0.0)`, `judge(0, 0.9)` and `judge(0, 0.4)` watch that zero defects ignores the area; `judge(1, 0.03)` and `judge(1, 0.05)` watch the inclusive \"at most 0.05\" condition, so writing `<` fails; `judge(1, 0.06)`, `judge(1, 0.5)`, `judge(2, 0.01)` and `judge(3, 0.4)` watch the everything-else branch, and the two multi-defect inputs keep \"the count outranks the area\" from being faked by memorising those few answers. Following the prompt passes all of them; ignoring `area_ratio`, or ignoring `defects`, drops below 0.7."
   },
   {
     "id": "ch33-ex02",
@@ -83,7 +83,7 @@
       "criteria": "Did the learner guard against a zero total?"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "round(x, 3) keeps the return value at 0.7 instead of 0.7000000000000001, which matters when diffing evaluation reports. The zero guard matters too: passing zero samples should return zeros, not crash, so `metrics(0, 0, 0)` has to come back as three 0.0 values instead of raising ZeroDivisionError. That case is asserted on purpose."
+    "explanation": "The zero guard matters: passing zero samples should return zeros, not crash, so `metrics(0, 0, 0)` has to come back as three 0.0 values instead of raising ZeroDivisionError. That case is asserted on purpose. Each ratio is rounded to 3 decimals as the prompt asks. Grading compares exact values, and on this particular set of 20 samples 14/20 already equals 0.7 in binary floating point, so rounding and not rounding both pass those three assertions; you need a different sample size to see what round does -- 1/3 is 0.3333333333333333 without it and 0.333 with it."
   },
   {
     "id": "ch33-ex03",

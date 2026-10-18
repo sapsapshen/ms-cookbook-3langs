@@ -275,19 +275,18 @@ def load_exercises():
 
 def validate_item(item, lang):
     where = f"{item['_file']}:{item['id']}"
-    for key in ('id', 'chapter', 'type', 'difficulty', 'minutes', 'objective',
-                'prompt', 'explanation'):
+    for key in ('id', 'chapter', 'type', 'objective', 'prompt', 'explanation'):
         assert isinstance(item.get(key), str) and item[key].strip(), f'{where} missing {key}'
     assert item['chapter'] == item['_chapter'], f'{where} chapter mismatch'
     assert item['id'].startswith(f"ch{item['_number']:02d}-ex"), f'{where} id must be chNN-exNN'
     assert item['type'] in TYPES, f'{where} unknown type {item["type"]}'
     assert item['difficulty'] in (1, 2, 3), f'{where} difficulty must be 1-3'
-    assert 1 <= int(item['minutes']) <= 60, f'{where} minutes out of range'
+    assert isinstance(item['minutes'], int) and 1 <= item['minutes'] <= 60, f'{where} minutes out of range'
     assert len(item['objective']) <= 60, f'{where} objective too long'
 
     checks = item.get('checks') or []
     assert isinstance(checks, list), f'{where} checks must be an array'
-    graded = [c for c in checks if c['kind'] != 'self_assessed']
+    graded = [c for c in checks if c.get('kind') != 'self_assessed']
     for check in checks:
         kind = check.get('kind')
         assert kind in CHECK_SPEC, f'{where} unknown check kind {kind}'
@@ -333,7 +332,7 @@ def run_checks():
         assert len(set(ids)) == len(ids), f'{chapter_id}/{lang} has duplicate ids'
         for item in items:
             validate_item(item, lang)
-        if lang == 'zh':
+        if lang == 'zh' and base_ids is None:
             base_ids = (chapter_id, set(ids))
     assert base_ids is not None, 'no zh exercises found'
     assert base_ids[1], 'at least one zh exercise required'
@@ -344,7 +343,10 @@ def run_checks():
             other = {item['id'] for item in corpus[(chapter_id, lang)]}
             assert zh == other, f'{chapter_id}/{lang} id set diverges: {sorted(zh ^ other)}'
         seen |= zh
-    assert len(seen) == len(base_ids[1]), 'exercise ids repeat across chapters'
+    # Compare the union of every chapter's ids against the total count, not
+    # against one chapter: base_ids only holds the first zh chapter.
+    total = sum(len(v) for (_, lang), v in corpus.items() if lang == 'zh')
+    assert len(seen) == total, 'exercise ids repeat across chapters'
     return manifest, corpus
 
 

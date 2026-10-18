@@ -1,1 +1,91 @@
-[]
+[
+  {
+    "id": "ch31-ex01",
+    "chapter": "chapter-31",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "按用途选对 Agent 预设模式",
+    "prompt": "DeepSeek Harness 有四种预设模式。写函数 `pick_mode(use)`，按下面的表返回模式名：\n\n| `use` | 模式 |\n|---|---|\n| `\"first\"` | `\"标准模式\"`（第一次用直接选它） |\n| `\"batch\"` | `\"PTC 模式\"`（批量处理和自动化流程） |\n| `\"bench\"` | `\"极简模式\"`（最小环境和模型基准测试） |\n| `\"harness\"` | `\"创造模式\"`（魔改 Harness、开发新模板） |\n\n传入这四种之外的值时抛出 `ValueError`。",
+    "explanation": "本章把四种预设各给了一段说明，这道题就是「用途 → 模式」的一一对应。\n\n**四种模式的差别在于提供了多少运行机制**，而不是模型不同。标准模式是完整的编码 Agent，有文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流 —— 本章说「第一次用，直接选它」。PTC 模式在标准模式之上多一个 Code Mode SDK，让模型用 TypeScript 程序组合多步操作，所以适合批量处理和自动化。极简模式只保留持久 Bash 和 `str_replace_editor`，适合最小环境和模型基准测试。创造模式在标准模式上加了运行时检查、插件实验和自定义 preset 创作，用于魔改 Harness。\n\n这条线索到第 32 章的 Harness 五部分正好对上：标准模式五部分齐全，极简模式几乎只剩「工具」，创造模式多出「验证与反馈」里的运行时检查和扩展能力。\n\n**严格匹配 `use`**。题面把四种取值写死了，`'STANDARD'`、`'first '`（带尾空格）、`'标准'`、非字符串的 `None` 和 `1` 都要抛 `ValueError`。用 `use.lower()` 或 `str(use)` 之类做归一化的实现会在这条上判不过 —— 这不是判分过严，而是题面要求就是这四个精确取值。\n\n判据由三组构成：四条单点断言各钉住一种用途（`pick_mode('first')` 必须是「标准模式」，`pick_mode('batch')` 必须是「PTC 模式」，`pick_mode('bench')` 必须是「极简模式」，`pick_mode('harness')` 必须是「创造模式」）；一组用六组非法输入验证异常；最后一条主判据把四种用途逐一走一遍，并额外要求四个结果互不相同 —— 一个把所有情况都返回同一份的实现（比如无脑返回「标准模式」）会在这里露馅。\n\n判分边界诚实说明：四条单点断言各占 8/80 = 10%，低于 P1 的 20% 门槛，也就是说「只答对三种用途、第四种随便填」的实现理论上仍可能判过。真正兜住这个场景的是那条权重 28/80 的主判据：它把四种用途逐一核对，任何一种答错都会拉掉 35% 的分数，稳稳判不过。非法输入那组占 20/80 = 25%，单条即超过 P1 门槛，且是唯一一条守着「抛 ValueError」这个点的判据 —— 如果把六组非法输入换成一组更宽松的校验（比如放行 `'STANDARD'`），判分就抓不住了，这是这一题最薄弱的一环。",
+    "reference": "MODES = {\n    'first': '标准模式',\n    'batch': 'PTC 模式',\n    'bench': '极简模式',\n    'harness': '创造模式',\n}\n\n\ndef pick_mode(use):\n    if use not in MODES:\n        raise ValueError('unknown use: ' + str(use))\n    return MODES[use]\n",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解模式差异在于提供了多少运行机制"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('first') == '标准模式', pick_mode('first')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('batch') == 'PTC 模式', pick_mode('batch')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('bench') == '极简模式', pick_mode('bench')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('harness') == '创造模式', pick_mode('harness')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('STANDARD', 'first ', '标准', None, 1, 'BATCH'):\n    try:\n        pick_mode(_bad)\n        assert False, '非法的 use 应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 20
+      },
+      {
+        "kind": "assert_python",
+        "code": "_want = {'first': '标准模式', 'batch': 'PTC 模式', 'bench': '极简模式', 'harness': '创造模式'}\nfor _k, _v in _want.items():\n    assert pick_mode(_k) == _v, (_k, pick_mode(_k), _v)\n_got = [pick_mode(_k) for _k in ('first', 'batch', 'bench', 'harness')]\nassert len(set(_got)) == 4, _got",
+        "weight": 28
+      }
+    ],
+    "starter": "MODES = {\n    'first': '标准模式',\n    'batch': 'PTC 模式',\n    'bench': '极简模式',\n    'harness': '创造模式',\n}\n\n\ndef pick_mode(use):\n    # 返回模式名\n    return ''\n"
+  },
+  {
+    "id": "ch31-ex02",
+    "chapter": "chapter-31",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "理解 DeepSeek Harness 的插件化设计",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. DeepSeek Harness 的模型、工具、技能、会话、沙箱、存储、循环、调度和 UI 全都是插件\nB. 极简模式保留了完整能力，只是默认不显示\nC. 会话日志是仅追加的，把系统提示词、工具调用、子 Agent 调度和上下文放进同一条事件流\nD. 换 Harness 不会影响同一个模型在复杂任务上的执行能力和稳定性\nE. 「一切皆插件」意味着 DeepSeek Harness 只是 DeepSeek 版的 Codex",
+    "explanation": "A 和 C 都出自本章讲 DeepSeek Harness 特点那一节。\n\nA 是本章那句「一切皆插件」的具体展开 —— 模型、工具、技能、会话、沙箱、存储、循环、调度和 UI 全都是插件，所以可以换模型、装外部工具、接 Skills、调权限、开搜索、改界面、调用子 Agent，甚至重新组合运行模式。本章也点出这不是宣传语：设置里的插件列表里确实有模型、会话、凭据、沙箱、权限、Skills、目标、子 Agent、工作流、Web 搜索、工作区、Trajectory 等一长串，外加一批 UI 组件。\n\nC 说的是会话日志的价值。仅追加的日志把系统提示词、工具调用、子 Agent 调度和上下文注入放进同一条事件流，所以能做四件事：恢复、分叉、检索和回放。分叉这一项对做 Agent 实验特别有用 —— 可以从同一个节点分出两条路径做对照。\n\nB、D、E 都是把本章的说法搞反或说过头。极简是能力真的少（只有持久 Bash 和 `str_replace_editor`）；Harness 的完善程度确实影响同一模型的表现（第 32 章的原话是「即使使用相同的大模型，不同 Harness 提供的运行条件不同，Agent 在复杂任务中的执行能力和稳定性也可能存在明显差异」）；而本章的定位是「更像一个能被开发者反复魔改的 Agent 底座，而不是单纯的 DeepSeek 版 Codex」。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
+    "reference": "B 与本章相反：极简模式只保留持久 Bash 和 str_replace_editor，是能力更少而不是隐藏更多。D 与本章相反：同一个模型换 Harness 提供的运行条件不同，在复杂任务中的执行能力和稳定性会有明显差异。E 与本章相反：本章说它更像一个能被开发者反复魔改的 Agent 底座，而不是单纯的 DeepSeek 版 Codex。",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C"
+        ],
+        "weight": 3
+      }
+    ]
+  },
+  {
+    "id": "ch31-ex03",
+    "chapter": "chapter-31",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "给一个团队选 Agent Harness 模式",
+    "prompt": "你的团队想用 DeepSeek Harness 做一件具体的事。请写出：你会选哪种模式、需要开哪些插件、第一次上手时你会用多小的任务验证它、以及你会根据什么信号判断它不适合这个场景。",
+    "explanation": "这道题对应本章那句「用一个最小任务，验证它真的能干活」—— 本章把这条放在讲完安装和启动之后，是很实际的建议。\n\n第三问（多小的任务验证）里有一层容易被忽略的要求：任务要**能判断对错**。本章在 Claude Code 那部分给过一个正面对照 —— 好的需求描述包含复现方式、预期效果和修改范围，还说明了怎么验证。这不是措辞讲究：如果任务没有明确的验收标准，Agent 做完了你也看不出它有没有做对，「验证」就落空了。\n\n第四问是这道题最有价值的部分。笼统说「效果不好就换」没有行动价值，而本章的四段说明其实各自给出了可判定的边界：标准模式适合常规、PTC 适合批量、极简适合基准测试、创造适合改 Harness。把这四个边界对应到具体信号上，选型就不再是凭感觉。\n\n最后一条是从本章那句「DeepSeek Harness 不只是一个固定的编程 Agent，更像一套给 Agent 装能力的装扮系统」推出来的：既然能力是插件拼出来的，那么「做不成」通常意味着少了某个插件或某项机制，而不是要换一个完全不同的工具。这一点和第 32 章的五部分模型是一致的。\n\n这题跑不了真实的 Agent 执行，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的选择依据。",
+    "reference": "选模式：第一次上手直接选标准模式 —— 本章对标准模式的说明就是「第一次用，直接选它」，它能力最完整（文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理、工作流）。之后按需要再考虑 PTC（批量处理和自动化流程）、极简（最小环境或跑模型基准）或创造（要魔改 Harness）。\n\n开插件：按这次任务实际需要的开，不要一上来全开。典型组合是模型插件（选模型）、会话插件、沙箱插件（隔离执行环境）、权限插件（高风险操作要限制）、Skills 插件（如果任务方法稳定）、Web 搜索插件（需要查外部资料）。本章说可以在「设置 → 插件 → 插件列表」里逐个查看。\n\n第一次验证：用一个很小、结果明确的任务。本章自己给出的路径就是「用一个最小任务，验证它真的能干活」—— 比如读懂项目并说明它的结构、或者修一个能明确说出预期效果的小问题。关键是**能判断对错**：修 bug 要写清复现方式、预期效果和怎么验证，否则你没法知道它做对了没有。\n\n判断不适用的信号：① 任务步骤很多且路径不确定，标准模式反复绕圈 —— 这时候要先拆分任务，或者考虑为什么 Harness 的上下文管理没跟上；② 需要高频批处理，PTC 的 Code Mode 组合多步操作更合适，标准模式逐次调用会慢；③ 要在最小环境里跑基准测试，标准模式太多插件会污染结果；④ 高风险操作被权限插件拦下又绕不过去，说明这个任务的权限边界没想清楚；⑤ 跑几小时的任务一中断就要从头再来，那是状态持久化没配好，不是模式选错了。\n\n最后一条经验：模式选错通常不是主要问题。本章说 Harness 的完善程度才影响能处理的任务类型（第 32 章的原话是同一个模型换 Harness 表现也会不同），所以遇到搞不定的情况，先看缺的是哪一类机制。",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否选对模式并说明理由、是否提到插件按需开启、是否用小任务验证、以及是否说明了判断不适用的具体信号（而不是笼统说效果不好）"
+    },
+    "checks": []
+  }
+]

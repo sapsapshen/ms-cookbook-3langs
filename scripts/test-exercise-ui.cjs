@@ -369,6 +369,149 @@ async function main() {
     assert.equal(posts[0].items[0].passed, 1);
   });
 
+  /* The harness default sandbox returns no outcomes, so every check fails
+     closed. Any test that asserts a PASS after clicking Run needs this. */
+  const passingSandbox = () => ({
+    run: () => Promise.resolve({ok: true, outcomes: [{ok: true, detail: ''}], ms: 1}),
+    destroy() {},
+  });
+
+  /* ---- the payload's CONTENT, not just its length ----------------------- */
+  /* The server's upsert writes `code=excluded.code` and
+     `self_assessed=excluded.self_assessed` unconditionally, and ExerciseItem
+     defaults both to ''. A row that merely omits them therefore does not "fail
+     to sync the code" -- it ERASES the code another device saved. The row count
+     assertions above pass either way, which is why this defect survived them. */
+
+  await check('推送的行带上读者自己的代码与自评（服务端 upsert 是无条件覆盖）', async () => {
+    const posts = [];
+    const h = boot({
+      sandbox: passingSandbox(),
+      fetch: (url, init) => {
+        const path = String(url);
+        if (path.endsWith('/api/session')) {
+          return Promise.resolve({ok: true, json: () => Promise.resolve({user: {id: 7}, csrf: 'tok', loginEnabled: true})});
+        }
+        if (path.endsWith('/api/exercises/progress') && init && init.method === 'POST') {
+          posts.push(JSON.parse(init.body));
+          return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({})});
+        }
+        return Promise.resolve({ok: true, json: () => Promise.resolve({items: []})});
+      },
+    });
+    const body = await expand(h, 'ch07-ex01');
+    body.querySelector('.exercise-editor').value = 'print("my own work")';
+    await buttonsIn(body, 'run')[0].fire('click');
+    await flush();
+    assert.equal(posts.length, 1, 'the graded run pushed nothing');
+    const row = posts[0].items[0];
+    // Not "the row has 8 keys" -- the VALUES have to be the reader's own.
+    assert.equal(row.code, 'print("my own work")',
+      'the code was not sent, so the server would blank the copy another device holds');
+    const saved = h.store().read('chapter-7', 'ch07-ex01');
+    assert.equal(row.code, saved.code, 'the pushed code disagrees with the local store');
+    assert.equal(row.selfAssessed, saved.selfAssessed, 'the pushed self-assessment disagrees with the local store');
+    assert.equal(row.selfAssessed, '', 'a graded run has no self-assessment to report');
+    // And the key set is the store's wire shape, field for field.
+    assert.deepEqual(Object.keys(row).sort(), Object.keys(h.store().snapshot()[0]).sort(),
+      'the pushed row and store.snapshot() disagree on which fields exist');
+  });
+
+  await check('自评题推送的行带 selfAssessed 与自评文本', async () => {
+    const posts = [];
+    const h = boot({
+      data: exerciseData([exercise({id: 'ch13-ex03', type: 'reflect', checks: [{kind: 'self_assessed'}], llm_rubric: {enabled: false, criteria: ''}})]),
+      fetch: (url, init) => {
+        const path = String(url);
+        if (path.endsWith('/api/session')) {
+          return Promise.resolve({ok: true, json: () => Promise.resolve({user: {id: 7}, csrf: 'tok', loginEnabled: true})});
+        }
+        if (path.endsWith('/api/exercises/progress') && init && init.method === 'POST') {
+          posts.push(JSON.parse(init.body));
+          return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({})});
+        }
+        return Promise.resolve({ok: true, json: () => Promise.resolve({items: []})});
+      },
+    });
+    const body = await expand(h, 'ch13-ex03');
+    body.querySelector('.exercise-editor').value = '我把 lr 调小了';
+    await buttonsIn(body, 'partial')[0].fire('click');
+    await flush();
+    assert.equal(posts.length, 1, 'the self-assessment pushed nothing');
+    const row = posts[0].items[0];
+    assert.equal(row.selfAssessed, 'partial', 'the self-assessment token was not sent');
+    assert.equal(row.code, '我把 lr 调小了', 'the reflection text was not sent');
+    assert.equal(row.passed, 0, 'a self-assessment must never be pushed as a pass');
+  });
+
+  await check('端到端：推送 → 服务端 upsert → 另一台设备拉取，代码与自评仍在', async () => {
+    /* The real store plus a fetch that implements the server's OWN upsert
+       semantics (`code=excluded.code`, `self_assessed=excluded.self_assessed`,
+       unconditional) over an in-memory table. Device A grades and
+       self-assesses; device B -- a fresh localStorage, so a genuinely separate
+       device -- pulls and must find both fields intact.
+
+       A stub that stored the row verbatim would pass even with the missing
+       fields, because it would have no "" default to fall back on. The
+       overwrite is the whole defect, so the double has to overwrite. */
+    const table = new Map();
+    const upsertFetch = () => (url, init) => {
+      const path = String(url);
+      if (path.endsWith('/api/session')) {
+        return Promise.resolve({ok: true, json: () => Promise.resolve({user: {id: 7}, csrf: 'tok', loginEnabled: true})});
+      }
+      if (path.endsWith('/api/exercises/progress') && init && init.method === 'POST') {
+        for (const row of JSON.parse(init.body).items) {
+          const key = `${row.chapter}/${row.exercise}`;
+          const previous = table.get(key) || {code: '', selfAssessed: '', passed: 0, score: 0, attempts: 0};
+          // Exactly app.py's ON CONFLICT clause: passed/score ratchet, the two
+          // text columns are overwritten with whatever the client sent.
+          table.set(key, {
+            chapter: row.chapter,
+            exercise: row.exercise,
+            code: row.code === undefined ? '' : row.code,
+            passed: Math.max(previous.passed, row.passed),
+            score: Math.max(previous.score, row.score),
+            selfAssessed: row.selfAssessed === undefined ? '' : row.selfAssessed,
+            attempts: row.attempts,
+            updated: row.updated,
+          });
+        }
+        return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({saved: 1})});
+      }
+      return Promise.resolve({ok: true, json: () => Promise.resolve({items: [...table.values()]})});
+    };
+
+    const fixture = exerciseData([
+      exercise({id: 'ch07-ex01'}),
+      exercise({id: 'ch07-ex02', type: 'reflect', checks: [{kind: 'self_assessed'}], llm_rubric: {enabled: false, criteria: ''}}),
+    ]);
+    const deviceA = boot({data: fixture, sandbox: passingSandbox(), fetch: upsertFetch()});
+    const graded = await expand(deviceA, 'ch07-ex01');
+    graded.querySelector('.exercise-editor').value = 'print("跨设备的代码")';
+    await buttonsIn(graded, 'run')[0].fire('click');
+    const reflection = await expand(deviceA, 'ch07-ex02');
+    reflection.querySelector('.exercise-editor').value = '我先量了基线再调参';
+    await buttonsIn(reflection, 'partial')[0].fire('click');
+    await flush();
+
+    assert.equal(table.get('chapter-7/ch07-ex01').code, 'print("跨设备的代码")',
+      "device A's code did not survive the server's upsert");
+    assert.equal(table.get('chapter-7/ch07-ex02').selfAssessed, 'partial',
+      "device A's self-assessment did not survive the server's upsert");
+
+    // Device B: its own boot means its own empty localStorage.
+    const deviceB = boot({data: fixture, fetch: upsertFetch()});
+    await deviceB.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(deviceB.store().read('chapter-7', 'ch07-ex01').code, 'print("跨设备的代码")',
+      "device A's code never reached device B -- the row was blanked on the way");
+    assert.equal(deviceB.store().read('chapter-7', 'ch07-ex02').selfAssessed, 'partial',
+      "device A's self-assessment never reached device B");
+    assert.equal(deviceB.store().read('chapter-7', 'ch07-ex01').passed, true,
+      'the pass itself did not cross either');
+  });
+
   await check('同步失败不影响判分结果', async () => {
     const h = boot({
       fetch: () => Promise.reject(new Error('offline')),
@@ -572,12 +715,6 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
 
   const pulls = h => h.calls.fetch.filter(c => c.url.endsWith('/api/exercises/progress') && !(c.init && c.init.method === 'POST'));
   const posts = h => h.calls.fetch.filter(c => c.url.endsWith('/api/exercises/progress') && c.init && c.init.method === 'POST');
-  /* The harness default sandbox returns no outcomes, so every check fails
-     closed. Any test that asserts a PASS after clicking Run needs this. */
-  const passingSandbox = () => ({
-    run: () => Promise.resolve({ok: true, outcomes: [{ok: true, detail: ''}], ms: 1}),
-    destroy() {},
-  });
 
   await check('拉取后：服务端返回的记录被合并进本地存储', async () => {
     // Three cases in one pull: a row this device has never seen, a row that

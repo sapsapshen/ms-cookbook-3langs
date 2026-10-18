@@ -167,6 +167,18 @@
     return sessionProbe;
   }
 
+  /* ONE ROW, EVERY FIELD THE STORE HAS. The server's upsert is an
+     unconditional overwrite of the two text columns --
+     `code=excluded.code, ..., self_assessed=excluded.self_assessed` -- and
+     ExerciseItem defaults both to ''. So a row that omits them is not a row
+     that "fails to sync the code": it is an instruction to write an empty
+     string over whatever another device saved. A reader re-running one exercise
+     on a laptop would erase the code and the self-assessment they had on their
+     phone, which is strictly worse than not syncing at all.
+
+     The key list therefore has to stay identical to store.snapshot()'s, field
+     for field. snapshot() is the wire shape the pull half already sends, so
+     the two halves of the sync speak exactly one language. */
   function progressRow(record) {
     if (!record) return null;
     return {
@@ -175,6 +187,11 @@
       passed: record.passed ? 1 : 0,
       score: record.score,
       attempts: record.attempts,
+      // Coerced, not defaulted away: `undefined` would still serialize to a
+      // missing key and the server would fill it with ''. An explicit '' is at
+      // least the value the reader would have had locally.
+      code: typeof record.code === 'string' ? record.code : '',
+      selfAssessed: typeof record.selfAssessed === 'string' ? record.selfAssessed : '',
       updated: record.updated,
     };
   }

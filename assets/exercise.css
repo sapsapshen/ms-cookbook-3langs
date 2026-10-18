@@ -1,5 +1,21 @@
 /* Exercise panel and learning map for the reading view. All selectors are
-   namespaced so nothing here can leak into the article typography. */
+   namespaced so nothing here can leak into the article typography.
+
+   COLOURS COME FROM THE SITE, NOT FROM HERE. Every value below is one of the
+   repository's own custom properties (--border, --muted, --text, --surface,
+   --selected, --paper, --brand), the same ones assets/reading.css and
+   assets/discussion.css use. The `--color-*` names this file used to spell were
+   defined nowhere in the repository -- not in assets/styles.css, not in
+   assets/reading.css -- so every one of them fell through to its hard-coded
+   fallback. The panel therefore could not follow the site: a change to the
+   reading surface would have moved the article under it and left the panel
+   painted in the old palette, and any dark surface would have put #111 on
+   #fff inside a box that was never meant to be either.
+
+   The monospace stack is written out rather than named: no `--font-mono`
+   property exists in this repository either, and the site's own way of asking
+   for a monospace face is the literal `ui-monospace, monospace` (see
+   .book-mark in assets/styles.css and #readingPercent in assets/reading.css). */
 .exercise-panel {
   margin: 2.5rem auto 0;
   max-width: 46rem;
@@ -12,17 +28,17 @@
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
-  border-top: 1px solid var(--color-border-tertiary, rgba(0,0,0,.15));
+  border-top: 1px solid var(--border);
   padding-top: 1.25rem;
 }
-.exercise-summary h2 { font-size: 1.05rem; font-weight: 500; margin: 0; }
-.exercise-count { font-size: .82rem; color: var(--color-text-secondary, #666); }
+.exercise-summary h2 { font-size: 1.05rem; font-weight: 500; margin: 0; color: var(--text); }
+.exercise-count { font-size: .82rem; color: var(--muted); }
 /* Only rendered when a pull brought in a pass from another device, and only
    once per panel. `flex-basis: 100%` drops it onto its own line under the
    heading rather than squeezing the count off the row. */
-.exercise-synced { flex-basis: 100%; font-size: .8rem; color: var(--color-text-secondary, #666); margin: 0; }
+.exercise-synced { flex-basis: 100%; font-size: .8rem; color: var(--muted); margin: 0; }
 .exercise-card {
-  border: 1px solid var(--color-border-tertiary, rgba(0,0,0,.15));
+  border: 1px solid var(--border);
   border-radius: 12px;
   margin-top: .75rem;
   overflow: hidden;
@@ -40,27 +56,33 @@
   text-align: left;
   cursor: pointer;
 }
-.exercise-toggle:hover { background: var(--color-background-secondary, #f6f6f6); }
+.exercise-toggle:hover { background: var(--selected); }
 .exercise-toggle-title { font-size: .95rem; }
-.exercise-toggle-meta { font-size: .78rem; color: var(--color-text-secondary, #666); white-space: nowrap; }
+.exercise-toggle-meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .exercise-state { font-size: .78rem; padding: .1rem .5rem; border-radius: 999px; border: 1px solid currentColor; }
 .exercise-state[data-state="passed"] { color: #0f6e56; }
 .exercise-state[data-state="self"] { color: #854f0b; }
-.exercise-state[data-state="todo"] { color: var(--color-text-tertiary, #999); }
+/* The not-yet-done badge. This was `#999`, which is 2.85:1 against the white
+   the panel actually sits on -- below AA's 4.5:1 for text of this size, and the
+   state a reader sees most often, so it was the worst possible place to be
+   short. `var(--muted)` is the repository's own secondary-text colour and
+   measures 4.66:1 against #fff (5.17:1 against the #6f6b7b that
+   assets/styles.css defines for the same property). */
+.exercise-state[data-state="todo"] { color: var(--muted); }
 .exercise-body { padding: 0 1rem 1rem; }
-.exercise-prompt { font-size: .95rem; line-height: 1.6; margin: 0 0 .75rem; white-space: pre-wrap; }
+.exercise-prompt { font-size: .95rem; line-height: 1.6; margin: 0 0 .75rem; white-space: pre-wrap; color: var(--text); }
 .exercise-editor {
   width: 100%;
   min-height: 11rem;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: ui-monospace, monospace;
   font-size: .86rem;
   line-height: 1.55;
   padding: .7rem .8rem;
-  border: 1px solid var(--color-border-secondary, rgba(0,0,0,.25));
+  border: 1px solid var(--border);
   border-radius: 8px;
   resize: vertical;
-  background: var(--color-background-primary, #fff);
-  color: var(--color-text-primary, #111);
+  background: var(--paper);
+  color: var(--text);
 }
 .exercise-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .6rem; }
 .exercise-actions button {
@@ -68,59 +90,62 @@
   font-size: .86rem;
   padding: .45rem .9rem;
   border-radius: 8px;
-  border: 1px solid var(--color-border-secondary, rgba(0,0,0,.25));
-  background: var(--color-background-primary, #fff);
-  color: var(--color-text-primary, #111);
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--text);
   cursor: pointer;
 }
 .exercise-actions button[data-role="run"] {
-  background: #534ab7;
-  border-color: #534ab7;
+  background: var(--brand);
+  border-color: var(--brand);
+  /* #fff on --brand is 5.33:1. The old #534ab7 was darker and scored higher,
+     but it was a fourth purple the site has no token for; the site's own
+     primary is what the rest of the reading view uses for the same gesture. */
   color: #fff;
 }
 .exercise-actions button[disabled] { opacity: .55; cursor: default; }
-.exercise-status { font-size: .84rem; margin: .6rem 0 0; min-height: 1.2em; color: var(--color-text-secondary, #666); }
+.exercise-status { font-size: .84rem; margin: .6rem 0 0; min-height: 1.2em; color: var(--muted); }
 .exercise-status[data-tone="error"] { color: #a32d2d; }
 .exercise-status[data-tone="pass"] { color: #0f6e56; }
 .exercise-checks { list-style: none; margin: .6rem 0 0; padding: 0; font-size: .84rem; }
-.exercise-checks li { padding: .25rem 0; border-top: 1px solid var(--color-border-tertiary, rgba(0,0,0,.12)); }
+.exercise-checks li { padding: .25rem 0; border-top: 1px solid var(--border); }
 .exercise-checks li[data-ok="false"] { color: #a32d2d; }
 .exercise-checks li[data-ok="true"] { color: #0f6e56; }
 .exercise-solution {
   margin-top: .6rem;
   font-size: .85rem;
   line-height: 1.6;
-  background: var(--color-background-secondary, #f6f6f6);
+  background: var(--surface);
   border-radius: 8px;
   padding: .7rem .85rem;
+  color: var(--text);
 }
 .exercise-solution pre { margin: .3rem 0; overflow-x: auto; }
 .exercise-choices { display: flex; flex-direction: column; gap: .4rem; margin: 0 0 .75rem; }
 .exercise-choices label { display: flex; gap: .5rem; align-items: flex-start; font-size: .92rem; }
-.exercise-fallback { font-size: .84rem; color: var(--color-text-secondary, #666); }
-.exercise-fallback button { font: inherit; font-size: .82rem; margin-right: .4rem; }
+.exercise-fallback { font-size: .84rem; color: var(--muted); }
 
 .exercise-map { padding: 2rem 0; }
 .exercise-map-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.exercise-map-head h2 { font-size: 1.05rem; font-weight: 500; margin: 0; }
-.exercise-map-total { font-size: .85rem; color: var(--color-text-secondary, #666); }
+.exercise-map-head h2 { font-size: 1.05rem; font-weight: 500; margin: 0; color: var(--text); }
+.exercise-map-total { font-size: .85rem; color: var(--muted); }
 .exercise-map-part { margin-bottom: 1.25rem; }
-.exercise-map-part h3 { font-size: .92rem; font-weight: 500; margin: 0 0 .5rem; }
-.exercise-map-part-meta { font-size: .78rem; color: var(--color-text-secondary, #666); margin-left: .5rem; font-weight: 400; }
+.exercise-map-part h3 { font-size: .92rem; font-weight: 500; margin: 0 0 .5rem; color: var(--text); }
+.exercise-map-part-meta { font-size: .78rem; color: var(--muted); margin-left: .5rem; font-weight: 400; }
 .exercise-map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .5rem; }
 .exercise-map-cell {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: .5rem;
-  border: 1px solid var(--color-border-tertiary, rgba(0,0,0,.15));
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: .5rem .7rem;
   font-size: .85rem;
   text-decoration: none;
   color: inherit;
 }
-.exercise-map-cell:hover { background: var(--color-background-secondary, #f6f6f6); }
+.exercise-map-cell:hover { background: var(--selected); }
 .exercise-map-dots { letter-spacing: .12em; font-size: .9rem; }
 
 @media (max-width: 40rem) {

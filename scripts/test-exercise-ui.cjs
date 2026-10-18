@@ -2,7 +2,25 @@
 /* UI logic checks for assets/exercise-ui.js. The DOM, fixtures and boot()
    live in test-exercise-ui-harness.cjs, shared with the corpus suite. */
 const assert = require('node:assert/strict');
+const {readFileSync} = require('node:fs');
+const {resolve} = require('node:path');
 const {boot, exercise, exerciseData, cardFor, expand, buttonsIn, rowsIn, flush} = require('./test-exercise-ui-harness.cjs');
+
+const ROOT = resolve(__dirname, '..');
+
+/* WCAG 2.x relative luminance, so the contrast assertion below is a measurement
+   rather than an opinion about whether a hex "looks dark enough". */
+function luminance(hex) {
+  const channels = [1, 3, 5]
+    .map(index => parseInt(hex.substr(index, 2), 16) / 255)
+    .map(value => (value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)));
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+function contrast(foreground, background) {
+  const a = luminance(foreground);
+  const b = luminance(background);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
 
 let failures = 0;
 let passed = 0;
@@ -993,6 +1011,58 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
     const after = cardFor(h, 'ch07-ex01').querySelector('.exercise-body');
     assert.equal(after, body, 'the pull rebuilt the panel and collapsed the open exercise');
     assert.equal(after.hidden, false);
+  });
+
+  /* ---- the panel styles speak the site's language ------------------------ */
+  /* exercise.css used a family of custom properties (`--color-text-secondary`,
+     `--color-border-tertiary`, `--font-mono`, …) that is defined NOWHERE in this
+     repository. Every one of them silently fell back to a hard-coded colour, so
+     the panel could not follow the site and the not-yet-done badge was painted
+     #999 on white -- 2.85:1, under AA's 4.5:1 for text its size. These assert
+     the two halves of that: no invented token names, and every name actually
+     used is one the site really defines. */
+
+  await check('CSS 只用仓库真实定义的 token（不再有只在本文件出现的 --color-*）', () => {
+    const css = readFileSync(resolve(ROOT, 'assets/exercise.css'), 'utf8');
+    const invented = [...css.matchAll(/var\(\s*(--(?:color|font)-[a-z-]+)/g)].map(match => match[1]);
+    assert.deepEqual(invented, [],
+      `these properties are not defined anywhere in the repository: ${invented.join(', ')}`);
+    // And the fallbacks that hid the problem are gone: a `var(--x, #abc)` here
+    // means the value was never coming from the site.
+    const fallbackColour = /var\(\s*--(?:brand|muted|border|text|surface|selected|paper)[^,)]*,/.exec(css);
+    assert.equal(fallbackColour, null,
+      `${fallbackColour && fallbackColour[0]} hard-codes a value the site should be supplying`);
+  });
+
+  await check('CSS 用到的每个 token 都真的定义在站点样式里', () => {
+    const css = readFileSync(resolve(ROOT, 'assets/exercise.css'), 'utf8');
+    const used = new Set([...css.matchAll(/var\(\s*(--[a-z-]+)/g)].map(match => match[1]));
+    assert.ok(used.size > 0, 'no custom properties at all -- the test would be vacuous');
+    // Defined across the stylesheets index.html actually loads, plus the panel's
+    // own file. A token that only exercise.css declares is the defect.
+    const defined = new Set();
+    for (const file of ['styles.css', 'paper.css', 'reading.css', 'discussion.css', 'exercise.css']) {
+      for (const match of readFileSync(resolve(ROOT, 'assets', file), 'utf8').matchAll(/(--[a-z-]+)\s*:/g)) {
+        defined.add(match[1]);
+      }
+    }
+    const missing = [...used].filter(name => !defined.has(name));
+    assert.deepEqual(missing, [], `used but never defined: ${missing.join(', ')}`);
+  });
+
+  await check('todo 徽章满足 AA 对比度（不再是 #999 on #fff 的 2.85:1）', () => {
+    const css = readFileSync(resolve(ROOT, 'assets/exercise.css'), 'utf8');
+    const badge = /\.exercise-state\[data-state="todo"\]\s*\{[^}]*\}/.exec(css);
+    assert.ok(badge, 'the todo badge rule is gone');
+    assert.ok(!/#999\b/i.test(badge[0]), 'the todo badge is still hard-coded #999');
+    assert.ok(/var\(--muted\)/.test(badge[0]), 'the todo badge does not use the site\'s secondary text colour');
+    // The number itself, so a future token swap cannot quietly drop under AA.
+    // --muted resolves to #707482 on the reading view (assets/reading.css:2),
+    // which is 4.66:1 against the #fff the panel sits on; the #6f6b7b that
+    // assets/styles.css defines for the same property is 5.17:1. Both clear 4.5.
+    assert.ok(contrast('#707482', '#ffffff') >= 4.5, '--muted on the reading surface is under AA');
+    assert.ok(contrast('#6f6b7b', '#ffffff') >= 4.5, '--muted in styles.css is under AA');
+    assert.ok(contrast('#999999', '#ffffff') < 4.5, 'the value being replaced was already passing -- the test is measuring nothing');
   });
 
   console.log(`\n${failures ? 'FAIL' : 'PASS'}: ${passed} passed, ${failures} failed`);

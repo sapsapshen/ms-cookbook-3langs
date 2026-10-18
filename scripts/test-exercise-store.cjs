@@ -216,6 +216,30 @@ check('the push-back row carries the merged pass, not the regressing local one',
   assert.equal(store.snapshot()[0].score, 0.7);
 });
 
+check('a tie that only the server passed still reports the row as adopted', () => {
+  /* Equal stamps, local not passed, server passed. The latch fires either way —
+     `merged.passed` is unconditional — so the row IS adopted locally, and
+     `records` is the only signal the caller gets for that. Without the
+     tie-break this row changes data while landing in NEITHER list: records=0
+     (looks unadopted) and changed=0 (nothing to push back). The assertion below
+     is therefore the thing that distinguishes the two implementations; the
+     passed/score checks alone pass in both. */
+  const store = create({ storage: memoryStorage(), now: () => 600 });
+  store.write('chapter-1', 'ch01-ex01', { passed: false, score: 0.4 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 0.9, updated: 600 }]);
+  const merged = store.read('chapter-1', 'ch01-ex01');
+  assert.equal(merged.passed, true);
+  assert.equal(merged.score, 0.9);
+  /* changed stays 0: the server already holds the pass, so there is nothing to
+     write back — which is exactly why `records` has to carry the adoption. */
+  assert.equal(result.changed, 0);
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].chapterId, 'chapter-1');
+  assert.equal(result.records[0].exerciseId, 'ch01-ex01');
+  assert.equal(result.records[0].record.passed, true);
+  assert.equal(result.records[0].record.score, 0.9);
+});
+
 check('merge takes attempts from the winning side even when it is lower', () => {
   /* Documented trade: attempts is a per-device counter and the server copy is
      the accumulated one, so the newer side's value wins the field outright —

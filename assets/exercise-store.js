@@ -195,7 +195,16 @@
           records.push({ chapterId, exerciseId, record: incoming });
           continue;
         }
-        const serverWins = incoming.updated > local.updated;
+        /* Timestamp arbitration, plus one tie-break: when the server holds a
+           pass the local side has not earned, the server row is adopted even on
+           an equal stamp. Without it the merge still latches `passed` — the
+           latch is unconditional below — so the row would change data and be
+           reported in neither list: absent from `records` (not adopted, as far
+           as the caller can tell) and absent from `changed` (the server already
+           holds the pass, so there is nothing to push back). `records` means
+           "server rows adopted locally", and latching a pass IS an adoption. */
+        const serverWins = incoming.updated > local.updated
+          || (incoming.updated === local.updated && incoming.passed && !local.passed);
         /* Fields the timestamp owns: the winning side's latest text. */
         const winner = serverWins ? incoming : local;
         /* Fields the winner must never be allowed to lose: passing is a latch

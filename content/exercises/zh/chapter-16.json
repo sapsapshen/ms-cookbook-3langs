@@ -109,5 +109,58 @@
     },
     "reference": "import math\n\n\ndef angle(a, b, c):\n    u = [a[0] - b[0], a[1] - b[1]]\n    v = [c[0] - b[0], c[1] - b[1]]\n    lu = math.hypot(u[0], u[1])\n    lv = math.hypot(v[0], v[1])\n    if lu == 0 or lv == 0:\n        return None\n    cos = (u[0] * v[0] + u[1] * v[1]) / (lu * lv)\n    cos = max(-1.0, min(1.0, cos))\n    return math.degrees(math.acos(cos))\n\nprint(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]))",
     "explanation": "本章的公式是 `arccos((A-B)·(C-B) / (|A-B| × |C-B|))`，算出来的是 **B 处**两条骨段的夹角 —— 计算膝关节角度时 A 是髋、B 是膝、C 是踝，得到的才是膝盖那个角。\n\n**两个向量都要从 B 出发减**。写成 `a - b` 和 `b - c` 是最常见的错，因为第二个向量的起点就不对了，而且这样的点积在某些形状下恰好给出一个看起来合理的数。\n\n**长度用欧氏距离**。本章代码用的是 `np.linalg.norm`，在二维就是 `math.hypot`。用曼哈顿距离（`|dx| + |dy|`）会让所有非直角的角度都算错。\n\n**零长度返回 None**。三点重合时除零，这对应「这个关节根本没检测到」。判据把两种情况分开测了：`a == b` 和 `c == b` 都要返回 `None`。\n\n**余弦值夹不夹紧都行（实测）**。理论上浮点误差可能让 `(u·v)/(lu*lv)` 算出 1.0000000000000002 这种值，`math.acos` 会抛 `ValueError`。但实测判据里那 81 组输入（含 179 度这一档）都不会触发它，所以这条判据不区分两种写法。如果你在自己的真实数据上遇到过崩溃，再加 `max(-1.0, min(1.0, cos))` 即可 —— 这是防御性写法，不是本题考点。\n\n主判据把 9 个目标角度 × 3 档骨段长度 × 3 档关节位置共 81 组输入全跑一遍，逐组按公式重算 —— 这是专门防「把答案背下来」的：查表覆盖不了 81 组输入。边界诚实说明：这 81 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch16-ex03",
+    "chapter": "chapter-16",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "找出角度偏差超过阈值的连续片段",
+    "prompt": "姿态估计会有轻微抖动，所以不能只看某一帧判断动作是否明显有问题。本章的做法是：先对角度差序列做平滑，然后只有当角度差**连续多帧**超过阈值时，才把这一段时间标记为偏差。\n\n写函数 `find_deviation_segments(diffs, threshold, min_frames)`：\n\n- `diffs` 是逐帧的角度差序列（数字组成的列表）；\n- 严格**大于** `threshold` 才算超阈值（正好等于阈值不算）；\n- 把连续超阈值的帧合成一个片段，返回所有**长度不小于** `min_frames` 的片段；\n- 每个片段用 `(起始下标, 结束下标)` 表示，下标从 0 开始，两端都包含；\n- 短于 `min_frames` 的片段直接丢弃；序列末尾仍未结束的超阈值片段也要算。\n\n没有片段时返回空列表。",
+    "starter": "def find_deviation_segments(diffs, threshold, min_frames):\n    # 返回 [(start, end), ...]\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([20.0] * 6 + [0.0] * 2, 15, 6) == [(0, 5)], '整整 6 帧超阈值应当保留'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([20.0] * 5 + [0.0], 15, 6) == [], '只有 5 帧，比 min_frames 短，应当丢弃'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([15.0] * 8, 15, 6) == [], '正好等于阈值不算超阈值'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([0.0, 0.0] + [30.0] * 7, 15, 6) == [(2, 8)], '序列末尾仍未结束的片段也要算进去'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_d = [0.0] * 3 + [20.0] * 8 + [0.0] * 4 + [25.0] * 3\nassert find_deviation_segments(_d, 15, 6) == [(3, 10)], _d",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([], 15, 6) == [] and find_deviation_segments([1.0] * 30, 15, 6) == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "def _want(diffs, threshold, min_frames):\n    out, start = [], None\n    for i, v in enumerate(diffs):\n        if v > threshold:\n            if start is None:\n                start = i\n        elif start is not None:\n            if i - start >= min_frames:\n                out.append((start, i - 1))\n            start = None\n    if start is not None and len(diffs) - start >= min_frames:\n        out.append((start, len(diffs) - 1))\n    return out\n\n_pattern = [0.0, 30.0, 15.0, 0.0]\nfor _n in range(0, 18):\n    for _p in range(0, _n + 1):\n        _d = [_pattern[_i % 4] for _i in range(_n)][:0] or \\\n             [_pattern[(_i * 7 + _p) % 4] for _i in range(_n)]\n        for _mf in (1, 2, 3, 6):\n            _exp = _want(_d, 15, _mf)\n            assert find_deviation_segments(_d, 15, _mf) == _exp, (_n, _p, _mf, _d, _exp)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否区分了「连续多帧」与「单帧超阈值」，以及末尾未闭合片段的处理"
+    },
+    "reference": "def find_deviation_segments(diffs, threshold, min_frames):\n    segments = []\n    in_seg = False\n    start = 0\n    for i, v in enumerate(diffs):\n        if v > threshold and not in_seg:\n            in_seg = True\n            start = i\n        elif v <= threshold and in_seg:\n            in_seg = False\n            if i - start >= min_frames:\n                segments.append((start, i - 1))\n    if in_seg and len(diffs) - start >= min_frames:\n        segments.append((start, len(diffs) - 1))\n    return segments",
+    "explanation": "这道题就是本章那段 `find_deviation_segments` 的逻辑。**单帧超阈值不算偏差** —— 本章说「人体关键点检测可能会存在轻微抖动，如果仅根据某一帧判断动作是否存在明显差异，容易受到偶然误差影响」，所以要连续多帧才成立。\n\n**阈值是严格大于**。本章写的是 `v > DEVIATION_THRESHOLD_DEG`，所以正好等于 15 度不算超阈值。用 `>=` 的实现会在「整段都恰好等于阈值」的输入上判不过。\n\n**长度按 `i - start >= min_frames` 算**。结束下标是 `i - 1` 而不是 `i`，因为触发结束判断的那一帧（第一个回落到阈值以下的帧）本身不属于超阈值区间。差一格的实现会整体偏移一帧。\n\n**末尾未闭合的片段要单独处理**。循环结束时 `in_seg` 可能还是真，这时候片段长度是 `len(diffs) - start` 而不是某个 `i - start`。漏掉这一句，视频最后一段持续超阈值的问题就永远报不出来 —— 这是这类扫描循环最常见的漏洞。\n\n主判据用四种数值（0、30、15、0）按确定的方式铺开成长度 0 到 17 的序列，再遍历 `min_frames` 取 1/2/3/6，每组都与一份独立写出的期望结果比对 —— 这是专门防查表的：覆盖不了这些组合。\n\n判分边界诚实说明：末尾未闭合这一条由 12/100 与 30/100 两条判据一起守着（合计 42%），单条够 P1；但「正好等于阈值不算」只有 12/100 这一条守着，是本题最薄弱的一环 —— 它只覆盖「整段都恰好等于阈值」这一种输入，一个把 `>` 写成 `>=` 但在别处恰好蒙对的实现有可能混过去。"
   }
 ]

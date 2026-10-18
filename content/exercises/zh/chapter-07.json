@@ -49,22 +49,46 @@
     "difficulty": 2,
     "minutes": 8,
     "objective": "计算模型加载到显存需要的字节数",
-    "prompt": "一个模型有 70 亿参数，用 fp16 精度加载（每个参数 2 字节）。算出权重总字节数，存入变量 `weight_bytes`。",
-    "starter": "params_billion = 7\nbytes_per_param = 2\n# 计算并赋给 weight_bytes\n",
+    "prompt": "一个模型有 70 亿参数，用 fp16 精度加载（每个参数 2 字节）。写函数 `weight_bytes(params_billion, bytes_per_param)` 返回权重占用的总字节数：\n\n`params_billion` 是参数量，单位是**十亿**（所以 70 亿要传 `7`）；`bytes_per_param` 是每个参数占的字节数（fp16 是 2）。要求返回整数。",
+    "starter": "def weight_bytes(params_billion, bytes_per_param):\n    # 返回权重总字节数（整数）\n    raise NotImplementedError\n",
     "checks": [
       {
-        "kind": "var_equals",
-        "name": "weight_bytes",
-        "value": 14000000000,
-        "weight": 3
+        "kind": "assert_python",
+        "code": "assert weight_bytes(7, 2) == 14000000000, weight_bytes(7, 2)",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(0.5, 2) == 1000000000, '0.5 十亿 = 5 亿参数'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(70, 2) == 140000000000, weight_bytes(70, 2)",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(7, 1) == 7000000000 and weight_bytes(7, 4) == 28000000000, '每参数字节数要参与计算'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(weight_bytes(7, 2), int), '必须返回整数'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _pb in (0.5, 1, 1.5, 2, 3, 7, 8, 13, 70, 175, 405):\n    for _bpp in (1, 2, 4, 8):\n        assert weight_bytes(_pb, _bpp) == int(_pb * 1_000_000_000 * _bpp), (_pb, _bpp)",
+        "weight": 34
       }
     ],
     "llm_rubric": {
       "enabled": false,
       "criteria": "是否理解了参数量单位是十亿"
     },
-    "reference": "params_billion = 7\nbytes_per_param = 2\nweight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
-    "explanation": "70 亿 = 7 × 10^9。乘以每参数 2 字节得 1.4 × 10^10 字节，约 13 GB。这只是权重，实际加载还要加 KV cache 和激活值。"
+    "reference": "def weight_bytes(params_billion, bytes_per_param):\n    return int(params_billion * 1_000_000_000 * bytes_per_param)",
+    "explanation": "70 亿 = 7 × 10^9。乘以每参数 2 字节得 1.4 × 10^10 字节，约 13 GB。这只是权重，实际加载还要加 KV cache 和激活值。\n\n**单位是这道题的全部**。`params_billion` 的单位是「十亿」，所以要乘 `1_000_000_000` 而不是 `1_000`。少乘一个零是最常见的错法，而它算出来的数同样「看起来像字节数」，所以判据里特意放了 0.5 十亿到 405 十亿共十一档参数量、每参数 1/2/4/8 字节，合计 44 组输入来区分 —— 只记住 70 亿 fp16 那一组答案的实现在这里必然露馅。\n\n**每参数字节数要真的参与计算**。同一个 70 亿模型，fp32 是 4 字节、int8 是 1 字节，结果差四倍。把第二个参数写死成 2 的实现会在 `weight_bytes(7, 1)` 上判不过。\n\n**要返回整数**。JavaScript 的 number 全是浮点，Python 直接相除也会得到 float，所以要返回整数。判据单独查了这一点，因为「算对了但类型是浮点」正是从 JavaScript 迁过来时最容易留下的。\n\n判分边界诚实说明：主判据那 44 组输入占 34/80，超过 P1 的 20% 门槛，且与「每参数字节数参与计算」那条（12/80）合计 58% 兜住「单位换算」这个必答点；但「返回整数」这一条只有 8/80 单独守着，是本题最薄弱的一环 —— 它只查类型，不区分你是怎么得到整数的。"
   },
   {
     "id": "ch07-ex03",

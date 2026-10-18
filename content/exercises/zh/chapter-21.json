@@ -45,5 +45,58 @@
     },
     "reference": "能力维度至少看四项：① 画面质量与风格稳定性；② 可控性 —— 能不能按提示词生成指定的内容，本章特别提到文字渲染这类排版任务；③ 一致性 —— 同一提示词多次生成差异有多大，同一主体能不能稳定复现；④ 生成速度与稳定性，会不会有较高的失败率。\n\n测试方式：用自己业务里真实要用的提示词跑，而不是用官方的示例提示词。同一批提示词在候选模型之间对比，并多次重复以观察稳定性。视频模型还要额外看镜头连贯性这类问题 —— 本章提到开源视频在这一项上仍常常出错、需要人工筛选。\n\n什么结果算不适合：关键业务场景里出不来可用结果、失败率高到人工筛选成本盖过收益、或者需要的控制精度达不到。任一条成立就该换模型或换路线。\n\n收益是否值得算力成本：把训练、微调和推理的算力算进去，再把「生成 + 人工筛选」的总人力算进去。如果一个模型单张更好看，但需要三个人筛半天才能挑出一张能用的，它的单张优势就没有意义。\n\n最后回到第 1 章那条：能不能商用要确认许可证，能力再强如果许可不允许也不进候选。",
     "explanation": "这道题对应本章那十个 Case 的方法论价值：一个模型「能做到什么地步」这个判断，只有拿自己的数据去跑才成立。\n\n第二问（什么结果算不适合）和第三问（收益是否值得算力成本）是本题真正的考点。开源模型与闭源产品的差距往往不在单点质量上，而在**综合成本**上：一个平均质量略低但 90% 可用的模型，比一个质量略高但只有 50% 可用的模型更有用。这也是本章提到开源视频「仍常常出错、需要人工筛选」那句话的实际含义 —— 人工筛选是要计价的。\n\n第四问加的那条许可证提醒不是凑数。它是本书第 1 章的结论在这里的落点：选型清单的第一道门槛不是能力，是能不能合法用。\n\n这题跑不了真实的模型生成，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的评估框架。"
+  },
+  {
+    "id": "ch21-ex03",
+    "chapter": "chapter-21",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "按单段时长上限规划视频分段",
+    "prompt": "H3 官方单段上限是 15 秒，更长的视频要靠拼接：前一段停在一个稳定画面，后一段从同一帧接着生成，再把重复帧剪掉。\n\n写函数 `plan_segments(total_seconds, max_per_segment)`，返回这次要生成几段：\n\n- `total_seconds` 是成片的目标总时长（秒），`max_per_segment` 是单段上限（秒），都是正整数；\n- 返回段数 = `ceil(total_seconds / max_per_segment)`；\n- 同时把**接缝数**存入全局变量 `seams`。接缝数 = 段数 - 1 —— 每两段之间要接一次，所以最后一段之后没有接缝。",
+    "starter": "seams = 0\n\n\ndef plan_segments(total_seconds, max_per_segment):\n    # 返回段数，并把接缝数存进全局变量 seams\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(15, 15) == 1, '正好一段，不需要拼接'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(16, 15) == 2, '超过上限一点点就要两段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(30, 15) == 2, '30 秒正好是两段'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(31, 15) == 3, '31 秒要三段'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "plan_segments(45, 15)\nassert seams == 2, seams",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "plan_segments(15, 15)\nassert seams == 0, '只有一段时不存在接缝'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in range(1, 61):\n    for _cap in (5, 10, 15, 20):\n        _want = -(-_t // _cap)\n        assert plan_segments(_t, _cap) == _want, (_t, _cap)\n        assert seams == _want - 1, (_t, _cap, seams, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解段数要向上取整，而接缝数比段数少一"
+    },
+    "reference": "def plan_segments(total_seconds, max_per_segment):\n    count = -(-total_seconds // max_per_segment)\n    global seams\n    seams = count - 1\n    return count",
+    "explanation": "这道题对应本章那个 30 秒第一人称动作片：H3 单段上限 15 秒，作者把两个 15 秒片段串起来，**接缝藏在第 15 秒**，正常看很难发现。\n\n**段数要向上取整**。30 秒正好是 2 段，但 31 秒就必须 3 段 —— 哪怕最后一段只有 1 秒，它也是一段。用整除 `total // cap` 会把 31 秒算成 2 段，等于凭空吃掉一秒。判据专门放了 16 和 31 这两个「刚过一点」和「刚过整段」的输入。\n\n**接缝数比段数少一**。这是最容易被写成 `count` 的一段。本章说「把两个 15 秒片段串起来」，接缝出现在**两段之间**，所以 2 段只有 1 个接缝、3 段有 2 个。写成段数会在每一段后面都算一次接缝，等于凭空多一个 —— 这也是本题单独要求写出来的原因。\n\n**接缝数是每次调用都要重算的**。判据连着调了两次 `plan_segments`，中间检查 `seams`；如果实现是「只在第一次赋值」，第二次就会留下旧值。\n\n主判据把目标时长 1 到 60 秒 × 单段上限 5/10/15/20 共 240 组全跑一遍，段数用整数运算独立算出期望值再比对 —— 这是专门防查表的：覆盖不了这 240 组。\n\n判分边界诚实说明：接缝数由 14/100 与 30/100 两条判据一起守着（合计 44%），单条够 P1；但「单段上限之内不拼接」只有 12/100 单独守着，是本题最薄弱的一环 —— 它只覆盖 `plan_segments(15, 15)` 这一种输入。"
   }
 ]

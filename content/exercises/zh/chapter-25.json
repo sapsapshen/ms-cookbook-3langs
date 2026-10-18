@@ -88,5 +88,63 @@
     },
     "reference": "B 错在本章的说法正好相反：当 T 较小时，高概率 Token 的优势会进一步增强，分布更集中、输出更稳定；T 较大时分布才更平缓。",
     "explanation": "本章这一节把几个概念的关系讲清楚了，四个说法分别对应其中一段。\n\nA 和 E 出自贪婪解码那一段。本章说贪婪解码「具有较强的确定性，但连续选择局部最高概率的 Token，并不一定能够获得整体质量最优的文本，同时生成内容也容易趋于单一」—— 而「为了提高生成结果的多样性，生成式语言模型通常还会采用随机采样」。E 正是这个因果关系。\n\nC 对应 Top-k。本章说 Top-k「仅保留概率最高的 k 个候选 Token，并在这些候选 Token 中重新归一化概率后进行采样」，作用是「过滤大量概率较低的 Token，减少明显不合理内容被选中的可能性」。所以 k 越小候选集合越小，输出越保守。\n\nD 对应 Top-p。本章特别强调它「不固定候选 Token 的数量」，而是「按照概率从高到低排列，选择累计概率达到阈值 p 的最小候选集合」。所以模型预测确定时少量 Token 就够，模型犹豫时会保留更多 —— 这正是它与 Top-k 的关键差别。\n\nB 是把方向说反了。这类「大小搞反」的错误在解码策略里很常见，因为直觉上容易把「温度调高」理解成「更尖锐」。本章的表述是明确的：T 小 → 高概率优势增强 → 更稳定；T 大 → 分布平缓 → 更多样。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch25-ex03",
+    "chapter": "chapter-25",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "实现 Top-p 的最小候选集合筛选",
+    "prompt": "Top-p 不固定候选 Token 的数量：把概率从高到低排列，选择**累计概率达到阈值 p 的最小候选集合**，再从这批候选里采样。模型对下一个 Token 预测确定时，少量 Token 就能达到阈值；存在多个合理候选时会保留更多。\n\n写函数 `top_p_count(probs, p)`：\n\n- `probs` 是已经**按概率从高到低排好**的概率列表；\n- 返回满足「累计概率达到 `p`」所需的最少候选个数；\n- 累计概率是**加上当前这个候选之后**才判断，所以最后一个被加进来的候选一定要算进去 —— 哪怕加上它就超过了 `p`；\n`p >= 1` 时返回 `len(probs)`。",
+    "starter": "def top_p_count(probs, p):\n    # 返回最少候选个数\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([0.5, 0.25, 0.125, 0.125], 0.5) == 1, '第一个候选累计就达到 0.5'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([0.5, 0.25, 0.125, 0.125], 0.75) == 2, '0.5 + 0.25 = 0.75 刚好达到'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([0.5, 0.25, 0.125, 0.125], 0.8) == 3, '0.75 还不够，要加上第三个才越过 0.8'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([0.5, 0.25, 0.125, 0.125], 1.0) == 4, 'p = 1 时保留全部'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([1.0, 0.0, 0.0], 0.9) == 1, '概率全压在第一个时只留一个'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([0.4, 0.4, 0.2], 0.5) == 2, '两个 0.4 才能到 0.5，第一个单独只有 0.4'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert top_p_count([], 0.9) == 0, '空分布没有候选'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 9):\n    for _u in range(1, 32):\n        _raw = [(_i * _u) % 8 for _i in range(_n)]\n        _tot = sum(_raw) or 1\n        _probs = [round(_r * 16 / _tot, 6) for _r in _raw]\n        _cum, _want = 0.0, 0\n        for _i, _v in enumerate(_probs, 1):\n            _cum += _v\n            if _cum >= 0.5:\n                _want = _i\n                break\n        if _want == 0 and _n:\n            _want = _n\n        assert top_p_count(_probs, 0.5) == _want, (_probs, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 Top-p 取的是累计概率首次达到阈值的最小集合，且最后加入的那个候选必须计入"
+    },
+    "reference": "def top_p_count(probs, p):\n    total = 0.0\n    for i, prob in enumerate(probs, 1):\n        total += prob\n        if total >= p:\n            return i\n    return len(probs)",
+    "explanation": "这道题对应本章讲 Top-p 的那段：与 Top-k 固定取 k 个不同，Top-p「按照概率从高到低排列，选择累计概率达到阈值 p 的最小候选集合」。\n\n**判断放在累加之后**。这是本题最容易错的一步：必须先把当前候选的概率加进累计值，再判断有没有达到 `p`。反过来写成「先判断再加」，那么累计刚好等于 `p` 的那组会少取一个候选 —— 判据里 `top_p_count([0.5, 0.25, 0.125, 0.125], 0.75)` 盯的就是这一组：正确答案 2，按「先判断再加」写会得 1。\n\n**达到阈值前不能停，达到之后必须停**。本题要的是「最小候选集合」，所以累计一越过 `p` 就立刻返回，而不是继续往后加。只判「累计大于 p」的写法在恰好等于的那组上会多取一个。\n\n**`p >= 1` 时全部保留**。分布总和是 1，所以永远没有哪一步能严格超过 1；如果循环里用的是严格大于，循环会走完而返回不了，最后必须落到 `len(probs)`。这是循环出口那一类的经典坑。\n\n主判据把候选个数 0 到 8 × 多种概率组合铺开成近 300 组分布，逐组独立算出最小候选个数再比对 —— 这是专门防查表的：覆盖不了这些组合。\n\n判分边界诚实说明：「判断放在累加之后」由 12/114、14/114 与 30/114 三条判据一起守着，合计过半；但「空分布返回 0」只有 10/114 这一条守着，是本题最薄弱的一环 —— 它只覆盖列表为空的输入。"
   }
 ]

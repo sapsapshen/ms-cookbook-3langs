@@ -12,17 +12,27 @@
       {
         "kind": "stdout_matches",
         "pattern": "我是.{1,20}，我想学.{1,30}",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert isinstance(name, str) and name.strip(), 'name 必须是非空字符串'",
-        "weight": 1
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert isinstance(role, str) and role.strip(), 'role 必须是非空字符串'",
-        "weight": 1
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(name, str) and name in __sils_stdout, '打印出来的句子里必须出现 name 的值 —— 用变量，不要手写字面量'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(role, str) and role in __sils_stdout, '打印出来的句子里必须出现 role 的值 —— 用变量，不要手写字面量'",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -30,7 +40,7 @@
       "criteria": "是否真的用了两个变量而不是把内容写死在字符串里"
     },
     "reference": "name = \"沈愐\"\nrole = \"Agent 开发\"\nprint(f\"我是{name}，我想学{role}\")",
-    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用，否则句子里会留下空洞。自动判分看得到的是「两个变量有没有被赋成非空字符串」和「打印出来的句子长什么样」；有没有真的用 f-string 而不是把字面量写死，这一点只能由你的代码本身说明。"
+    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用，否则句子里会留下空洞。自动判分看得到三件事：两个变量有没有被赋成非空字符串、打印出来的句子长什么样、以及句子里有没有真的带上这两个变量的值 —— 第三条会把「变量填对了却仍然手写字面量」这种写法判成不及格。"
   },
   {
     "id": "ch07-ex02",

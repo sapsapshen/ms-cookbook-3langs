@@ -12,22 +12,22 @@
       {
         "kind": "assert_python",
         "code": "assert args['model'] == 'Qwen/Qwen2.5-0.5B'",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
         "code": "assert args['dataset'] == ['alpaca-gpt4-data.json']",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
         "code": "assert args['output'] == 'output/v0-5b-lora'",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
         "code": "assert args['train_type'] == 'lora'",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
@@ -35,14 +35,19 @@
         "weight": 1
       },
       {
-        "kind": "stdout_matches",
-        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "kind": "assert_python",
+        "code": "assert args.get('model') == 'Qwen/Qwen2.5-0.5B' and args.get('dataset') == ['alpaca-gpt4-data.json'] and args.get('output') == 'output/v0-5b-lora' and args.get('train_type') == 'lora' and args.get('max_length') == 2048",
         "weight": 2
       },
       {
         "kind": "stdout_matches",
-        "pattern": "--output\\s+output/v0-5b-lora",
-        "weight": 2
+        "pattern": "swift\\s+sft(?=[\\s\\S]*--model[\\s=]+Qwen/Qwen2\\.5-0\\.5B)(?=[\\s\\S]*--dataset[\\s=]+\\[?'?alpaca-gpt4-data\\.json)(?=[\\s\\S]*--output[\\s=]+output/v0-5b-lora)(?=[\\s\\S]*--train-type[\\s=]+lora)(?=[\\s\\S]*--max-length[\\s=]+2048)",
+        "weight": 3
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -50,7 +55,7 @@
       "criteria": "是否理解 dataset 是列表而 max_length 是整数"
     },
     "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
-    "explanation": "ms-swift 的命令行参数用中划线（--train-type），而 Python 字典用下划线（train_type），拼命令时要做转换。dataset 必须是列表，即使只有一个文件。"
+    "explanation": "ms-swift 的命令行参数用中划线（--train-type），而 Python 字典用下划线（train_type），拼命令时要做转换。dataset 必须是列表，即使只有一个文件。五个参数都要带上打印出来的那一行命令里，缺一个这条命令就跑不起来 —— 所以判分既看字典里的五个键，也看渲染出来的命令行，两边都要齐。"
   },
   {
     "id": "ch13-ex02",
@@ -74,8 +79,8 @@
       },
       {
         "kind": "assert_python",
-        "code": "t, v = split(777, 0.33)\nassert t + v == 777, (t, v)",
-        "weight": 2
+        "code": "t, v = split(7, 0.5)\nassert t + v == 7 and v == 3, (t, v)",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -83,7 +88,7 @@
       "criteria": "是否处理了整除导致的余数，而不是四舍五入"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size 用 int() 向下取整，train_size 用减法而不是再次取整 —— 这样能保证两者之和恰好等于 total，不丢样本。"
+    "explanation": "val_size 用 int() 向下取整，train_size 用减法而不是再次取整 —— 这样能保证两者之和恰好等于 total，不丢样本。要当心四舍五入：split(7, 0.5) 里 7 × 0.5 = 3.5，向下取整是 3，所以答案是 (4, 3)；round(3.5) 会得到 4，答案变成 (3, 4) —— 样本没丢，但验证集多了一条。两侧各自取整更糟，会得到 (3, 3)，直接丢掉一条。"
   },
   {
     "id": "ch13-ex03",

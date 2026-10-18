@@ -12,17 +12,27 @@
       {
         "kind": "stdout_matches",
         "pattern": "我是.{1,20}，我想学.{1,30}",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert isinstance(name, str) and name.strip(), 'name must be a non-empty string'",
-        "weight": 1
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert isinstance(role, str) and role.strip(), 'role must be a non-empty string'",
-        "weight": 1
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(name, str) and name in __sils_stdout, 'the printed line must contain the value of name -- interpolate the variable, do not hand-write the literal'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(role, str) and role in __sils_stdout, 'the printed line must contain the value of role -- interpolate the variable, do not hand-write the literal'",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -30,7 +40,7 @@
       "criteria": "¿Se usaron realmente dos variables en lugar de escribir el texto dentro de la cadena?"
     },
     "reference": "name = \"Mian\"\nrole = \"desarrollo de agentes\"\n# Los escapes \\u mantienen esta respuesta sin CJK e imprimen la frase china.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
-    "explanation": "Una f-string incrusta valores con {} y evita concatenar a mano. Asigna name y role antes de imprimir, si no la frase queda con huecos. La línea impresa se mantiene en chino a propósito, para que la comprobación la valide literalmente; las secuencias de escape son esa misma frase escrita en ASCII. Las comprobaciones automáticas solo ven que ambas variables tienen texto y que la línea impresa tiene la forma correcta; que usaras una f-string en lugar de un literal depende de tu propio código."
+    "explanation": "Una f-string incrusta valores con {} y evita concatenar a mano. Asigna name y role antes de imprimir, si no la frase queda con huecos. La línea impresa se mantiene en chino a propósito, para que la comprobación la valide literalmente; las secuencias de escape son esa misma frase escrita en ASCII. La corrección puede ver tres cosas: que ambas variables tienen texto, que la línea impresa tiene la forma correcta y que la línea impresa lleva de verdad los dos valores; esto último es lo que suspende a quien rellena las variables correctamente pero escribe el texto a mano."
   },
   {
     "id": "ch07-ex02",

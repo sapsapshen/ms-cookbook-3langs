@@ -12,17 +12,27 @@
       {
         "kind": "stdout_matches",
         "pattern": "我是.{1,20}，我想学.{1,30}",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert isinstance(name, str) and name.strip(), 'name must be a non-empty string'",
-        "weight": 1
+        "weight": 2
       },
       {
         "kind": "assert_python",
         "code": "assert isinstance(role, str) and role.strip(), 'role must be a non-empty string'",
-        "weight": 1
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(name, str) and name in __sils_stdout, 'the printed line must contain the value of name -- interpolate the variable, do not hand-write the literal'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(role, str) and role in __sils_stdout, 'the printed line must contain the value of role -- interpolate the variable, do not hand-write the literal'",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -30,7 +40,7 @@
       "criteria": "Did the learner really use two variables instead of hard-coding the string?"
     },
     "reference": "name = \"Mian\"\nrole = \"Agent development\"\n# \\u-escapes keep this answer CJK-free while still printing the Chinese line.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
-    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally; the escape sequences above are just that same sentence written in ASCII. The automated checks can only see that both variables hold non-empty strings and that the printed line has the right shape — whether you really used an f-string instead of a literal is something your own code has to show."
+    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally; the escape sequences above are just that same sentence written in ASCII. Grading can see three things: both variables hold non-empty strings, the printed line has the right shape, and the printed line actually carries the two values -- that last one fails the version that fills the variables in correctly but still hand-writes the literal."
   },
   {
     "id": "ch07-ex02",

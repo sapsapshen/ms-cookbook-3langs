@@ -76,9 +76,19 @@ def executable_items():
 
 
 def _run(program):
+    """Execute like the Pyodide worker does, then publish `__sils_stdout`.
+
+    Task 6's `runUserCode` runs the learner's code with stdout redirected into a
+    buffer and stores the result in a `__sils_stdout` global before any check
+    runs. The checks then execute in that same global namespace, so an
+    `assert_python` check can read what the learner printed. This harness
+    reproduces both halves: the redirection and the global, so a check written
+    against the real sandbox behaves identically here.
+    """
     namespace, out = {}, io.StringIO()
-    with contextlib.redirect_stdout(out):
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
         exec(compile(program, '<program>', 'exec'), namespace)
+    namespace['__sils_stdout'] = out.getvalue()
     return out.getvalue(), namespace
 
 

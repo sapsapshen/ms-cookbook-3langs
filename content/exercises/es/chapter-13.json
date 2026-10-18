@@ -12,22 +12,22 @@
       {
         "kind": "assert_python",
         "code": "assert args['model'] == 'Qwen/Qwen2.5-0.5B'",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
         "code": "assert args['dataset'] == ['alpaca-gpt4-data.json']",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
         "code": "assert args['output'] == 'output/v0-5b-lora'",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
         "code": "assert args['train_type'] == 'lora'",
-        "weight": 2
+        "weight": 1
       },
       {
         "kind": "assert_python",
@@ -35,14 +35,19 @@
         "weight": 1
       },
       {
-        "kind": "stdout_matches",
-        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "kind": "assert_python",
+        "code": "assert args.get('model') == 'Qwen/Qwen2.5-0.5B' and args.get('dataset') == ['alpaca-gpt4-data.json'] and args.get('output') == 'output/v0-5b-lora' and args.get('train_type') == 'lora' and args.get('max_length') == 2048",
         "weight": 2
       },
       {
         "kind": "stdout_matches",
-        "pattern": "--output\\s+output/v0-5b-lora",
-        "weight": 2
+        "pattern": "swift\\s+sft(?=[\\s\\S]*--model[\\s=]+Qwen/Qwen2\\.5-0\\.5B)(?=[\\s\\S]*--dataset[\\s=]+\\[?'?alpaca-gpt4-data\\.json)(?=[\\s\\S]*--output[\\s=]+output/v0-5b-lora)(?=[\\s\\S]*--train-type[\\s=]+lora)(?=[\\s\\S]*--max-length[\\s=]+2048)",
+        "weight": 3
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -50,7 +55,7 @@
       "criteria": "¿Entiende que dataset es una lista y max_length es un entero?"
     },
     "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
-    "explanation": "ms-swift usa guiones en la línea de comandos (--train-type) mientras que el diccionario usa guiones bajos (train_type); convertirlo es parte del ejercicio. dataset debe ser una lista aunque tenga un solo archivo."
+    "explanation": "ms-swift usa guiones en la línea de comandos (--train-type) mientras que el diccionario usa guiones bajos (train_type); convertirlo es parte del ejercicio. dataset debe ser una lista aunque tenga un solo archivo. Los cinco argumentos tienen que llegar también a la línea de comandos que se imprime: si falta uno, el comando no se ejecutará, así que la corrección mira tanto las cinco claves del diccionario como el comando renderizado."
   },
   {
     "id": "ch13-ex02",
@@ -74,8 +79,8 @@
       },
       {
         "kind": "assert_python",
-        "code": "t, v = split(777, 0.33)\nassert t + v == 777, (t, v)",
-        "weight": 2
+        "code": "t, v = split(7, 0.5)\nassert t + v == 7 and v == 3, (t, v)",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -83,7 +88,7 @@
       "criteria": "¿Trató el resto de la división entera en lugar de redondear?"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size usa int() para truncar y train_size se obtiene por resta en lugar de una segunda división, así la suma es exactamente total sin perder muestras."
+    "explanation": "val_size usa int() para truncar y train_size se obtiene por resta en lugar de una segunda división, así la suma es exactamente total sin perder muestras. Cuidado con el redondeo: en split(7, 0.5) tienes 7 x 0,5 = 3,5, que al truncar da 3, así que la respuesta es (4, 3); round(3.5) da 4 y la respuesta pasa a ser (3, 4): no se pierde ninguna muestra, pero el conjunto de validación ganó una. Truncar ambos lados es peor: obtenes (3, 3) y pierdes una muestra."
   },
   {
     "id": "ch13-ex03",

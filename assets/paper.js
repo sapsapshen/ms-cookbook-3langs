@@ -105,7 +105,20 @@
       return `<article class="scene"><a class="scene-art" href="#chapter-${id}" aria-label="${esc(title)}"><img src="${artSource(SCENE_ART[id])}" alt="" width="320" height="260" loading="lazy"></a><div class="scene-copy"><h2><a href="#chapter-${id}">${esc(title)}</a></h2><p>${esc(t('scene.'+id+'.desc'))}</p><div class="scene-meta"><span>${esc(t('practice.sceneMeta',{n:id,type:t(SCENE_TYPE[id])}))}</span><a class="text-link" href="#chapter-${id}">${esc(chapters.get('chapter-'+id).status==='pending'?t('practice.viewChapter'):t('practice.readPractice'))} ${arrow}</a></div></div></article>`;
     }).join('');
   }
-  renderProjectLinks(); renderHomePaths(); renderScenes();
+  /* The learning map is injected by assets/exercise-map.js (G1: the practice
+     view is page markup, so the map is built by script like every other piece
+     of exercise UI). It reads progress out of the same store the chapter panel
+     writes to, so the reader's own passes are on it the moment they arrive.
+
+     Three moments, not two. Init and a language switch come from the brief;
+     the third is the reader ARRIVING here. Without it the grid would keep
+     showing whatever was true when the page loaded -- a learner who passed
+     three exercises in chapter 7 and then opened this view would be told they
+     had done nothing. Repainting is idempotent (the map replaces its own
+     contents), and it is guarded by the router's own `view === 'practice'`, so
+     a reader sitting in a chapter does not pay for a grid they cannot see. */
+  function renderExerciseMap() { if (window.ExerciseMap) window.ExerciseMap.render(); }
+  renderProjectLinks(); renderHomePaths(); renderScenes(); renderExerciseMap();
 
   function highlighted(text,query) {
     if (!query) return esc(text);
@@ -402,7 +415,7 @@
     } else {
       if(headingObserver)headingObserver.disconnect();
       document.title=t('doc.'+view)+t('doc.suffix');
-      if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);
+      if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);if(view==='practice')renderExerciseMap();
     }
     currentView=view;
     if(inPlace){updateProgress();return;}
@@ -419,7 +432,7 @@
   window.MSI18N.on(()=>{
     refreshPaths();
     searchIndex=buildSearchIndex();
-    renderProjectLinks();renderHomePaths();renderScenes();buildChapterNav();renderIndex();
+    renderProjectLinks();renderHomePaths();renderScenes();renderExerciseMap();buildChapterNav();renderIndex();
     if(currentView==='reader'&&currentChapter)renderChapter(currentChapter);
     else syncTranslationNotice(currentChapter);
     route({inPlace:true});

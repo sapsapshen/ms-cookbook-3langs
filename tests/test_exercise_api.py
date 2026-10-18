@@ -351,6 +351,48 @@ def test_the_new_column_accepts_a_three_state_write_after_migration(tmp_path, mo
     assert stored[CHAPTER_IDS[2]] == 'fail'
 
 
+def test_a_millisecond_stamp_is_folded_to_seconds(site):
+    """An older client stamps Date.now(). Stored as-is it would outrank every
+    real second stamp forever, so the row would win every merge and nothing the
+    server held could ever come back down."""
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'updated': 1750000000123},
+    ]})
+    assert client.get(PROGRESS).json()['items'][0]['updated'] == 1750000000
+
+
+def test_a_second_stamp_is_left_alone(site):
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'updated': 1750000000},
+    ]})
+    assert client.get(PROGRESS).json()['items'][0]['updated'] == 1750000000
+
+
+def test_a_millisecond_stamp_does_not_outrank_a_newer_server_row(site):
+    """The bug, end to end: device A sends milliseconds, device B sends seconds.
+    Folding is what lets the genuinely newer second row win."""
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'updated': 1750000000000},
+    ]})
+    client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'passed': 1, 'score': 0.9, 'updated': 1750000500},
+    ]})
+    stored = client.get(PROGRESS).json()['items'][0]
+    assert stored['updated'] == 1750000500
+    assert stored['passed'] == 1
+    assert stored['score'] == 0.9
+
+
+def test_the_server_clock_fallback_is_in_seconds(site):
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [{'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID}]})
+    stored = client.get(PROGRESS).json()['items'][0]['updated']
+    assert abs(stored - int(time.time())) <= 5
+
+
 def test_the_column_list_the_migration_uses_matches_the_served_table(site):
     """The DDL is a module constant shared by both paths; a drift between the
     fresh-create and the rebuild would mean deployed and new databases disagree."""

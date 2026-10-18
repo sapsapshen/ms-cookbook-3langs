@@ -11,6 +11,30 @@
   const KEY = 'ms-cookbook.exercise.v1';
   const CODE_LIMIT = 20000;
 
+  /* `updated` is unix SECONDS, not milliseconds. It is the arbitration key for
+     merge(), so the unit has to be the one the server counts in (`int(time.time())`)
+     and returns: Date.now() is ~1.7e12 against the server's ~1.7e9, so a
+     millisecond stamp is always "newer" than every real one, which makes every
+     sync report the local side as the winner and silently drops whatever the
+     server actually holds. Second-resolution matches the server's clock and is
+     fine for ordering -- two writes inside the same second are separated by the
+     client's own tie-break, not by the stamp. */
+  const SECOND = 1000;
+
+  /* Fold a millisecond stamp down to seconds, leaving a second stamp alone.
+     10**12 seconds is the year 33658 and 10**12 milliseconds is 2001-09-09, so
+     the magnitude separates the two for the next three centuries. This is the
+     mirror of the server's own defence and covers the two cases a bare clock
+     change cannot: progress already sitting in this device's localStorage from
+     the millisecond build, and a server that has not been redeployed yet. Both
+     would otherwise keep the stamp permanently "newer" than everything the
+     server holds, so the row would never stop winning its own merge. */
+  const MILLISECOND_FLOOR = 1e12;
+
+  function inSeconds(stamp) {
+    return stamp >= MILLISECOND_FLOOR ? Math.floor(stamp / SECOND) : stamp;
+  }
+
   /* A storage object is trusted only after a write+delete round trip: some
      browsers expose localStorage in private mode but throw on setItem. Probing
      once at construction keeps every later call free of try/catch noise. */
@@ -25,7 +49,7 @@
 
   function create(options) {
     const settings = options || {};
-    const clock = typeof settings.now === 'function' ? settings.now : () => Date.now();
+    const clock = typeof settings.now === 'function' ? settings.now : () => Math.floor(Date.now() / SECOND);
     const backing = safeStorage(settings.storage || (typeof localStorage !== 'undefined' ? localStorage : null));
     const available = backing !== null;
 
@@ -54,7 +78,11 @@
 
     /* Every read passes through here, so a hand-edited or truncated localStorage
        payload can never hand the UI a half-record: unknown shapes collapse to
-       the empty record rather than propagating undefined. */
+       the empty record rather than propagating undefined. `updated` is folded
+       into seconds here too, which is what makes the unit correction reach
+       records written before it: normalize() is the one place both the stored
+       copy and an incoming server row pass through, so folding at the single
+       choke point needs no separate migration pass over localStorage. */
     function normalize(record) {
       const source = record && typeof record === 'object' ? record : {};
       return {
@@ -63,7 +91,7 @@
         attempts: typeof source.attempts === 'number' && source.attempts > 0 ? source.attempts : 0,
         code: typeof source.code === 'string' ? source.code.slice(0, CODE_LIMIT) : '',
         selfAssessed: typeof source.selfAssessed === 'string' ? source.selfAssessed : '',
-        updated: typeof source.updated === 'number' ? source.updated : 0,
+        updated: typeof source.updated === 'number' ? inSeconds(source.updated) : 0,
       };
     }
 

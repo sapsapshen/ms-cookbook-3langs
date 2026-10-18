@@ -55,6 +55,17 @@ EXERCISE_PROGRESS_COLUMNS = '''id TEXT PRIMARY KEY,
 
 SELF_ASSESSMENT_STATES = ('', 'pass', 'partial', 'fail')
 
+# `updated` is unix SECONDS at both ends of the sync boundary. 10**12 seconds is
+# the year 33658 and 10**12 milliseconds is 2001-09-09, so any value at or above
+# the floor is milliseconds for the next three centuries -- magnitude is a safe
+# discriminator here even though it is not one in general.
+MILLISECOND_STAMP_FLOOR = 10 ** 12
+
+
+def second_stamp(value):
+    """Fold a millisecond timestamp into seconds; leave a second stamp alone."""
+    return value // 1000 if value >= MILLISECOND_STAMP_FLOOR else value
+
 
 def self_assessment_state(value):
     """Fold an incoming self-assessment into one of the three storable states.
@@ -675,10 +686,14 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         with db() as conn:
             rows=conn.execute('SELECT chapter,exercise,passed,score,code,self_assessed,attempts,updated FROM exercise_progress WHERE user_id=? ORDER BY updated DESC',(u['id'],)).fetchall()
         items=[dict(row) for row in rows]
-        # selfAssessed goes back exactly as stored: the client's chapterSummary
-        # counts every value except 'fail' as self-assessed progress, so a
-        # collapsed token reports work the reader said they did not understand.
-        for item in items: item['selfAssessed']=item.pop('self_assessed')
+        # Both columns go back exactly as stored. selfAssessed keeps its three
+        # states because the client's chapterSummary counts every value except
+        # 'fail' as self-assessed progress, and `updated` is folded from the
+        # milliseconds an older client stamped into seconds so the client can
+        # compare it against its own clock.
+        for item in items:
+            item['selfAssessed']=item.pop('self_assessed')
+            item['updated']=second_stamp(item['updated'])
         return {'items':items}
 
     @app.post('/api/exercises/progress',status_code=201)
@@ -730,7 +745,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                                 self_assessed=excluded.self_assessed,
                                 attempts=excluded.attempts,updated=excluded.updated''',
                              (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,
-                              self_assessment_state(item.selfAssessed),item.attempts,item.updated or now))
+                              self_assessment_state(item.selfAssessed),item.attempts,second_stamp(item.updated) or now))
                 saved+=1
         return {'saved':saved}
 

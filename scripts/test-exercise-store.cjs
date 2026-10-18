@@ -316,6 +316,40 @@ check('a self-assessment can be revised in both directions', () => {
   assert.equal(store.read('chapter-1', 'ch01-ex01').selfAssessed, 'partial');
 });
 
+check('the default clock stamps seconds, not milliseconds', () => {
+  /* The unit has to match the server's int(time.time()), because merge()
+     compares the two numbers directly. Date.now() is ~1000x too large, so the
+     local row would win every single sync and the server's copy would never be
+     read back. */
+  const store = create({ storage: memoryStorage() });
+  const written = store.write('chapter-1', 'ch01-ex01', {});
+  assert.equal(written.updated, Math.floor(Date.now() / 1000));
+  assert.equal(written.updated < 1e11, true);
+});
+
+check('a millisecond stamp left by the old build is folded on read', () => {
+  /* Progress already in localStorage keeps its millisecond stamp, and a
+     not-yet-redeployed server answers in milliseconds too. normalize() is the
+     single choke point both go through, so folding there migrates them without
+     a separate pass over storage. */
+  const storage = memoryStorage({
+    'ms-cookbook.exercise.v1': JSON.stringify({ 'chapter-1': { 'ch01-ex01': { passed: true, score: 1, updated: 1750000000123 } } }),
+  });
+  const store = create({ storage });
+  assert.equal(store.read('chapter-1', 'ch01-ex01').updated, 1750000000);
+  assert.equal(store.snapshot()[0].updated, 1750000000);
+});
+
+check('an incoming millisecond row no longer outranks a newer local second row', () => {
+  /* The failure this fixes, end to end: local work at 1750000500s versus a
+     server row stamped 1750000000000ms. Unfolded, the server wins forever. */
+  const store = create({ storage: memoryStorage(), now: () => 1750000500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0, updated: 1750000000123 }]);
+  assert.equal(store.read('chapter-1', 'ch01-ex01').passed, true);
+  assert.equal(result.changed, 1);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

@@ -57,6 +57,15 @@ EXERCISE_PROGRESS_COLUMNS = '''id TEXT PRIMARY KEY,
 
 SELF_ASSESSMENT_STATES = ('', 'pass', 'partial', 'fail')
 
+# Grading is the one public endpoint that costs money per call, so it carries its
+# own ceiling. Without one, configuring EXERCISE_LLM_KEY turns the site into an
+# unauthenticated, unmetered proxy for someone else's key. The window and the
+# ceiling follow the analytics endpoints' shape: a per-visitor count over a
+# minute. The limit is generous enough that a learner re-reading and re-submitting
+# an exercise is never caught by it -- it exists to stop a script, not a person.
+GRADE_CALL_LIMIT = 30
+GRADE_CALL_WINDOW = 60
+
 # `updated` is unix SECONDS at both ends of the sync boundary. 10**12 seconds is
 # the year 33658 and 10**12 milliseconds is 2001-09-09, so any value at or above
 # the floor is milliseconds for the next three centuries -- magnitude is a safe
@@ -203,6 +212,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         CREATE INDEX IF NOT EXISTS wishes_user_time ON wishes(user_id, created);
         CREATE TABLE IF NOT EXISTS exercise_progress_writes(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), created INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS exercise_progress_writes_user ON exercise_progress_writes(user_id, created);
+        CREATE TABLE IF NOT EXISTS exercise_grade_calls(id TEXT PRIMARY KEY, visitor_hash TEXT NOT NULL, created INTEGER NOT NULL, outcome TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS exercise_grade_calls_visitor ON exercise_grade_calls(visitor_hash, created);
         ''')
         # IF NOT EXISTS cannot widen an existing column, so the schema above is
         # only the shape a fresh database gets; deployed ones are rebuilt here.
@@ -702,6 +713,46 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         # to travel in the body -- an HTTPException would only carry `detail`.
         return JSONResponse(status_code=503, content={'detail':detail, 'fallback':True}, headers={'x-sils-fallback':'1'})
 
+    def grading_throttled():
+        # The same body as every other grading failure, on purpose: the client
+        # must not need a second code path to know it should fall back. A 503
+        # rather than a 429 says "try again shortly", which is exactly true --
+        # the window opens in under a minute and the exercise is not lost.
+        return JSONResponse(status_code=503, content={'detail':'评分请求太频繁，请稍后再试', 'fallback':True}, headers={'x-sils-fallback':'1'})
+
+    def visitor_hash_of(request):
+        """The same keyed hash the analytics endpoints use, over the same field.
+
+        The raw address is never stored: this hash is only ever compared with
+        itself, so a leaked copy of the table is not a list of visitors. A
+        deployment behind a proxy sees the proxy's address, which under-counts
+        distinct callers rather than over-counting them -- the safe direction for
+        a ceiling on someone else's bill."""
+        address=request.client.host if request.client else 'unknown'
+        return hmac.new(session_secret.encode(),address.encode(),hashlib.sha256).hexdigest()
+
+    def record_grading_call(visitor_hash, now, outcome):
+        """One row per call, successes and refusals alike.
+
+        The answer text and the criteria are deliberately absent: this is a cost
+        and abuse ledger, not a copy of what learners submitted. `outcome` is
+        'graded' / 'unavailable' / 'refused', and that is what tells an operator
+        whether a rising bill is traffic or breakage. The row is pruned in the
+        same transaction that writes it, so the table cannot grow without bound
+        and no second sweep is needed."""
+        with db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            conn.execute('DELETE FROM exercise_grade_calls WHERE created<?',(now-GRADE_CALL_WINDOW,))
+            conn.execute('INSERT INTO exercise_grade_calls VALUES (?,?,?,?)',(secrets.token_hex(16),visitor_hash,now,outcome))
+
+    def grading_allowed(visitor_hash, now):
+        # Refusals are recorded but not counted. Counting them would mean a
+        # caller who keeps knocking keeps their own window open forever and can
+        # never be let back in.
+        with db() as conn:
+            count=conn.execute('SELECT count(*) FROM exercise_grade_calls WHERE visitor_hash=? AND created>? AND outcome!=\'refused\'',(visitor_hash,now-GRADE_CALL_WINDOW)).fetchone()[0]
+        return count < GRADE_CALL_LIMIT
+
     @app.get('/api/exercises/progress')
     def list_exercise_progress(request: Request):
         u=user(request)
@@ -795,10 +846,20 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         return {'saved':saved,'skipped':skipped}
 
     @app.post('/api/exercises/grade')
-    def grade_exercise(payload: ExerciseGrade):
+    def grade_exercise(payload: ExerciseGrade, request: Request):
         if payload.exercise not in exercise_ids: raise HTTPException(422,'练习不存在或尚未开放')
+        # The ceiling is checked after the id is validated and before the upstream
+        # request is made. Both orderings matter: a caller cannot probe the
+        # endpoint with invented ids for free, and a refused call costs nothing at
+        # the model -- a limit that still spends money is not a limit.
+        now=int(time.time()); visitor_hash=visitor_hash_of(request)
+        if not grading_allowed(visitor_hash, now):
+            record_grading_call(visitor_hash, now, 'refused')
+            return grading_throttled()
         key=os.getenv('EXERCISE_LLM_KEY'); base=os.getenv('EXERCISE_LLM_BASE_URL')
-        if not key or not base: return grading_unavailable('LLM 评分未启用')
+        if not key or not base:
+            record_grading_call(visitor_hash, now, 'unavailable')
+            return grading_unavailable('LLM 评分未启用')
         model=os.getenv('EXERCISE_LLM_MODEL','gpt-4o-mini')
         prompt=('你是评分助手。按给定标准给答案打分，只输出 JSON。\n'
                 f'标准：{payload.criteria}\n答案：{payload.answer}\n'
@@ -811,6 +872,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             content=response.json()['choices'][0]['message']['content']
         except Exception:
             LOGGER.exception('Exercise grading unavailable')
+            record_grading_call(visitor_hash, now, 'unavailable')
             return grading_unavailable('LLM 评分暂时不可用')
         try:
             verdict=json.loads(content)
@@ -830,7 +892,11 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             feedback=feedback[:500] if isinstance(feedback,str) else ''
         except (ValueError, TypeError, AttributeError):
             LOGGER.exception('Exercise grading returned an unparsable verdict')
+            record_grading_call(visitor_hash, now, 'unavailable')
             return grading_unavailable('评分结果无法解析')
+        # Only a call that produced a usable verdict is logged as 'graded': this
+        # is the number that should track the bill.
+        record_grading_call(visitor_hash, now, 'graded')
         return {'score':score,'feedback':feedback}
 
     @app.get('/')

@@ -5,7 +5,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from itsdangerous import TimestampSigner
-from app import EXERCISE_PROGRESS_COLUMNS, create_app
+from app import EXERCISE_PROGRESS_COLUMNS, GRADE_CALL_LIMIT, create_app
 
 ROOT_ID = __import__('pathlib').Path(__file__).resolve().parent.parent
 
@@ -279,6 +279,153 @@ def test_a_llm_error_body_without_choices_is_a_fallback(site, monkeypatch):
     response = TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
     assert response.status_code == 503
     assert response.json()['fallback'] is True
+
+
+# --- Review round 3: the endpoint that costs money is metered ---------------
+
+def working_model(monkeypatch, calls=None):
+    monkeypatch.setenv('EXERCISE_LLM_KEY', 'test-key')
+    monkeypatch.setenv('EXERCISE_LLM_BASE_URL', 'http://127.0.0.1:9/v1')
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {'choices': [{'message': {'content': '{"score":0.5,"feedback":"ok"}'}}]}
+
+    def fake_post(url, **kwargs):
+        if calls is not None: calls.append(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr('app.httpx.post', fake_post)
+
+
+def test_grading_is_rate_limited_per_address(site, monkeypatch):
+    """This endpoint is the only public write that spends money. Fifty guest
+    calls used to be fifty real calls; past the limit the caller is refused
+    before the model is ever contacted."""
+    calls = []
+    working_model(monkeypatch, calls)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT):
+        assert guest.post(GRADE, json=body).status_code == 200
+    assert len(calls) == GRADE_CALL_LIMIT
+    refused = guest.post(GRADE, json=body)
+    assert refused.status_code == 503
+    assert refused.json()['fallback'] is True
+    assert len(calls) == GRADE_CALL_LIMIT, 'the refused call must not reach the model'
+
+
+def test_the_refusal_does_not_stop_the_learner(site, monkeypatch):
+    """A throttled answer is still the reference answer plus a self-assessment:
+    the same body shape, so the client needs no second code path."""
+    working_model(monkeypatch)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT + 1):
+        response = guest.post(GRADE, json=body)
+    assert response.json()['fallback'] is True
+    assert response.headers['x-sils-fallback'] == '1'
+
+
+def test_a_refused_call_is_not_metered_against_the_caller(site, monkeypatch):
+    """Otherwise a caller who keeps knocking would keep their own window open
+    forever and could never be let back in."""
+    working_model(monkeypatch)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT + 10):
+        guest.post(GRADE, json=body)
+    with site[0].state.db() as db:
+        counted = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE outcome!='refused'").fetchone()['c']
+    assert counted == GRADE_CALL_LIMIT
+
+
+def test_a_refusal_is_still_recorded_for_audit(site, monkeypatch):
+    """An operator looking at this table needs to see the attempt, not just the
+    successes -- that is what an abuse pattern looks like."""
+    working_model(monkeypatch)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT + 3):
+        guest.post(GRADE, json=body)
+    with site[0].state.db() as db:
+        refused = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE outcome='refused'").fetchone()['c']
+    assert refused == 3
+
+
+def test_a_successful_call_is_audited_without_the_answer(site, monkeypatch):
+    """Cost observation and abuse tracing, not a copy of what learners typed."""
+    working_model(monkeypatch)
+    TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'my private answer', 'criteria': 'c'})
+    with site[0].state.db() as db:
+        row = db.execute('SELECT * FROM exercise_grade_calls').fetchone()
+    assert row['outcome'] == 'graded'
+    assert 'answer' not in row.keys()
+    assert 'criteria' not in row.keys()
+    assert 'my private answer' not in str(tuple(row))
+
+
+def test_the_address_is_hashed_not_stored(site, monkeypatch):
+    """Same keyed hash the analytics endpoints use: the ledger compares hashes
+    with each other and never needs the address itself."""
+    working_model(monkeypatch)
+    TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
+    with site[0].state.db() as db:
+        row = db.execute('SELECT visitor_hash FROM exercise_grade_calls').fetchone()
+    assert len(row['visitor_hash']) == 64
+    assert 'testclient' not in row['visitor_hash']
+
+
+def test_a_refused_call_costs_nothing_at_the_model(site, monkeypatch):
+    """The check runs before the upstream request, which is the whole point: a
+    ceiling that still spends money is not a ceiling."""
+    calls = []
+    working_model(monkeypatch, calls)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT + 5):
+        guest.post(GRADE, json=body)
+    assert len(calls) == GRADE_CALL_LIMIT
+
+
+def test_junk_ids_do_not_consume_the_grading_quota(site, monkeypatch):
+    """Validation runs before the meter, so probing with invented ids is free."""
+    calls = []
+    working_model(monkeypatch, calls)
+    guest = TestClient(site[0])
+    for _ in range(GRADE_CALL_LIMIT + 5):
+        assert guest.post(GRADE, json={'exercise': 'ch99-ex99', 'answer': 'a', 'criteria': 'c'}).status_code == 422
+    assert calls == []
+    assert guest.post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}).status_code == 200
+
+
+def test_an_unconfigured_deployment_still_answers_every_call(site):
+    """Without a key there is nothing to spend, so the meter must not get in the
+    way of a guest who keeps retrying."""
+    guest = TestClient(site[0])
+    for _ in range(GRADE_CALL_LIMIT + 10):
+        response = guest.post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
+        assert response.status_code == 503
+        assert response.json()['fallback'] is True
+
+
+def test_the_old_ledger_does_not_grow_without_bound(site, monkeypatch):
+    """Pruned in the same transaction that writes it, like the write ledger."""
+    working_model(monkeypatch)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT + 5):
+        guest.post(GRADE, json=body)
+    with site[0].state.db() as db:
+        db.execute('UPDATE exercise_grade_calls SET created=0')
+        db.execute("DELETE FROM exercise_grade_calls WHERE created<0")
+        db.execute('INSERT INTO exercise_grade_calls VALUES (?,?,?,?)', ('stale', 'visitor', 0, 'graded'))
+    guest.post(GRADE, json=body)
+    with site[0].state.db() as db:
+        stale = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE created=0 AND id='stale'").fetchone()['c']
+    assert stale == 0
 
 
 ANY_EXERCISE = [(chapter, exercise) for chapter in sorted(IDS) for exercise in IDS[chapter]]

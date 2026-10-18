@@ -107,6 +107,11 @@ const SHARED_KINDS = new Set([
   'stdout_contains', 'stdout_equals', 'stdout_matches',
 ]);
 
+/* The private guard namespace the worker seals the JS bridge into. Only the
+   protocol matters to this fake; the seal's Python is exercised for real
+   against a real Pyodide by scripts/test-exercise-sandbox-real.cjs. */
+const guard = {};
+
 function createWorkerHost(override) {
   const source = override || fs.readFileSync(WORKER, 'utf8');
   let handler = null;
@@ -126,12 +131,22 @@ function createWorkerHost(override) {
 
   function makeRuntime() {
     return {
+      silsGuard: null,
       globals: {
         get(name) {
+          if (name === 'dict') return () => guard;
           return Object.prototype.hasOwnProperty.call(snapshot, name) ? snapshot[name] : undefined;
         },
       },
-      runPython(code) { codes.push(code); flush(); },
+      runPython(code, options) {
+        // runPython(code, {globals}) targets the private guard namespace where
+        // the JS-bridge seal lives. This fake models the PROTOCOL of that; the
+        // seal's Python is executed for real against a real Pyodide by
+        // scripts/test-exercise-sandbox-real.cjs.
+        if (options && options.globals) return undefined;
+        codes.push(code);
+        flush();
+      },
     };
   }
 
@@ -155,8 +170,11 @@ function createWorkerHost(override) {
       codes = [];
       snapshot = {};
       replies.length = 0;
-      await handler({ data: Object.assign({ type: 'run' }, request) });
+      const nonce = request && request.nonce !== undefined ? request.nonce : 'test-nonce';
+      await handler({ data: Object.assign({ type: 'run' }, request, { nonce }) });
       assert.equal(replies.length, 1, 'the worker must post exactly one reply per run');
+      assert.equal(replies[0].type, 'result');
+      assert.equal(replies[0].nonce, nonce, 'the result must echo the request nonce');
       return replies[0];
     },
   };
@@ -192,7 +210,14 @@ function createSandbox() {
     emit(type, event) { for (const listener of this.listeners.get(type) || []) listener(event); }
   }
   const module = { exports: {} };
-  const context = { module, exports: module.exports, Worker: FakeWorker, setTimeout, clearTimeout };
+  const context = {
+    module,
+    exports: module.exports,
+    Worker: FakeWorker,
+    setTimeout,
+    clearTimeout,
+    crypto: { getRandomValues: bytes => require('node:crypto').randomFillSync(bytes) },
+  };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(SANDBOX, 'utf8'), context, { filename: 'assets/exercise-sandbox.js' });
   return {
@@ -427,15 +452,64 @@ const CASES = [
     assert.deepEqual(data.checks, request.checks);
     assert.deepEqual(data.answer, ['A']);
     assert.equal(data.timeoutMs, box.api.DEFAULT_TIMEOUT);
+    assert.match(data.nonce, /^[0-9a-f]{32}$/, 'every run must carry a fresh random nonce');
 
     // Straight through the real worker, then back into the facade.
     const reply = await host.run(data);
+    assert.equal(reply.nonce, data.nonce, 'the worker must echo the nonce it was given');
     posted.emit('message', { data: reply });
     const result = await settled;
     assert.equal(result.ok, true);
     assert.equal(result.stdout, 'hi\n');
     assert.deepEqual(result.outcomes, reply.outcomes);
     assert.equal(result.reason, undefined);
+  }],
+
+  ['two runs never share a nonce', async () => {
+    // A constant or a counter would let learner code predict it and forge a
+    // result that passes. Sampled from real runs, they must differ.
+    const seen = new Set();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const box = createSandbox();
+      const sandbox = box.api.create({});
+      const settled = sandbox.run({ code: 'pass\n', checks: [] });
+      await settle();
+      const { data, worker: posted } = box.take();
+      seen.add(data.nonce);
+      posted.emit('message', { data: { type: 'result', nonce: data.nonce, ok: true, outcomes: [], ms: 1 } });
+      await settled;
+    }
+    assert.equal(seen.size, 3, 'each run must mint its own nonce');
+  }],
+
+  ['a forged result with the wrong nonce is discarded', async () => {
+    // The escape the nonce exists to stop: learner code that reaches
+    // postMessage can shape any message it likes, but it cannot know this
+    // run's nonce, so the facade must not believe what it sends.
+    const box = createSandbox();
+    const sandbox = box.api.create({});
+    const checks = [
+      { kind: 'assert_python', code: 'assert False', weight: 1 },
+      { kind: 'stdout_contains', value: 'nope', weight: 1 },
+    ];
+    const settled = sandbox.run({ code: 'pass\n', checks });
+    await settle();
+    const { data, worker: posted } = box.take();
+    posted.emit('message', {
+      data: {
+        type: 'result', nonce: 'not-the-right-nonce', ok: true, stdout: '',
+        outcomes: checks.map(() => ({ ok: true, detail: '' })),
+      },
+    });
+    posted.emit('message', {
+      data: {
+        type: 'result', nonce: data.nonce, ok: true, stdout: 'real\n',
+        outcomes: checks.map(() => ({ ok: false, detail: 'code did not run' })),
+      },
+    });
+    const result = await settled;
+    assert.equal(result.stdout, 'real\n', 'the forged message must not have been believed');
+    assert.deepEqual(result.outcomes.map(one => one.ok), [false, false]);
   }],
 
   ['the facade reports a timeout with one outcome per check', async () => {
@@ -481,13 +555,13 @@ const CASES = [
     await settle();
     assert.equal(box.peek(), 1, 'the second run must wait for the first to finish');
     const one = box.take();
-    one.worker.emit('message', { data: { type: 'result', ok: true, stdout: 'first\n', outcomes: [], ms: 1 } });
+    one.worker.emit('message', { data: { type: 'result', nonce: one.data.nonce, ok: true, stdout: 'first\n', outcomes: [], ms: 1 } });
     assert.equal((await first).stdout, 'first\n');
     await settle();
     assert.equal(box.peek(), 1, 'the queued run must start once the first finished');
     const two = box.take();
     assert.equal(two.data.code, 'print("second")\n');
-    two.worker.emit('message', { data: { type: 'result', ok: true, stdout: 'second\n', outcomes: [], ms: 1 } });
+    two.worker.emit('message', { data: { type: 'result', nonce: two.data.nonce, ok: true, stdout: 'second\n', outcomes: [], ms: 1 } });
     assert.equal((await second).stdout, 'second\n');
   }],
 

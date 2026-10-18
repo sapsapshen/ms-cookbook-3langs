@@ -10,6 +10,22 @@
   'use strict';
   const DEFAULT_TIMEOUT = 15000;
 
+  /* A per-run token. Learner code that reaches postMessage can shape any
+     message it likes, so the facade only believes a reply carrying the nonce it
+     minted for THIS run. crypto.getRandomValues, never a counter: a guessable
+     nonce is not a nonce, and a fixed constant would be known to anyone who
+     read this file. */
+  function randomNonce() {
+    const bytes = new Uint8Array(16);
+    const source = (typeof globalThis !== 'undefined' && globalThis.crypto)
+      || (typeof self !== 'undefined' && self.crypto);
+    if (!source || typeof source.getRandomValues !== 'function') {
+      throw new Error('a secure random source is required to start the sandbox');
+    }
+    source.getRandomValues(bytes);
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
   function create(options) {
     const settings = options || {};
     const workerUrl = settings.workerUrl || 'assets/exercise-worker.js';
@@ -62,6 +78,7 @@
         try { instance = ensureWorker(); }
         catch (error) { reject({ reason: 'worker_error', message: String(error.message || error) }); return; }
         const limit = request.timeoutMs || defaultTimeout;
+        const nonce = randomNonce();
         let settled = false;
         const finish = value => {
           if (settled) return;
@@ -77,6 +94,9 @@
         }, limit);
         const onMessage = event => {
           const data = event.data || {};
+          // Not ours: a message from a previous run, or something the learner
+          // code posted itself. Either way it is not this run's answer.
+          if (data.nonce !== nonce) return;
           if (data.type !== 'result') return;
           finish({ ok: data.ok === true, stdout: data.stdout || '', error: data.error || '', outcomes: data.outcomes || [], ms: data.ms || 0 });
         };
@@ -88,6 +108,7 @@
         instance.addEventListener('error', onError);
         instance.postMessage({
           type: 'run',
+          nonce,
           code: request.code || '',
           checks: Array.isArray(request.checks) ? request.checks : [],
           answer: request.answer || null,

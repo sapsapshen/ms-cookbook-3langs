@@ -362,7 +362,12 @@ self.addEventListener('message', async event => {
   // postMessage cannot forge a passing result.
   const nonce = request.nonce || null;
   try {
-    const pyodide = await ensureRuntime();
+    // Started before the await so the main thread learns the download is under
+    // way. Without it the facade cannot tell a slow first run from an infinite
+    // loop, and charges the 13 MB to the learner's execution budget.
+    const ready = runtime ? Promise.resolve(runtime) : ensureRuntime();
+    reply({ type: 'loading', nonce });
+    const pyodide = await ready;
     const guard = ensureSealed(pyodide);
     // Re-arm before every run: learner code can strip sys.meta_path, and the
     // NEXT run has to still be sealed. `globals` is the private guard

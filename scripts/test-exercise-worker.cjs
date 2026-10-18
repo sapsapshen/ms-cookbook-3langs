@@ -172,10 +172,12 @@ function createWorkerHost(override) {
       replies.length = 0;
       const nonce = request && request.nonce !== undefined ? request.nonce : 'test-nonce';
       await handler({ data: Object.assign({ type: 'run' }, request, { nonce }) });
-      assert.equal(replies.length, 1, 'the worker must post exactly one reply per run');
-      assert.equal(replies[0].type, 'result');
-      assert.equal(replies[0].nonce, nonce, 'the result must echo the request nonce');
-      return replies[0];
+      assert.equal(replies.length, 2, 'the worker must post a loading notice and one result per run');
+      assert.equal(replies[0].type, 'loading');
+      assert.equal(replies[0].nonce, nonce);
+      assert.equal(replies[1].type, 'result');
+      assert.equal(replies[1].nonce, nonce, 'the result must echo the request nonce');
+      return replies[1];
     },
   };
 }
@@ -383,10 +385,11 @@ const CASES = [
   ['a runtime failure still answers with one outcome per check', async () => {
     // The worker's catch path must not hand the grader a short array: a
     // truncated outcomes list mislabels every check after the real fault.
-    const broken = fs.readFileSync(WORKER, 'utf8').replace(
-      'const pyodide = await ensureRuntime();',
+    const original = fs.readFileSync(WORKER, 'utf8');
+    const broken = original.replace(
+      'const pyodide = await ready;',
       'throw new Error("runtime exploded");');
-    assert.notEqual(broken, fs.readFileSync(WORKER, 'utf8'), 'the mutation must apply');
+    assert.notEqual(broken, original, 'the mutation must apply');
     const crashed = createWorkerHost(broken);
     const result = await crashed.run({
       code: 'print("hi")\n',
@@ -476,6 +479,7 @@ const CASES = [
       await settle();
       const { data, worker: posted } = box.take();
       seen.add(data.nonce);
+      posted.emit('message', { data: { type: 'loading', nonce: data.nonce } });
       posted.emit('message', { data: { type: 'result', nonce: data.nonce, ok: true, outcomes: [], ms: 1 } });
       await settled;
     }
@@ -495,6 +499,7 @@ const CASES = [
     const settled = sandbox.run({ code: 'pass\n', checks });
     await settle();
     const { data, worker: posted } = box.take();
+    posted.emit('message', { data: { type: 'loading', nonce: data.nonce } });
     posted.emit('message', {
       data: {
         type: 'result', nonce: 'not-the-right-nonce', ok: true, stdout: '',
@@ -521,14 +526,64 @@ const CASES = [
     ];
     const settled = sandbox.run({ code: 'while True:\n    pass\n', checks, timeoutMs: 20 });
     await settle();
-    box.take();
+    const { data, worker: posted } = box.take();
+    // The runtime is up: the worker said so, so the LEARNER's clock is running.
+    posted.emit('message', { data: { type: 'loading', nonce: data.nonce } });
     const result = await settled;
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'timeout');
     assert.match(result.error, /运行超时/);
+    assert.ok(!/下载/.test(result.error),
+      'a learner told to check for dead loops must not also be told it was a download');
     assert.equal(result.outcomes.length, checks.length, 'a timeout must not truncate outcomes');
     assert.deepEqual(result.outcomes.map(one => one.ok), [false, false]);
     assert.equal(box.spawned[0].terminated, true, 'a hung worker must be terminated');
+  }],
+
+  ['a runtime that never answers reports a DOWNLOAD timeout, not a dead loop', async () => {
+    // The 13 MB download must not be charged to the 15-second execution
+    // budget: on a slow connection the learner had not started running, and
+    // telling them to look for an infinite loop sent them the wrong way.
+    const box = createSandbox();
+    const phases = [];
+    const sandbox = box.api.create({
+      loadTimeoutMs: 25,
+      timeoutMs: 20,
+      onPhase: event => phases.push(event.phase),
+    });
+    const checks = [{ kind: 'assert_python', code: 'assert True', weight: 1 }];
+    const settled = sandbox.run({ code: 'pass\n', checks });
+    await settle();
+    box.take();  // never answers
+    const result = await settled;
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'load_timeout');
+    assert.match(result.error, /运行环境下载超时/);
+    assert.ok(!/死循环/.test(result.error), 'the download failure must not blame the learner code');
+    assert.equal(result.outcomes.length, checks.length);
+    assert.equal(box.spawned[0].terminated, true);
+    assert.deepEqual(phases, ['load_timeout'], 'the UI hook must learn why the run ended');
+  }],
+
+  ['the download timeout is not charged to the execution budget', async () => {
+    // The two clocks must not share a deadline. With a 500 ms load budget and a
+    // 120 ms run budget, a runtime that announces itself after 200 ms has to be
+    // believed -- under a single shared clock that run would already be dead --
+    // and the run budget must then start from the announcement.
+    const box = createSandbox();
+    const sandbox = box.api.create({ loadTimeoutMs: 500, timeoutMs: 120 });
+    const settled = sandbox.run({ code: 'pass\n', checks: [] });
+    await settle();
+    const { data, worker: posted } = box.take();
+    await new Promise(resolve => setTimeout(resolve, 200));
+    posted.emit('message', { data: { type: 'loading', nonce: data.nonce } });
+    await new Promise(resolve => setTimeout(resolve, 40));
+    posted.emit('message', {
+      data: { type: 'result', nonce: data.nonce, ok: true, stdout: 'done\n', outcomes: [], ms: 1 },
+    });
+    const result = await settled;
+    assert.equal(result.ok, true, 'the run must complete inside the execution budget');
+    assert.equal(result.stdout, 'done\n');
   }],
 
   ['the facade reports a crash with one outcome per check', async () => {

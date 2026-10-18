@@ -1,7 +1,19 @@
 /* Main-thread facade over the Pyodide worker.
    Nothing here touches the DOM beyond reporting state, so the same file can be
    reasoned about without a browser. The runtime is loaded lazily on first run
-   (G9): Pyodide never lands in the initial page payload. */
+   (G9): Pyodide never lands in the initial page payload.
+
+   Two clocks, not one. The first run has to download ~13 MB and compile a WASM
+   module before a single line of learner code executes, which on a slow
+   connection takes far longer than any exercise is allowed to run. Folding that
+   into the 15-second budget produced "运行超时（15秒），请检查是否有死循环" for a
+   learner whose code had not started yet. So the worker announces `loading` as
+   soon as it starts booting, and the execution clock starts from THAT message:
+   the download gets its own, much longer budget, and the timeout a learner sees
+   always describes their code.
+
+   Timers live here, not in the worker, because a worker being terminate()d
+   cannot be relied on to run a pending timeout callback. */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -9,6 +21,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   const DEFAULT_TIMEOUT = 15000;
+  /* Downloading and compiling Pyodide is a one-off, so it gets its own budget
+     rather than borrowing from the learner's execution allowance. */
+  const DEFAULT_LOAD_TIMEOUT = 120000;
 
   /* A per-run token. Learner code that reaches postMessage can shape any
      message it likes, so the facade only believes a reply carrying the nonce it
@@ -30,6 +45,10 @@
     const settings = options || {};
     const workerUrl = settings.workerUrl || 'assets/exercise-worker.js';
     const defaultTimeout = settings.timeoutMs || DEFAULT_TIMEOUT;
+    const loadTimeout = settings.loadTimeoutMs || DEFAULT_LOAD_TIMEOUT;
+    // Optional hook for Task 8's UI, called as the runtime starts and as the
+    // download gives out, so the panel can say so instead of looking hung.
+    const onPhase = typeof settings.onPhase === 'function' ? settings.onPhase : null;
     let worker = null;
     let queue = Promise.resolve();
 
@@ -80,23 +99,47 @@
         const limit = request.timeoutMs || defaultTimeout;
         const nonce = randomNonce();
         let settled = false;
+        // Only one timer is ever armed, and which one depends on whether the
+        // runtime has announced itself yet.
+        let timer = null;
         const finish = value => {
           if (settled) return;
           settled = true;
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           instance.removeEventListener('message', onMessage);
           instance.removeEventListener('error', onError);
           resolve(value);
         };
-        const timer = setTimeout(() => {
-          destroy();
-          finish(failed(`运行超时（${Math.round(limit / 1000)}秒），请检查是否有死循环`, request.checks, { ms: limit, reason: 'timeout' }));
-        }, limit);
+        const armLoadTimeout = () => {
+          if (timer) return;
+          timer = setTimeout(() => {
+            destroy();
+            if (onPhase) onPhase({ phase: 'load_timeout' });
+            finish(failed(
+              `运行环境下载超时（${Math.round(loadTimeout / 1000)}秒），请检查网络后重试`,
+              request.checks,
+              { ms: loadTimeout, reason: 'load_timeout' }));
+          }, loadTimeout);
+        };
+        const armRunTimeout = () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => {
+            destroy();
+            finish(failed(`运行超时（${Math.round(limit / 1000)}秒），请检查是否有死循环`, request.checks, { ms: limit, reason: 'timeout' }));
+          }, limit);
+        };
         const onMessage = event => {
           const data = event.data || {};
           // Not ours: a message from a previous run, or something the learner
           // code posted itself. Either way it is not this run's answer.
           if (data.nonce !== nonce) return;
+          if (data.type === 'loading') {
+            if (onPhase) onPhase({ phase: 'loading' });
+            // The download is over the moment the worker can talk to us; from
+            // here on the learner's clock is what matters.
+            armRunTimeout();
+            return;
+          }
           if (data.type !== 'result') return;
           finish({ ok: data.ok === true, stdout: data.stdout || '', error: data.error || '', outcomes: data.outcomes || [], ms: data.ms || 0 });
         };
@@ -106,6 +149,9 @@
         };
         instance.addEventListener('message', onMessage);
         instance.addEventListener('error', onError);
+        // Armed before the postMessage: a worker that never answers at all
+        // still has to time out somewhere.
+        armLoadTimeout();
         instance.postMessage({
           type: 'run',
           nonce,
@@ -136,5 +182,5 @@
     return { preload, run, destroy, get busy() { return worker !== null; } };
   }
 
-  return { DEFAULT_TIMEOUT, create };
+  return { DEFAULT_TIMEOUT, DEFAULT_LOAD_TIMEOUT, create };
 });

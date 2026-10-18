@@ -86,11 +86,15 @@ def test_round_trip_progress(site):
 
 
 def test_unknown_exercise_is_rejected(site):
+    """An id the corpus does not hold is not storable, but it is only that one
+    row that is unstorable: it is skipped and counted, never a refusal of the
+    batch."""
     client = reader(site)
     response = client.post(PROGRESS, json={'items': [
         {'chapter': 'chapter-999', 'exercise': 'ch999-ex01', 'passed': 1},
     ]})
-    assert response.status_code == 422
+    assert response.status_code == 201
+    assert response.json() == {'saved': 0, 'skipped': 1}
     assert client.get(PROGRESS).json()['items'] == []
 
 
@@ -99,7 +103,8 @@ def test_pending_chapter_is_rejected(site):
     response = client.post(PROGRESS, json={'items': [
         {'chapter': 'chapter-24', 'exercise': 'ch24-ex01', 'passed': 1},
     ]})
-    assert response.status_code == 422
+    assert response.status_code == 201
+    assert response.json()['skipped'] == 1
 
 
 def test_oversized_code_is_rejected(site):
@@ -107,7 +112,9 @@ def test_oversized_code_is_rejected(site):
     response = client.post(PROGRESS, json={'items': [
         {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'code': 'x' * 20001},
     ]})
-    assert response.status_code == 422
+    assert response.status_code == 201
+    assert response.json()['skipped'] == 1
+    assert client.get(PROGRESS).json()['items'] == []
 
 
 def test_repeat_writes_are_rate_limited(site):
@@ -507,7 +514,7 @@ def test_a_batch_bigger_than_the_write_quota_is_stored(site):
     client = reader(site)
     response = client.post(PROGRESS, json={'items': rows(25)})
     assert response.status_code == 201
-    assert response.json()['saved'] == 25
+    assert response.json() == {'saved': 25, 'skipped': 0}
 
 
 def test_sixty_rows_in_one_request_are_stored(site):
@@ -516,7 +523,7 @@ def test_sixty_rows_in_one_request_are_stored(site):
     client = reader(site)
     response = client.post(PROGRESS, json={'items': rows(60)})
     assert response.status_code == 201
-    assert response.json()['saved'] == 60
+    assert response.json() == {'saved': 60, 'skipped': 0}
     # 60 rows over the 9 real ids upsert onto all 9; none is lost.
     assert len(client.get(PROGRESS).json()['items']) == len(ALL_PAIRS)
 
@@ -558,6 +565,73 @@ def test_an_empty_batch_does_not_consume_the_quota(site):
 
 
 
+
+
+def test_a_row_with_an_out_of_range_pass_is_skipped_not_a_server_error(site):
+    """passed had no range check, so 2 reached the INSERT and tripped the column
+    CHECK -- a sqlite3.IntegrityError, i.e. a 500, over a reader's typo. It is a
+    validation failure now, and the batch survives it."""
+    client = reader(site)
+    for bad in (2, -1, 99):
+        response = client.post(PROGRESS, json={'items': [
+            {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'passed': bad},
+        ]})
+        assert response.status_code == 201, bad
+        assert response.json() == {'saved': 0, 'skipped': 1}, bad
+    assert client.get(PROGRESS).json()['items'] == []
+
+
+def test_one_bad_score_does_not_poison_the_batch(site):
+    """The end of the row-level bug: nine good rows plus a score of 1.7 used to
+    be a 422 that lost all ten. The nine are stored."""
+    client = reader(site)
+    good = [{'chapter': chapter, 'exercise': exercise, 'passed': 1, 'score': 0.5}
+            for chapter, exercise in ALL_PAIRS]
+    batch = list(good)
+    batch.insert(4, {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'score': 1.7})
+    response = client.post(PROGRESS, json={'items': batch})
+    assert response.status_code == 201
+    assert response.json() == {'saved': 9, 'skipped': 1}
+    stored = {item['exercise'] for item in client.get(PROGRESS).json()['items']}
+    assert stored == {exercise for _, exercise in ALL_PAIRS}
+
+
+def test_a_row_that_is_not_an_object_is_skipped(site):
+    """A hand-edited or half-written payload can hold a bare number where a row
+    belongs. It is skipped, not a 500."""
+    client = reader(site)
+    response = client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'passed': 1},
+        42, None, 'a string', [], {},
+    ]})
+    assert response.status_code == 201
+    assert response.json() == {'saved': 1, 'skipped': 5}
+    assert client.get(PROGRESS).json()['items'][0]['passed'] == 1
+
+
+def test_every_known_row_shape_is_still_validated(site):
+    """Skipping must not become a hole: the field rules the row-level pass used
+    to enforce all still hold for the rows that do validate."""
+    client = reader(site)
+    cases = [
+        {'chapter': '', 'exercise': SAMPLE_ID},
+        {'chapter': SAMPLE_CHAPTER, 'exercise': ''},
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'score': -0.1},
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'attempts': -1},
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'updated': -1},
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'selfAssessed': 'x' * 17},
+    ]
+    response = client.post(PROGRESS, json={'items': cases})
+    assert response.json() == {'saved': 0, 'skipped': len(cases)}
+
+
+def test_skipping_a_row_does_not_spend_extra_quota(site):
+    """A batch that stores nothing is still one request: the log row is written
+    once, before the loop, so retrying costs one write and not one per row."""
+    client = reader(site)
+    for _ in range(20):
+        assert client.post(PROGRESS, json={'items': [{'chapter': 'chapter-999', 'exercise': 'nope'}]}).status_code == 201
+    assert client.post(PROGRESS, json={'items': [{'chapter': 'chapter-999', 'exercise': 'nope'}]}).status_code == 429
 
 
 def test_the_batch_cap_is_a_ceiling_and_not_a_quota(site):

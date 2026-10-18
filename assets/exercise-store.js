@@ -82,12 +82,19 @@
        into seconds here too, which is what makes the unit correction reach
        records written before it: normalize() is the one place both the stored
        copy and an incoming server row pass through, so folding at the single
-       choke point needs no separate migration pass over localStorage. */
+       choke point needs no separate migration pass over localStorage.
+
+       `score` is clamped at BOTH ends, mirroring the server's `ge=0, le=1`. Only
+       the lower bound used to be clamped here, so a record scoring 1.7 left this
+       store and failed the server's validation — which, before per-row
+       validation, failed the reader's entire sync batch over one row. The clamp
+       belongs at the same place on both sides of the wire so the value a device
+       holds is always one the server can accept. */
     function normalize(record) {
       const source = record && typeof record === 'object' ? record : {};
       return {
         passed: source.passed === true,
-        score: typeof source.score === 'number' && source.score >= 0 ? source.score : 0,
+        score: typeof source.score === 'number' && source.score >= 0 ? Math.min(source.score, 1) : 0,
         attempts: typeof source.attempts === 'number' && source.attempts > 0 ? source.attempts : 0,
         code: typeof source.code === 'string' ? source.code.slice(0, CODE_LIMIT) : '',
         selfAssessed: typeof source.selfAssessed === 'string' ? source.selfAssessed : '',

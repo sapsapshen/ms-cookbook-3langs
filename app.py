@@ -136,7 +136,11 @@ class AnalyticsView(BaseModel):
 class ExerciseItem(BaseModel):
     chapter: str = Field(min_length=1, max_length=64)
     exercise: str = Field(min_length=1, max_length=64)
-    passed: int = Field(default=0)
+    # `ge/le` here, not only in the column CHECK: without them a `passed` of 2
+    # reached the INSERT and raised sqlite3.IntegrityError, which is a 500. The
+    # reader's typo would have cost them a server error instead of a validation
+    # message -- the same 500 a malformed score would have produced.
+    passed: int = Field(default=0, ge=0, le=1)
     score: float = Field(default=0, ge=0, le=1)
     code: str = Field(default='', max_length=20000)
     selfAssessed: str = Field(default='', max_length=16)
@@ -144,10 +148,15 @@ class ExerciseItem(BaseModel):
     updated: int = Field(default=0, ge=0)
 
 class ExerciseProgress(BaseModel):
-    """A sync batch. `max_length` is a ceiling on one request body, not a limit on
-    how much progress a reader may hold: the corpus plans 100+ exercises and a
-    reader who has worked through them has to be able to say so in one request."""
-    items: list[ExerciseItem] = Field(default_factory=list, max_length=1000)
+    """A sync batch.
+
+    `items` is a list of raw values rather than a list of ExerciseItem because a
+    batch is validated row by row, not as a unit: one malformed row must not
+    refuse the whole payload. See save_exercise_progress. The 1000 cap is a
+    defensive ceiling on the request body, not a limit on how much progress a
+    reader may hold -- the corpus plans 100+ exercises and a reader who has
+    worked through them all has to be able to say so in one request."""
+    items: list[Any] = Field(default_factory=list, max_length=1000)
 
 class ExerciseGrade(BaseModel):
     exercise: str = Field(min_length=1, max_length=64)
@@ -713,7 +722,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     @app.post('/api/exercises/progress',status_code=201)
     def save_exercise_progress(payload: ExerciseProgress, request: Request):
         u=require_user(request)
-        now=int(time.time()); saved=0
+        now=int(time.time()); saved=0; skipped=0
         with db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             # Writes are counted, not rows: progress is upserted, so a reader who
@@ -729,16 +738,25 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             # ExerciseProgress's cap, which is a ceiling on one request body.
             #
             # An empty batch is not a write and is not logged: the caller changed
-            # nothing, so charging it would let a client burn a reader's quota by
-            # re-syncing someone who has never opened an exercise.
+            # nothing, so charging it would let a client burn the quota by
+            # re-syncing a reader who has never done an exercise.
             if payload.items:
                 conn.execute('DELETE FROM exercise_progress_writes WHERE created<?',(now-60,))
                 count=conn.execute('SELECT count(*) FROM exercise_progress_writes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
                 if count>=20: raise HTTPException(429,'操作太频繁，请稍后再试')
                 conn.execute('INSERT INTO exercise_progress_writes VALUES (?,?,?)',(secrets.token_hex(16),u['id'],now))
-            for item in payload.items:
+            for row in payload.items:
+                # One row at a time, because one bad row used to poison the batch:
+                # a score of 1.7 anywhere in the payload failed the whole request
+                # and every other exercise in it lost an hour of work. A row is
+                # either storable or it is skipped and counted, and the response
+                # says how many were dropped so the client can see it.
+                try:
+                    item=ExerciseItem.model_validate(row)
+                except ValidationError as error:
+                    skipped+=1; LOGGER.info('Skipped an unreadable progress row: %s', error.errors()[:1]); continue
                 if item.chapter not in exercise_index or item.exercise not in exercise_index[item.chapter]:
-                    raise HTTPException(422,'练习不存在或尚未开放')
+                    skipped+=1; LOGGER.info('Skipped a progress row for an exercise that does not exist'); continue
                 # passed and score only ever ratchet up, exactly like the client's
                 # merge: a device replaying a stale snapshot must not un-pass work the
                 # server already accepted, and a client's own push-back carries the
@@ -774,7 +792,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                              (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,
                               self_assessment_state(item.selfAssessed),item.attempts,second_stamp(item.updated) or now))
                 saved+=1
-        return {'saved':saved}
+        return {'saved':saved,'skipped':skipped}
 
     @app.post('/api/exercises/grade')
     def grade_exercise(payload: ExerciseGrade):

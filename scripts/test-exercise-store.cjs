@@ -350,7 +350,34 @@ check('an incoming millisecond row no longer outranks a newer local second row',
   assert.equal(result.changed, 1);
 });
 
-/* --- Review round 3: slicing a snapshot into batches ---------------------- */
+/* --- Review round 3: batch size and the value that leaves this store ------- */
+
+check('a score above 1 is clamped to 1 on the way out', () => {
+  /* The server validates le=1. A record scoring 1.7 used to leave this store
+     untouched and fail there, and before per-row validation that failed the
+     reader's whole sync batch. The clamp belongs on both sides of the wire. */
+  const store = create({ storage: memoryStorage() });
+  store.write('chapter-1', 'ch01-ex01', { score: 1.7 });
+  assert.equal(store.read('chapter-1', 'ch01-ex01').score, 1);
+  assert.equal(store.snapshot()[0].score, 1);
+});
+
+check('a negative or non-numeric score still folds to 0', () => {
+  const storage = memoryStorage({
+    'ms-cookbook.exercise.v1': JSON.stringify({
+      'chapter-1': { 'ch01-ex01': { score: -3 }, 'ch01-ex02': { score: 'high' } },
+    }),
+  });
+  const store = create({ storage });
+  assert.equal(store.read('chapter-1', 'ch01-ex01').score, 0);
+  assert.equal(store.read('chapter-1', 'ch01-ex02').score, 0);
+});
+
+check('the clamp does not disturb a score inside the range', () => {
+  const store = create({ storage: memoryStorage() });
+  store.write('chapter-1', 'ch01-ex01', { score: 0.75 });
+  assert.equal(store.read('chapter-1', 'ch01-ex01').score, 0.75);
+});
 
 check('chunks splits the snapshot without dropping or duplicating a row', () => {
   /* The server counts write REQUESTS, so a reader with more rows than one

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager, closing, contextmanager
 from datetime import datetime, timedelta
 import hashlib
 import hmac
+import httpx
 import json
 import logging
 import os
@@ -17,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
@@ -49,6 +50,24 @@ class Wish(BaseModel):
 class AnalyticsView(BaseModel):
     page: str = Field(min_length=1, max_length=64)
     visitor: str = Field(min_length=16, max_length=128, pattern=r'^[A-Za-z0-9_-]+$')
+
+class ExerciseItem(BaseModel):
+    chapter: str = Field(min_length=1, max_length=64)
+    exercise: str = Field(min_length=1, max_length=64)
+    passed: int = Field(default=0)
+    score: float = Field(default=0, ge=0, le=1)
+    code: str = Field(default='', max_length=20000)
+    selfAssessed: str = Field(default='', max_length=16)
+    attempts: int = Field(default=0, ge=0)
+    updated: int = Field(default=0, ge=0)
+
+class ExerciseProgress(BaseModel):
+    items: list[ExerciseItem] = Field(default_factory=list, max_length=50)
+
+class ExerciseGrade(BaseModel):
+    exercise: str = Field(min_length=1, max_length=64)
+    answer: str = Field(default='', max_length=8000)
+    criteria: str = Field(default='', max_length=2000)
 
 
 def create_app(data_dir=None, analytics_runtime_dir=None):
@@ -88,6 +107,21 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         CREATE INDEX IF NOT EXISTS entries_user_time ON entries(user_id, created);
         CREATE TABLE IF NOT EXISTS wishes(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), text TEXT NOT NULL, created INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS wishes_user_time ON wishes(user_id, created);
+        CREATE TABLE IF NOT EXISTS exercise_progress(
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id),
+          chapter TEXT NOT NULL,
+          exercise TEXT NOT NULL,
+          code TEXT NOT NULL DEFAULT '',
+          passed INTEGER NOT NULL DEFAULT 0 CHECK(passed IN (0,1)),
+          score REAL NOT NULL DEFAULT 0,
+          self_assessed INTEGER NOT NULL DEFAULT 0 CHECK(self_assessed IN (0,1)),
+          attempts INTEGER NOT NULL DEFAULT 0,
+          updated INTEGER NOT NULL,
+          UNIQUE(user_id, chapter, exercise));
+        CREATE INDEX IF NOT EXISTS exercise_progress_user ON exercise_progress(user_id, updated);
+        CREATE TABLE IF NOT EXISTS exercise_progress_writes(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), created INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS exercise_progress_writes_user ON exercise_progress_writes(user_id, created);
         ''')
 
     @contextmanager
@@ -258,6 +292,14 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     book_data = json.loads(raw)
     # Keep notes attached to their original article when display numbers change.
     chapters = {c['id']: c.get('discussionId', c['id']) for c in book_data['chapters'] if c.get('status') != 'pending'}
+    # A progress row is only meaningful for an exercise the reader can actually open,
+    # so the index is filtered by the same open-chapter map: a pending chapter is not
+    # writable progress, only invisible content.
+    exercise_raw = (ROOT / 'assets/exercises.js').read_text(encoding='utf-8').split('=',1)[1].strip().rstrip(';')
+    exercise_data = json.loads(exercise_raw)
+    exercise_index = {cid: {item['id'] for item in chapter['exercises']['zh']} for cid, chapter in exercise_data['chapters'].items()}
+    exercise_index = {cid: ids for cid, ids in exercise_index.items() if cid in chapters}
+    exercise_ids = set().union(*exercise_index.values()) if exercise_index else set()
     admins = set(filter(None, os.getenv('MODERATOR_SUBS','').split(',')))
     analytics_pages = {'home','contents','paths','practice','contribute'} | {c['id'] for c in book_data['chapters']}
     analytics_titles = {'home':'首页','contents':'全书目录','paths':'阅读路径','practice':'真实任务库','contribute':'社区共建'}
@@ -567,6 +609,79 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             if row['user_id']!=u['id'] and u['sub'] not in admins: raise HTTPException(403,'只能删除自己发表的愿望')
             conn.execute('DELETE FROM wishes WHERE id=?',(wish_id,))
         return {'ok':True}
+
+    def grading_unavailable(detail):
+        # Grading is a bonus layer: it degrades to the reference answer plus a
+        # self-assessment instead of failing the exercise, so the fallback flag has
+        # to travel in the body -- an HTTPException would only carry `detail`.
+        return JSONResponse(status_code=503, content={'detail':detail, 'fallback':True}, headers={'x-sils-fallback':'1'})
+
+    @app.get('/api/exercises/progress')
+    def list_exercise_progress(request: Request):
+        u=user(request)
+        if not u: return {'items':[]}
+        with db() as conn:
+            rows=conn.execute('SELECT chapter,exercise,passed,score,code,self_assessed,attempts,updated FROM exercise_progress WHERE user_id=? ORDER BY updated DESC',(u['id'],)).fetchall()
+        items=[dict(row) for row in rows]
+        for item in items: item['selfAssessed']=item.pop('self_assessed') and 'graded' or ''
+        return {'items':items}
+
+    @app.post('/api/exercises/progress',status_code=201)
+    def save_exercise_progress(payload: ExerciseProgress, request: Request):
+        u=require_user(request)
+        now=int(time.time()); saved=0
+        with db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            # Writes are counted, not rows: progress is upserted, so a reader who
+            # resends the same exercise collapses into one row and a row count would
+            # never trip. The log is pruned in the same transaction that reads it.
+            conn.execute('DELETE FROM exercise_progress_writes WHERE created<?',(now-60,))
+            count=conn.execute('SELECT count(*) FROM exercise_progress_writes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
+            if count+len(payload.items)>20: raise HTTPException(429,'操作太频繁，请稍后再试')
+            conn.execute('INSERT INTO exercise_progress_writes VALUES (?,?,?)',(secrets.token_hex(16),u['id'],now))
+            for item in payload.items:
+                if item.chapter not in exercise_index or item.exercise not in exercise_index[item.chapter]:
+                    raise HTTPException(422,'练习不存在或尚未开放')
+                # passed and score only ever ratchet up, exactly like the client's
+                # merge: a device replaying a stale snapshot must not un-pass work the
+                # server already accepted, and a client's own push-back carries the
+                # merged values rather than a regressing one.
+                conn.execute('''INSERT INTO exercise_progress VALUES (?,?,?,?,?,?,?,?,?,?)
+                                ON CONFLICT(user_id,chapter,exercise) DO UPDATE SET
+                                code=excluded.code,passed=MAX(exercise_progress.passed,excluded.passed),
+                                score=MAX(exercise_progress.score,excluded.score),
+                                self_assessed=excluded.self_assessed,
+                                attempts=excluded.attempts,updated=excluded.updated''',
+                             (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,1 if item.selfAssessed else 0,item.attempts,item.updated or now))
+                saved+=1
+        return {'saved':saved}
+
+    @app.post('/api/exercises/grade')
+    def grade_exercise(payload: ExerciseGrade):
+        if payload.exercise not in exercise_ids: raise HTTPException(422,'练习不存在或尚未开放')
+        key=os.getenv('EXERCISE_LLM_KEY'); base=os.getenv('EXERCISE_LLM_BASE_URL')
+        if not key or not base: return grading_unavailable('LLM 评分未启用')
+        model=os.getenv('EXERCISE_LLM_MODEL','gpt-4o-mini')
+        prompt=('你是评分助手。按给定标准给答案打分，只输出 JSON。\n'
+                f'标准：{payload.criteria}\n答案：{payload.answer}\n'
+                '输出格式：{"score": 0 到 1 的小数, "feedback": "一句话点评"}')
+        try:
+            response=httpx.post(base.rstrip('/')+'/chat/completions',
+                headers={'Authorization':f'Bearer {key}'},
+                json={'model':model,'temperature':0,'messages':[{'role':'user','content':prompt}]},timeout=20)
+            if response.status_code//100!=2: raise RuntimeError(f'LLM 返回 {response.status_code}')
+            content=response.json()['choices'][0]['message']['content']
+        except Exception:
+            LOGGER.exception('Exercise grading unavailable')
+            return grading_unavailable('LLM 评分暂时不可用')
+        try:
+            verdict=json.loads(content)
+            score=max(0.0,min(1.0,float(verdict.get('score',0))))
+            feedback=str(verdict.get('feedback',''))[:500]
+        except (ValueError, TypeError):
+            LOGGER.exception('Exercise grading returned an unparsable verdict')
+            return grading_unavailable('评分结果无法解析')
+        return {'score':score,'feedback':feedback}
 
     @app.get('/')
     def index(): return FileResponse(ROOT/'index.html',headers={'Cache-Control':'no-cache'})

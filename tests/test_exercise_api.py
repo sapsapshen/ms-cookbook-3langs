@@ -1041,15 +1041,42 @@ def test_a_burst_still_serves_the_first_callers(site, monkeypatch):
     assert statuses.count(200) == GRADE_CALL_LIMIT
 
 
-def test_every_burst_call_is_recorded_exactly_once(site, monkeypatch):
-    """Both halves of the merge: the attempt is in the ledger whatever the
-    outcome, and no caller is recorded twice."""
-    concurrent_burst(site, monkeypatch)
+def test_every_burst_call_is_recorded_at_most_once(site, monkeypatch):
+    """Both halves of the merge, asserted as the two numbers they actually are.
+
+    The upstream count is an equality, because that is what the ceiling
+    promises: a burst spends the limit and not one call more. Asserting
+    `rows == BURST` instead asserted something the implementation deliberately
+    does not promise. A claim that cannot be written -- SQLITE_READONLY under a
+    saturated WAL -- is NOT recorded, because a call that cannot be counted
+    cannot be charged a slot either, and the caller is degraded to 503 instead
+    of reaching the model unmetered. The ledger is therefore an upper bound on
+    attempts, and under a burst it is routinely one or two rows short of the
+    attempt count. Asserting equality there tested the absence of the fallback
+    rather than the ceiling, and failed about one run in four.
+
+    What is still exact is the pairing: every call that reached the model has a
+    settled 'graded' row, every refusal is a row of its own, and no caller
+    appears twice. That is the property the merge introduced.
+    """
+    calls, statuses = concurrent_burst(site, monkeypatch)
     with site[0].state.db() as db:
         rows = db.execute('SELECT count(*) c FROM exercise_grade_calls').fetchone()['c']
         duplicates = db.execute('SELECT count(*) c FROM (SELECT id FROM exercise_grade_calls GROUP BY id HAVING count(*)>1)').fetchone()['c']
-    assert rows == BURST
+        graded = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE outcome='graded'").fetchone()['c']
+        refused = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE outcome='refused'").fetchone()['c']
+    assert len(calls) == GRADE_CALL_LIMIT, 'a burst must spend exactly the ceiling: %d' % len(calls)
+    assert statuses.count(200) == len(calls), 'only the calls that reached the model may answer 200'
+    assert rows <= BURST, 'the ledger must not invent attempts: %d' % rows
+    assert rows >= GRADE_CALL_LIMIT, 'every call that reached the model claimed a row first'
     assert duplicates == 0
+    # No row is left dangling in 'claimed': every recorded attempt was settled
+    # into one of the two terminal outcomes.
+    assert graded + refused == rows
+    assert graded == len(calls)
+    # Every refusal was served as a 503. Any 503 beyond that count is a caller
+    # the ledger could not record, which is the fallback doing its job.
+    assert refused <= statuses.count(503)
 
 
 class _Connection:

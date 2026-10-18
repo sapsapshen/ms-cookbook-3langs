@@ -1,1 +1,81 @@
-[]
+[
+  {
+    "id": "ch22-ex01",
+    "chapter": "chapter-22",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "按学习目标判断 LoRA 类型并配训练数据",
+    "prompt": "训练图像 LoRA 之前要先明确想让模型学什么。写函数 `plan(goal)`：\n\n`goal` 是 `\"style\"`、`\"character\"`、`\"product\"` 或 `\"concept\"` 四种之一。返回长度为 2 的列表 `[类型名, 训练数据要求]`：\n\n- `\"style\"` → `\"风格 LoRA\"`，数据要求 `\"同一画风，内容可不同\"`\n- `\"character\"` → `\"人物 LoRA\"`，数据要求 `\"同一人物，多角度多表情\"`\n- `\"product\"` → `\"商品 LoRA\"`，数据要求 `\"同一商品，多角度多光照\"`\n- `\"concept\"` → `\"概念 LoRA\"`，数据要求 `\"该概念的多种表现\"`\n\n传入这四种之外的值时抛出 `ValueError`。",
+    "starter": "def plan(goal):\n    # 返回 [类型名, 训练数据要求]\n    return []\n\nprint(plan('character'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert plan('style') == ['风格 LoRA', '同一画风，内容可不同'], plan('style')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan('character') == ['人物 LoRA', '同一人物，多角度多表情'], plan('character')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan('product') == ['商品 LoRA', '同一商品，多角度多光照'], plan('product')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan('concept') == ['概念 LoRA', '该概念的多种表现'], plan('concept')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('', 'style ', 'Style', 'styles', 'object', '人物'):\n    try:\n        plan(_bad)\n        assert False, '未知目标应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 22
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(plan('style'), list) and len(plan('style')) == 2",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "_PAIRS = {\n    'style': ('风格 LoRA', '同一画风，内容可不同'),\n    'character': ('人物 LoRA', '同一人物，多角度多表情'),\n    'product': ('商品 LoRA', '同一商品，多角度多光照'),\n    'concept': ('概念 LoRA', '该概念的多种表现'),\n}\nfor _g in sorted(_PAIRS):\n    _out = plan(_g)\n    assert _out == [_PAIRS[_g][0], _PAIRS[_g][1]], (_g, _out)\n    assert _out[0] != _PAIRS[_g][1], '类型名和数据要求不能混'\n_seen = set()\nfor _g in _PAIRS:\n    _seen.add(tuple(plan(_g)))\nassert len(_seen) == 4, '四种目标要给出四组不同结果'",
+        "weight": 18
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解四种 LoRA 的差别在于「学什么」而不是「怎么训练」"
+    },
+    "reference": "PAIRS = {\n    'style': ('风格 LoRA', '同一画风，内容可不同'),\n    'character': ('人物 LoRA', '同一人物，多角度多表情'),\n    'product': ('商品 LoRA', '同一商品，多角度多光照'),\n    'concept': ('概念 LoRA', '该概念的多种表现'),\n}\n\n\ndef plan(goal):\n    if goal not in PAIRS:\n        raise ValueError('unknown goal: ' + str(goal))\n    return list(PAIRS[goal])\n\nprint(plan('character'))",
+    "explanation": "本章把图像 LoRA 分成风格、人物、商品、概念四类，**区别在于想让模型学什么**，而不在于训练方法有什么不同 —— 用的都是同一套 LoRA 流程。所以这个函数就是一张「目标 → 类型 + 数据要求」的对照表。\n\n**四类里只有风格的数据要求是「内容可以不同」**。风格 LoRA 学的是色彩、线条、构图这些整体视觉表现，所以训练集里的画风一致即可，内容换成人物、动物、风景都行。其余三类学的都是某个具体对象的外观特征，就必须保证「是同一个对象」：人物要同一个人多角度多表情，商品要同一商品多角度多光照。这一条对应关系是本题的核心。\n\n**人物 LoRA 的目标恰恰是跨场景复用**。本章说训练完成后「可以通过提示词让这个人物以不同的状态出现在办公室、街道或雪山等不同场景中」—— 所以训练集里的背景和服装要有多样变化，模型才学得到「哪些属于这个人物、哪些属于场景」。同理，商品 LoRA 要多背景多光照。\n\n**返回列表而不是元组**，而且四组结果互不相同。判据主循环验证了这两点，所以返回四份相同内容的元组之类的实现会判不过。\n\n**严格匹配，不做大小写或空格容错**。题面把四种取值写死了，`'Style'`、`'style '`（带尾空格）、`'styles'` 都要抛 `ValueError`。用 `goal.lower()` 或 `goal.strip()` 的实现会在这条上判不过 —— 这不是判分过严，而是题面要求就是这四个精确取值。\n\n最后一条判据把四种目标逐一走一遍，同时检查四组结果互不相同 —— 这是专门防「把所有情况都返回同一份」的。边界诚实说明：这四种取值也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch22-ex02",
+    "chapter": "chapter-22",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断训练参数的职责",
+    "prompt": "DiffSynth 的 LoRA 训练有一批参数。下面哪些说法与本章的参数说明一致？（多选）\n\nA. `lora_rank` 影响可训练参数量\nB. `use_gradient_checkpointing` 用于减少训练时的显存占用\nC. `max_pixels` 控制训练图片允许的最大像素数\nD. `dataset_repeat` 决定训练要跑多少轮\nE. `learning_rate` 控制模型权重保存到哪个目录",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D 错在本章说 `dataset_repeat` 是「每轮训练中数据集重复使用的次数」，控制训练轮数的是 `num_epochs`。E 错在保存目录是 `output_path`。",
+    "explanation": "这一题考的是能不能把参数名和职责对上。D 和 E 是本章那张表里最容易混的两组。\n\n**`dataset_repeat` 与 `num_epochs` 是一对容易混的**。本章写得很清楚：`dataset_repeat` 是「每轮训练中数据集重复使用的次数」，`num_epochs` 才是「训练轮数」。前者决定一轮里走多少遍数据，后者决定一共走几轮 —— 数据量小的时候要靠 repeat 把一轮撑够，轮数不够就学不透。\n\n**`output_path` 才是保存目录**，写的是「LoRA 权重的保存目录」。E 把这个职责安到了 `learning_rate` 上。\n\n另外几组同样值得记住：`dataset_base_path` 是训练数据目录，`dataset_metadata_path` 是元数据文件路径，`lora_target_modules` 指定要加 LoRA 的模型模块，`dataset_num_workers` 是加载数据用的进程数量。\n\n本章还说明了调参的思路：可以根据训练数据和 GPU 显存调整 `learning_rate`、`num_epochs`、`dataset_repeat`、`lora_rank` 和 `max_pixels` 这几个参数 —— 注意这五个正好是显存与训练效果的主要抓手。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

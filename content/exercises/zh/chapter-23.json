@@ -1,1 +1,91 @@
-[]
+[
+  {
+    "id": "ch23-ex01",
+    "chapter": "chapter-23",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "为不同平台挑比例并判断要不要扩图",
+    "prompt": "同一张商品营销图要发到不同平台。写两个函数：\n\n`pick_ratios(platform)` 返回该平台常用的比例列表：`\"social\"` 返回 `[(1, 1), (4, 5)]`，`\"short_video\"` 返回 `[(9, 16)]`，`\"banner\"` 返回 `[(16, 9)]`，其他值返回 `[]`。\n\n`needs_outpaint(src, dst)` 判断是否需要扩图：`src` 与 `dst` 都是 `(宽, 高)`。两者比例相等时返回 `\"resize-only\"`（直接缩放即可）；`dst` 更宽或更高时返回 `\"outpaint\"`（要向新区域补内容）；否则返回 `\"crop\"`（目标更窄或更矮，只能裁切）。比例按 `宽 / 高` 比较。",
+    "starter": "def pick_ratios(platform):\n    # 返回比例列表\n    return []\n\n\ndef needs_outpaint(src, dst):\n    # 返回 \"resize-only\" / \"outpaint\" / \"crop\"\n    return \"resize-only\"\n\nprint(pick_ratios('banner'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('social') == [(1, 1), (4, 5)], pick_ratios('social')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('short_video') == [(9, 16)], pick_ratios('short_video')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('banner') == [(16, 9)], pick_ratios('banner')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('unknown') == [] and pick_ratios('') == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 100), (200, 200)) == 'resize-only', '等比例直接缩放'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_outpaint((100, 100), (400, 100)) == 'outpaint', '变宽要扩图'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 400), (100, 100)) == 'outpaint', '从竖版变正方形是变宽，需要向左右补内容'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_outpaint((100, 100), (9, 16)) == 'crop' and needs_outpaint((100, 100), (4, 5)) == 'crop'\nassert needs_outpaint((100, 100), (16, 9)) == 'outpaint'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 100), (200, 200)) == 'resize-only', '尺寸放大但 1:1 比例没变'\nassert needs_outpaint((100, 200), (50, 100)) == 'resize-only', '尺寸缩小但 1:2 比例没变'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _w in (1, 2, 4, 9, 16, 100):\n    for _h in (1, 5, 16, 100):\n        for _sw in (1, 3, 16):\n            for _sh in (1, 9, 50):\n                _src = (_sw, _sh)\n                for _dw, _dh in ((1, 1), (4, 5), (9, 16), (16, 9)):\n                    _sr = _sw / _sh\n                    _dr = _dw / _dh\n                    _want = 'resize-only' if _sr == _dr else ('outpaint' if _dr > _sr else 'crop')\n                    assert needs_outpaint(_src, (_dw, _dh)) == _want, (_src, (_dw, _dh), needs_outpaint(_src, (_dw, _dh)), _want)\nassert pick_ratios('social') == [(1, 1), (4, 5)]\nassert pick_ratios('short_video') == [(9, 16)]\nassert pick_ratios('banner') == [(16, 9)]\nassert pick_ratios('unknown') == []\nassert pick_ratios('') == []\nassert pick_ratios('Social') == [], '平台名精确匹配'\n_all = set()\nfor _p in ('social', 'short_video', 'banner'):\n    for _r in pick_ratios(_p):\n        _all.add(_r)\nassert len(_all) == 4, '四个平台一共四个不同比例'",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解扩图与缩放的差别在于比例而非尺寸"
+    },
+    "reference": "RATIOS = {\n    'social': [(1, 1), (4, 5)],\n    'short_video': [(9, 16)],\n    'banner': [(16, 9)],\n}\n\n\ndef pick_ratios(platform):\n    return list(RATIOS.get(platform, []))\n\n\ndef needs_outpaint(src, dst):\n    sr = src[0] / src[1]\n    dr = dst[0] / dst[1]\n    if sr == dr:\n        return 'resize-only'\n    if dr > sr:\n        return 'outpaint'\n    return 'crop'\n\nprint(pick_ratios('banner'))",
+    "explanation": "本章说「如果直接对原图进行缩放，可能会导致商品主体被拉伸或压缩」，所以要用扩图来适配比例。这个函数把那段话变成可判断的规则。\n\n**判断依据是比例，不是绝对尺寸**。`needs_outpaint((100, 100), (200, 200))` 返回 `\"resize-only\"`：图片放大了一倍，但长宽比没变，主体不会被拉伸。判据里特意测了两组同比例但尺寸不同的输入：`(100,100) → (200,200)`（放大一倍）和 `(100,200) → (50,100)`（缩小一半），它们都是 `\"resize-only\"`。\n\n**`outpaint` 与 `crop` 的分界是目标比例更大还是更小**。目标更宽更扁（16:9 相对竖版原图）需要向左右补背景、水花、冰块 —— 这是本章说的扩图；反过来，从竖版原图变成 1:1 或 4:5 时目标比例更大（更宽），所以是 `\"outpaint\"` —— 向左右补背景，不是裁掉上下。只有目标比例**更小**时（比如竖版原图变 9:16）才裁切。主判据覆盖了这三种方向。所以本章那一节才说要分别生成 1:1、4:5、9:16 和 16:9 四种比例，而不是一张图直接缩放。\n\n**平台和比例的对应关系**：`social` 是 1:1 或 4:5，`short_video` 是 9:16，`banner` 是 16:9。未知平台返回 `[]` 而不是抛异常 —— 题面写的就是返回空列表。\n\n**相等那一支必须存在**。先判 `dr > sr` 还是先判 `sr == dr` 都可以 —— 实测两种顺序在判据覆盖的所有输入上结果完全相同，因为等比例时 `dr > sr` 天然不成立。但如果干脆不写相等这一支，等比例就会被当成裁切返回，`needs_outpaint((100,100), (200,200))` 就会判错。\n\n主判据把源图比例 3×3 共 9 组 × 目标比例 4 组共 36 组输入逐组按「先等、再大、否则小」的顺序重算期望值 —— 这是专门防「把答案背下来」的。边界诚实说明：这 36 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch23-ex02",
+    "chapter": "chapter-23",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "为营销图编辑写出 Prompt 约束",
+    "prompt": "你要把一张饮料营销图里的柠檬改成青柠，同时保证商品信息不出错。请写出你会怎么在 Prompt 里表达约束：哪些内容必须保持不变、哪些内容允许修改、以及你会怎么验证改完之后商品本身没有被改错。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否明确区分「保持不变」与「允许修改」两类内容、是否提到品牌 Logo 与包装结构属于核心视觉信息不可动、是否说明验证方式（对比前后图、检查 Logo 与包装细节）"
+    },
+    "reference": "Prompt 要分成两部分写，本章的做法是：\n\n保持不变的部分：饮料瓶主体、品牌 Logo、冰块、水花、整体构图。本章的例子里是「保持饮料瓶主体、品牌 Logo、冰块、水花和整体构图基本不变」。注意「基本不变」这个措辞 —— 生成模型不能保证像素级一致，所以约束要写成倾向而不是绝对要求。\n\n允许修改的部分：只点名要改的那一处。本章写的是「将画面右下角的黄色柠檬修改为绿色青柠」，位置和颜色都说清楚了，避免模型顺手把别的东西也换了。\n\n为什么这么写：本章说「需要明确区分需要保留的内容和允许修改的内容」，这样「可以减少模型对商品主体的重新生成」。如果只说「改成青柠」，模型很可能连瓶子一起重画 —— 而饮料瓶的外观、包装结构、品牌 Logo 属于商品的核心视觉信息，变了就「可能与实际商品不一致」。\n\n验证方式：改完之后把前后图并排比。重点看三处：① 品牌 Logo 的字和位置有没有变；② 包装结构和配色有没有被重画；③ 除了柠檬之外还有没有别的东西被动过（背景里可能被换掉的东西）。这三项都过才算合格，不合格就再调 Prompt 的约束部分。",
+    "explanation": "这道题对应本章那一句核心：「在使用图像生成模型进行编辑时，需要明确区分需要保留的内容和允许修改的内容」。这不是提示词技巧，是**商品营销图的特殊要求**。\n\n普通修图只要好看就行，营销图不行 —— 瓶子的外观、包装结构、品牌 Logo 一旦变化，图片就和真实商品不符了，这样的图不能用来做宣传。本章那句「生成的图片就可能与实际商品不一致」说的就是这个后果。\n\n所以两段式 Prompt 里的第一段（保持什么不变）是**业务约束**而不是描述性文字，它承载的是法律责任层面的要求。用「基本不变」而非「完全不变」也是有讲究的：生成模型做不到像素级一致，写成绝对要求只会让模型在两个目标之间乱猜。\n\n第三问的验证环节容易被当成多余。本章的编辑流程是「生成 → 检查」，但检查需要知道看什么 —— 商标、包装结构、以及有没有动不该动的地方。这三项恰好对应 Prompt 里写的那三类内容，前后是对得上的。\n\n这题跑不了真实的图像编辑，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的写法。"
+  }
+]

@@ -1,1 +1,92 @@
-[]
+[
+  {
+    "id": "ch25-ex01",
+    "chapter": "chapter-25",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "实现 Temperature 与 Top-k 采样",
+    "prompt": "模型给出每个候选 Token 的 Logit（Softmax 之前的原始分数）。写两个函数：\n\n`softmax(logits, temperature)`：先把每个 Logit 除以 `temperature`，再取指数并归一化，返回概率列表。`temperature` 小于等于 0 时抛出 `ValueError`。\n\n`top_k_sample(logits, k, temperature=1.0)`：按概率从高到低排序，保留前 `k` 个候选，把它们的概率重新归一化后返回一个长度 `k` 的字典，键是候选原来的下标，值是重新归一化后的概率。`k` 超过候选总数时按总数处理，`k` 小于 1 时抛出 `ValueError`。",
+    "starter": "import math\n\n\ndef softmax(logits, temperature):\n    # 返回概率列表\n    return []\n\n\ndef top_k_sample(logits, k, temperature=1.0):\n    # 返回 {下标: 重新归一化后的概率}\n    return {}\n\nprint(softmax([1.0, 2.0, 3.0], 1.0))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "p = softmax([0.0, 0.0, 0.0], 1.0)\nassert all(abs(x - 1 / 3) < 1e-12 for x in p), p",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = softmax([0.0, 0.0], 1.0)\nassert abs(sum(p) - 1.0) < 1e-12, p",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "import math\n_lg = [1.0, 2.0, 4.0]\n_hot = softmax(_lg, 0.5)\n_cold = softmax(_lg, 8.0)\nassert _hot[2] > _cold[2], 'T 小的时候高概率候选的优势更强'\nassert _hot[0] < _cold[0], 'T 大的时候分布更平缓'\n_want = softmax([z / 0.5 for z in _lg], 1.0)\nassert all(abs(_hot[i] - _want[i]) < 1e-12 for i in range(3)), '必须先除以 temperature 再 softmax'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (0, 0.0, -1.0, -0.5):\n    try:\n        softmax([1.0, 2.0], _bad)\n        assert False, 'temperature 必须为正: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "d = top_k_sample([1.0, 2.0, 3.0], 2)\nassert sorted(d) == [1, 2], d",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "d = top_k_sample([1.0, 2.0, 3.0], 2)\nassert abs(sum(d.values()) - 1.0) < 1e-12, d",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "d = top_k_sample([1.0, 2.0, 3.0], 5)\nassert sorted(d) == [0, 1, 2], 'k 超过总数时按总数处理'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (0, -1):\n    try:\n        top_k_sample([1.0, 2.0], _bad)\n        assert False, 'k 至少为 1: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (1, 2, 3, 5, 7):\n    for _shift in (-3.0, 0.0, 4.0):\n        _lg = [i * 0.5 + _shift for i in range(_n)]\n        for _t in (0.5, 1.0, 3.0):\n            _p = softmax(_lg, _t)\n            assert abs(sum(_p) - 1.0) < 1e-9, (_n, _shift, _t, _p)\n            _ref = softmax([z / _t for z in _lg], 1.0)\n            for _i in range(_n):\n                assert abs(_p[_i] - _ref[_i]) < 1e-12, ('temperature 必须参与运算', _n, _shift, _t, _i, _p[_i], _ref[_i])\n            for _bad in (0, 0.0, -1.0):\n                try:\n                    softmax(_lg, _bad)\n                    assert False, 'temperature 必须为正: %r' % (_bad,)\n                except ValueError:\n                    pass\n            for _k in range(1, _n + 2):\n                _d = top_k_sample(_lg, _k, _t)\n                _kk = min(_k, _n)\n                assert len(_d) == _kk, (_n, _k, _t, _d)\n                assert abs(sum(_d.values()) - 1.0) < 1e-9, ('top-k 必须重新归一化', _n, _k, _t, _d)\n                _order = sorted(_lg, reverse=True)[:_kk]\n                _keep = sorted(_lg.index(v) for v in _order)\n                assert sorted(_d) == _keep, ('保留的必须是概率最高的几个', _n, _k, _t, _d)\n                _p2 = softmax(_lg, _t)\n                _want = [_p2[i] / sum(_p2[j] for j in _keep) for i in _keep]\n                for _i, _w in zip(_keep, _want):\n                    assert abs(_d[_i] - _w) < 1e-9, (_n, _k, _t, _i, _d[_i], _w)\n                for _bad in (0, -1):\n                    try:\n                        top_k_sample(_lg, _bad, _t)\n                        assert False, 'k 至少为 1: %r' % (_bad,)\n                    except ValueError:\n                        pass",
+        "weight": 34
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否分清「模型算分布」和「解码策略选候选」两件事"
+    },
+    "reference": "import math\n\n\ndef softmax(logits, temperature):\n    if temperature <= 0:\n        raise ValueError('temperature must be positive')\n    scaled = [z / temperature for z in logits]\n    top = max(scaled)\n    exps = [math.exp(z - top) for z in scaled]\n    total = sum(exps)\n    return [e / total for e in exps]\n\n\ndef top_k_sample(logits, k, temperature=1.0):\n    if k < 1:\n        raise ValueError('k must be at least 1')\n    probs = softmax(logits, temperature)\n    order = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)\n    keep = order[:min(k, len(probs))]\n    total = sum(probs[i] for i in keep)\n    return {i: probs[i] / total for i in keep}\n\nprint(softmax([1.0, 2.0, 3.0], 1.0))",
+    "explanation": "本章把文本生成拆成两个紧密关联的过程：模型根据上下文算出下一个 Token 的概率分布，解码策略再从这个分布里决定实际输出哪���。这两个函数正好对应两步。\n\n**Temperature 是先除再 softmax**。公式是 `exp(z_i / T)` 再归一化。`T` 小的时候高概率 Token 的优势被放大，`T` 大的时候分布变平。这里有个陷阱：**Logit 相同的输入无法验证是否除以了 T**。两个相同的 Logit 除以任何 T 之后仍然相同，结果永远是各 0.5，漏掉除法也看不出来。所以判据用的是 `[1.0, 2.0, 4.0]` 这种不等 Logit，并且逐项与「先除以 T 再按 T=1 做 softmax」的结果比对。\n\n**`temperature <= 0` 要抛异常**。T 等于 0 会导致除零，T 为负数会让概率失去意义。判据用 0、0.0、-1.0、-0.5 四组逐一验证。\n\n**Top-k 是「先取前 k，再重新归一化」**，不是「取前 k 但概率不变」。判据里专门验证了两件事：`sum(d.values()) == 1`，以及每个值等于原概率除以这 k 个之和。漏掉重新归一化的话，`top_k_sample([1.0, 2.0, 3.0], 2)` 的和就不等于 1。\n\n**保留的是概率最高的 k 个下标**。判据主循环对 5 档候选数 × 3 档 Logit 偏移 × 3 档温度 × 逐个 k 值共 315 组输入，用「按概率降序取前 k 个下标」重算期望字典并逐键比对。注意 `sorted(_lg.index(v) for v in _order)` 这种写法在 Logit 有重复值时可能取到第一个匹配下标，所以主判据的 Logit 用的是严格递增的等差数列，避免这种歧义。\n\n主判据对每一组输入都额外做两件事：与「先除 T 再 softmax」的结果逐项比对，以及重复验证非正 temperature 与 k < 1 都要抛异常，这是专门防「把答案背下来」的。边界诚实说明：这 315 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch25-ex02",
+    "chapter": "chapter-25",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断解码策略的适用场景",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. 贪婪解码每一步都选概率最高的 Token，确定性强，但不一定得到整体最优的文本\nB. Temperature 越小，概率分布越平缓，低概率 Token 获得更多机会\nC. Top-k 固定保留概率最高的 k 个候选，k 越小输出越保守\nD. Top-p 按累计概率达到阈值 p 的最小候选集合采样，候选数量随分布动态变化\nE. 生成内容容易趋于是贪婪解码的固有缺陷，可以通过随机采样缓解",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B 错在本章的说法正好相反：当 T 较小时，高概率 Token 的优势会进一步增强，分布更集中、输出更稳定；T 较大时分布才更平缓。",
+    "explanation": "本章这一节把几个概念的关系讲清楚了，四个说法分别对应其中一段。\n\nA 和 E 出自贪婪解码那一段。本章说贪婪解码「具有较强的确定性，但连续选择局部最高概率的 Token，并不一定能够获得整体质量最优的文本，同时生成内容也容易趋于单一」—— 而「为了提高生成结果的多样性，生成式语言模型通常还会采用随机采样」。E 正是这个因果关系。\n\nC 对应 Top-k。本章说 Top-k「仅保留概率最高的 k 个候选 Token，并在这些候选 Token 中重新归一化概率后进行采样」，作用是「过滤大量概率较低的 Token，减少明显不合理内容被选中的可能性」。所以 k 越小候选集合越小，输出越保守。\n\nD 对应 Top-p。本章特别强调它「不固定候选 Token 的数量」，而是「按照概率从高到低排列，选择累计概率达到阈值 p 的最小候选集合」。所以模型预测确定时少量 Token 就够，模型犹豫时会保留更多 —— 这正是它与 Top-k 的关键差别。\n\nB 是把方向说反了。这类「大小搞反」的错误在解码策略里很常见，因为直觉上容易把「温度调高」理解成「更尖锐」。本章的表述是明确的：T 小 → 高概率优势增强 → 更稳定；T 大 → 分布平缓 → 更多样。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

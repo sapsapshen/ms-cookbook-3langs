@@ -24,10 +24,12 @@ def test_chapter_payload_shape_unchanged():
 
 
 def test_i18n_editions_still_complete():
+    chapter_ids = [chapter['id'] for chapter in book_data()['chapters']]
     for code in ('en', 'es'):
         raw = (ROOT / 'assets' / 'content-i18n' / f'{code}.js').read_text(encoding='utf-8')
-        assert 'window.MS_ARTICLE' in raw, f'{code} edition lost its global'
-        assert '"chapter-1"' in raw, f'{code} edition lost chapter data'
+        assert f'window.MS_ARTICLE.{code}' in raw, f'{code} edition lost or mismatched its global'
+        for chapter_id in chapter_ids:
+            assert f'"{chapter_id}"' in raw, f'{code} edition lost {chapter_id}'
         assert len(raw) > 100_000, f'{code} edition looks truncated'
 
 
@@ -56,6 +58,9 @@ def test_locale_key_parity():
         return set(re.findall(r"^\s*'([^']+)':", path.read_text(encoding='utf-8'), re.M))
     base = ROOT / 'assets' / 'locale'
     zh = keys(base / 'zh.js')
+    # Floor on the match count: if the quote style ever changes, every file
+    # would return an empty set and the parity check would pass vacuously.
+    assert len(zh) > 100, f'locale key regex matched only {len(zh)} keys -- parser is broken'
     for code in ('en', 'es'):
         other = keys(base / f'{code}.js')
         assert other == zh, f'{code}.js key set diverges: {sorted(zh ^ other)[:10]}'

@@ -19,7 +19,9 @@ from zoneinfo import ZoneInfo
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
@@ -142,7 +144,10 @@ class ExerciseItem(BaseModel):
     updated: int = Field(default=0, ge=0)
 
 class ExerciseProgress(BaseModel):
-    items: list[ExerciseItem] = Field(default_factory=list, max_length=50)
+    """A sync batch. `max_length` is a ceiling on one request body, not a limit on
+    how much progress a reader may hold: the corpus plans 100+ exercises and a
+    reader who has worked through them has to be able to say so in one request."""
+    items: list[ExerciseItem] = Field(default_factory=list, max_length=1000)
 
 class ExerciseGrade(BaseModel):
     exercise: str = Field(min_length=1, max_length=64)
@@ -714,10 +719,23 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             # Writes are counted, not rows: progress is upserted, so a reader who
             # resends the same exercise collapses into one row and a row count would
             # never trip. The log is pruned in the same transaction that reads it.
-            conn.execute('DELETE FROM exercise_progress_writes WHERE created<?',(now-60,))
-            count=conn.execute('SELECT count(*) FROM exercise_progress_writes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
-            if count+len(payload.items)>20: raise HTTPException(429,'操作太频繁，请稍后再试')
-            conn.execute('INSERT INTO exercise_progress_writes VALUES (?,?,?)',(secrets.token_hex(16),u['id'],now))
+            #
+            # The quota counts REQUESTS, and deliberately not rows: charging for
+            # row count made the ceiling a function of how much progress a reader
+            # had accumulated. Past 20 rows every sync was refused, the refusal
+            # changed nothing on the client, so the next sync sent the same rows
+            # and was refused too -- a deadlock that could not clear itself and
+            # grew more certain with the corpus. Rows are bounded separately by
+            # ExerciseProgress's cap, which is a ceiling on one request body.
+            #
+            # An empty batch is not a write and is not logged: the caller changed
+            # nothing, so charging it would let a client burn a reader's quota by
+            # re-syncing someone who has never opened an exercise.
+            if payload.items:
+                conn.execute('DELETE FROM exercise_progress_writes WHERE created<?',(now-60,))
+                count=conn.execute('SELECT count(*) FROM exercise_progress_writes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
+                if count>=20: raise HTTPException(429,'操作太频繁，请稍后再试')
+                conn.execute('INSERT INTO exercise_progress_writes VALUES (?,?,?)',(secrets.token_hex(16),u['id'],now))
             for item in payload.items:
                 if item.chapter not in exercise_index or item.exercise not in exercise_index[item.chapter]:
                     raise HTTPException(422,'练习不存在或尚未开放')

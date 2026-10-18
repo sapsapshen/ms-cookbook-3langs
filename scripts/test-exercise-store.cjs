@@ -350,6 +350,39 @@ check('an incoming millisecond row no longer outranks a newer local second row',
   assert.equal(result.changed, 1);
 });
 
+/* --- Review round 3: slicing a snapshot into batches ---------------------- */
+
+check('chunks splits the snapshot without dropping or duplicating a row', () => {
+  /* The server counts write REQUESTS, so a reader with more rows than one
+     batch holds sends them in slices. Every row must appear exactly once. */
+  const store = create({ storage: memoryStorage() });
+  for (let i = 1; i <= 25; i += 1) store.write('chapter-1', `ch01-ex${String(i).padStart(2, '0')}`, { passed: true });
+  const parts = store.chunks(10);
+  assert.deepEqual(parts.map(part => part.length), [10, 10, 5]);
+  const flat = parts.flat();
+  assert.equal(flat.length, 25);
+  assert.equal(new Set(flat.map(row => row.exercise)).size, 25);
+  assert.deepEqual(flat, store.snapshot());
+});
+
+check('chunks on an empty store returns no batches', () => {
+  const store = create({ storage: memoryStorage() });
+  assert.deepEqual(store.chunks(10), []);
+});
+
+check('chunks falls back to one batch for a size it cannot use', () => {
+  /* A zero, a negative number or nothing at all must not return an empty array
+     of batches — that is the shape that would silently sync nothing. */
+  const store = create({ storage: memoryStorage() });
+  store.write('chapter-1', 'ch01-ex01', {});
+  store.write('chapter-2', 'ch02-ex01', {});
+  for (const size of [undefined, 0, -5, 2.5, 'ten']) {
+    const parts = store.chunks(size);
+    assert.equal(parts.length, 1, `size ${size}`);
+    assert.equal(parts[0].length, 2, `size ${size}`);
+  }
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

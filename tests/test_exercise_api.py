@@ -485,3 +485,86 @@ def test_the_column_list_the_migration_uses_matches_the_served_table(site):
     """The DDL is a module constant shared by both paths; a drift between the
     fresh-create and the rebuild would mean deployed and new databases disagree."""
     assert EXERCISE_PROGRESS_COLUMNS in db_sql(site[0])
+
+
+# --- Review round 3: the batch must not be a ceiling on how much a reader can
+# sync, and one bad row must not decide the fate of the others ---------------
+
+ALL_PAIRS = [(chapter, exercise) for chapter, exercise in ANY_EXERCISE]
+
+
+def rows(count, **overrides):
+    """`count` rows cycling through the real corpus, so a batch can be bigger
+    than the nine exercises that exist today without inventing ids."""
+    return [dict({'chapter': chapter, 'exercise': exercise, 'passed': 1, 'score': 0.5}, **overrides)
+            for chapter, exercise in (ALL_PAIRS * count)[:count]]
+
+
+def test_a_batch_bigger_than_the_write_quota_is_stored(site):
+    """The deadlock: `count + len(items) > 20` meant a reader past 20 rows of
+    progress could never sync again. 25 rows in one request used to be a 429 and
+    is now stored whole."""
+    client = reader(site)
+    response = client.post(PROGRESS, json={'items': rows(25)})
+    assert response.status_code == 201
+    assert response.json()['saved'] == 25
+
+
+def test_sixty_rows_in_one_request_are_stored(site):
+    """The second ceiling: `max_length=50` answered 51 rows with a 422. The cap
+    now sits far above any plausible corpus."""
+    client = reader(site)
+    response = client.post(PROGRESS, json={'items': rows(60)})
+    assert response.status_code == 201
+    assert response.json()['saved'] == 60
+    # 60 rows over the 9 real ids upsert onto all 9; none is lost.
+    assert len(client.get(PROGRESS).json()['items']) == len(ALL_PAIRS)
+
+
+def test_the_quota_still_counts_requests_not_rows(site):
+    """Removing the row term must not remove the limit: twenty single-row syncs
+    in a minute is twenty writes, and the twenty-first is refused."""
+    client = reader(site)
+    body = {'items': [{'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'passed': 1}]}
+    for _ in range(20):
+        assert client.post(PROGRESS, json=body).status_code == 201
+    assert client.post(PROGRESS, json=body).status_code == 429
+
+
+def test_a_refused_sync_is_not_charged_twice(site):
+    """The refusal happens inside the transaction that logs the write, so a
+    reader who retries after the window opens is not penalised for the 429."""
+    client = reader(site)
+    body = {'items': [{'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'passed': 1}]}
+    for _ in range(25):
+        client.post(PROGRESS, json=body)
+    with client.app.state.db() as db:
+        rows_logged = db.execute('SELECT count(*) c FROM exercise_progress_writes').fetchone()['c']
+    assert rows_logged == 20
+
+
+def test_an_empty_batch_does_not_consume_the_quota(site):
+    """`{'items': []}` writes nothing, so charging it would let a client spend a
+    reader's whole minute re-syncing a reader who has never opened an exercise.
+    It answers 201 with nothing saved and leaves the log empty."""
+    client = reader(site)
+    for _ in range(30):
+        assert client.post(PROGRESS, json={'items': []}).status_code == 201
+    with client.app.state.db() as db:
+        rows_logged = db.execute('SELECT count(*) c FROM exercise_progress_writes').fetchone()['c']
+    assert rows_logged == 0
+    assert client.post(PROGRESS, json={'items': [{'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID}]}).status_code == 201
+
+
+
+
+
+
+def test_the_batch_cap_is_a_ceiling_and_not_a_quota(site):
+    """1000 is far above the corpus; a body past it is still refused as too
+    large, because it is a bound on one request and nothing more."""
+    client = reader(site)
+    response = client.post(PROGRESS, json={'items': rows(1001)})
+    assert response.status_code == 422
+
+

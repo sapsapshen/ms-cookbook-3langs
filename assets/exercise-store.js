@@ -178,6 +178,30 @@
       return rows;
     }
 
+    /* Split the snapshot into batches of at most `size` rows.
+
+       The server accepts a batch far larger than any plausible corpus (its cap
+       is a ceiling on one request body, not on how much progress a reader may
+       hold), so this is not needed to get a reader's progress through. It is
+       needed because the server counts WRITE REQUESTS against a per-minute
+       quota: a reader who works through the whole corpus has well over one
+       batch worth of rows, and sending them in slices lets a partial sync
+       succeed instead of refusing all of it.
+
+       `size` is coerced to a positive integer and falls back to the whole
+       snapshot, so a caller passing nothing, a zero or a negative number gets
+       one batch rather than an empty array of batches — the shape that used to
+       be the whole behaviour. */
+    function chunks(size) {
+      const rows = snapshot();
+      const step = Number.isInteger(size) && size > 0 ? size : rows.length || 1;
+      const parts = [];
+      for (let index = 0; index < rows.length; index += step) {
+        parts.push(rows.slice(index, index + step));
+      }
+      return parts;
+    }
+
     /* Merge with the server.
 
        `passed` and `score` are MONOTONE across the merge, exactly like the
@@ -294,7 +318,7 @@
       return store;
     }
 
-    const store = { available, read, write, snapshot, merge, chapterSummary, summary, reset };
+    const store = { available, read, write, snapshot, chunks, merge, chapterSummary, summary, reset };
     return store;
   }
 

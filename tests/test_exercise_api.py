@@ -7,7 +7,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from itsdangerous import TimestampSigner
-from app import EXERCISE_PROGRESS_COLUMNS, GRADE_CALL_LIMIT, create_app
+from pydantic import BaseModel, ValidationError, field_validator
+from app import EXERCISE_PROGRESS_COLUMNS, GRADE_CALL_LIMIT, create_app, unreadable_row_reasons
 
 ROOT_ID = __import__('pathlib').Path(__file__).resolve().parent.parent
 
@@ -886,6 +887,61 @@ def test_an_unknown_exercise_row_is_logged_without_its_id(site, caplog):
     assert MARKER not in log
 
 
+# The shape this file's log tests cannot reach: ExerciseItem has no custom
+# validator, so pydantic never fills `ctx` for it and 'input' is the only key
+# carrying the reader's words. A model with a validator is the case the
+# denylist shape cannot survive.
+CTX_MARKER = 'SECRET-IN-CTX-MARKER'
+
+
+class ValidatorModel(BaseModel):
+    """A model whose only field is rejected by a custom validator.
+
+    pydantic 2.14 puts the validator's own ValueError under `ctx`, and the
+    error message under `msg`. Both can hold whatever the validator put there,
+    which is why the production helper is an allowlist.
+    """
+
+    answer: str = ''
+
+    @field_validator('answer')
+    @classmethod
+    def _reject(cls, value):
+        raise ValueError(CTX_MARKER)
+
+
+def test_the_rejection_reason_never_carries_the_validator_context():
+    """Direct unit test of unreadable_row_reasons, on the `ctx` leak.
+
+    The end-to-end tests above only exercise ExerciseItem, which has no custom
+    validator -- so `ctx` is always empty and a denylist ('drop `input`') is
+    indistinguishable from the allowlist. This builds the error dict that makes
+    the difference: a validator that raises with a marker in its message puts
+    the marker in `ctx` as well, and a denylist would log it.
+
+    Verified against the denylist shape
+    (`{k: v for k, v in detail.items() if k != 'input'}`): that keeps `ctx`
+    and leaks CTX_MARKER, so this test fails if unreadable_row_reasons is ever
+    weakened to it.
+    """
+    with pytest.raises(ValidationError) as caught:
+        ValidatorModel.model_validate({'answer': 'the reader typed this'})
+    reasons = unreadable_row_reasons(caught.value)
+    assert len(reasons) == 1
+    reason = reasons[0]
+    # The two operational facts survive: which field, and which rule.
+    assert reason['loc'] == ('answer',)
+    assert reason['type'] == 'value_error'
+    # Nothing else does. `input` is the reader's text; `msg` and `ctx` both
+    # carry the validator's marker here.
+    assert CTX_MARKER not in str(reason)
+    assert 'the reader typed this' not in str(reason)
+    assert set(reason) <= {'type', 'loc'}
+    # The marker really is in the unfiltered error, so the assertion above is
+    # not passing because the string never existed.
+    assert CTX_MARKER in str(caught.value.errors())
+
+
 def test_a_model_reply_that_quotes_the_answer_does_not_reach_the_log(site, monkeypatch, caplog):
     """The same leak through the other new path.
 
@@ -1088,11 +1144,37 @@ class _Connection:
     """
 
     def __init__(self, path, *args, **kwargs):
-        self.row_factory = None
         # Captured before any monkeypatching: app.sqlite3 IS this module's
         # sqlite3, so patching connect to return a proxy would otherwise make
         # the proxy's own connect call recurse into itself.
         self._inner = REAL_CONNECT(path, *args, **kwargs)
+
+    # app.db() assigns row_factory on the object connect() returned, so an
+    # attribute stored on the proxy would leave the real connection using
+    # sqlite3's default row tuples. Every app query indexes rows by name, and
+    # the failure would be a TypeError from inside the test double -- which
+    # looks exactly like a production bug and sends the next reader looking in
+    # app.py instead of here. Forwarded, not copied, so the assignment and any
+    # later read agree with the connection that actually runs the query.
+    @property
+    def row_factory(self):
+        return self._inner.row_factory
+
+    @row_factory.setter
+    def row_factory(self, value):
+        self._inner.row_factory = value
+
+    @property
+    def isolation_level(self):
+        return self._inner.isolation_level
+
+    @isolation_level.setter
+    def isolation_level(self, value):
+        self._inner.isolation_level = value
+
+    @property
+    def in_transaction(self):
+        return self._inner.in_transaction
 
     def execute(self, statement, *rest):
         return self._inner.execute(statement, *rest)
@@ -1102,6 +1184,12 @@ class _Connection:
 
     def executescript(self, statement):
         return self._inner.executescript(statement)
+
+    def commit(self):
+        return self._inner.commit()
+
+    def rollback(self):
+        return self._inner.rollback()
 
     def close(self):
         self._inner.close()

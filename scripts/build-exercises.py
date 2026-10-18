@@ -18,6 +18,13 @@ OUTPUT = ROOT / 'assets' / 'exercises.js'
 
 
 def build(check=False):
+    try:
+        _emit(check)
+    except AssertionError as error:
+        raise SystemExit(f'FAIL: {error}')
+
+
+def _emit(check=False):
     manifest, corpus = run_checks()
     books = book_chapters()
     chapters = {}

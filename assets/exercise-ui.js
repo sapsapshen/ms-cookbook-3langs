@@ -3,7 +3,7 @@
    the chapter HTML: build-content.py rejects interactive tags in chapter
    source (G1), so every control here is created by script.
 
-   Three rules shape everything below.
+   Four rules shape everything below.
 
    1. OUTCOMES ARE INDEX-ALIGNED WITH exercise.checks. The grader reads
       outcomes[index] and pairs it with checks[index], so an array built any
@@ -28,8 +28,19 @@
       on one device sees nothing of it on another. pullProgress() reads the
       server's rows back and hands them to store.merge(), which owns every
       conflict rule -- passed latches, score ratchets, `updated` arbitrates
-      code/selfAssessed. Nothing here decides a conflict itself, and a pull can
-      never lower what the reader already earned. */
+      code/selfAssessed. Nothing here decides a conflict itself, and a pull
+      can never lower what the reader already earned.
+
+   LOCALE. Every `exercise.*` key this file asks for is still missing from
+   assets/locale/*.js, so MSI18N.t() returns the key itself and the panel shows
+   literals until Task 11 lands. These four arrived with the accessibility and
+   option-parsing work and have never had a word written for them; Task 11 is
+   where all of them, and the twenty-odd older ones, get filled in at once:
+
+     exercise.chooseAnswer      the <legend> naming the option group
+     exercise.codeLabel         the visible <label> on the code editor
+     exercise.reflectLabel      the visible <label> on the reflection box
+     exercise.optionsUnparsed   shown when an option list does not parse */
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
@@ -587,7 +598,29 @@
         option; dropping the continuation silently truncates it.
      4. A lone or gapped list. One parsed option, or A/C/D with no B, means
         the scan lost something. Offering the control anyway produces a
-        question that is unanswerable and says nothing about why. */
+        question that is unanswerable and says nothing about why.
+
+   WHAT ENDS AN OPTION, AND WHY "ANYTHING ELSE IS A CONTINUATION" IS WRONG.
+
+   An option used to swallow every non-blank line that followed it until the
+   next `X. ` marker, which meant a prompt that put a paragraph of prose right
+   after its options -- with no blank line, because authors do not think in
+   blank lines -- handed that whole paragraph to the LAST option's label. The
+   reader saw option D end with three sentences of unrelated text. No shipped
+   exercise does this, and Task 14 is about to add 32 chapters of prompts, so
+   it would have been found the expensive way. The rule is now:
+
+     AN OPTION CONTINUES ONLY INTO THE LINES IMMEDIATELY BELOW IT THAT ARE
+     INDENTED DEEPER THAN THE OPTION ITSELF, that carry no marker of their
+     own, and that do not open a Markdown block (a `>` quote, a `-`/`*`/`1.`
+     list item, a `#` heading). A BLANK LINE ENDS THE BLOCK OUTRIGHT.
+     EVERYTHING ELSE IS THE STEM.
+
+   Indentation is the load-bearing half: a wrapped option is written as a
+   hanging indent by definition -- that is what makes it a continuation rather
+   than a new sentence -- while prose starts at the margin. The Markdown
+   exclusions matter because a quote or a bullet list can be indented too, and
+   those are the shapes a chapter is most likely to put under a question. */
 function splitPrompt(exercise) {
   // Normalize line endings FIRST: every later step reasons about "\n".
   const text = String(exercise.prompt || '').replace(/\r\n?/g, '\n');
@@ -600,16 +633,22 @@ function splitPrompt(exercise) {
     if (!fenced) {
       const match = /^\s*([A-Z])[.、)）]\s*(\S.*)$/.exec(raw);
       if (match && !found.some(option => option.letter === match[1])) {
-        found.push({ letter: match[1], label: match[2] });
+        found.push({ letter: match[1], label: match[2], indent: indentWidth(raw) });
         previous = found[found.length - 1];
         continue;
       }
-      // A wrapped option: an unlabelled, non-blank line directly under one.
-      // Attached rather than dropped, and attached with a space so the two
-      // halves do not run together.
-      if (previous && raw.trim()) { previous.label += ` ${raw.trim()}`; continue; }
+      // A wrapped option: attached rather than dropped, and attached with a
+      // space so the two halves do not run together -- but only when the line
+      // is genuinely part of that option. See the rule in the header above.
+      if (previous && isContinuation(raw, previous.indent)) {
+        previous.label += ` ${raw.trim()}`;
+        continue;
+      }
     }
-    if (raw.trim()) previous = null;
+    // Unconditional, including on a BLANK line: a blank line is Markdown's own
+    // signal that the list ended, and letting the option survive it is exactly
+    // how prose under a blank line got in.
+    previous = null;
     stem.push(raw);
   }
   // Contiguous from A with no gaps, and at least two of them. A gap means the
@@ -619,9 +658,20 @@ function splitPrompt(exercise) {
   return { options: found, prompt: stem.join('\n').replace(/\n{3,}/g, '\n\n').trim(), usable: contiguous };
 }
 
-/* The option list, for callers that only want the options. */
-function promptOptions(exercise) {
-  return splitPrompt(exercise).options;
+/* Leading whitespace, one column per character: all this needs to decide is
+   whether a line is deeper than the option it would continue, not by how much. */
+function indentWidth(line) {
+  return /^[ \t]*/.exec(line)[0].length;
+}
+
+/* Does this line belong to the option above it? Deeper indentation than that
+   option, and not the start of a block of its own. Prose at the margin, a
+   quote, a bullet list, an ordered item and a heading all fail here, and land
+   in the stem where the reader reads them as the question's own words. */
+function isContinuation(line, optionIndent) {
+  if (!line.trim()) return false;
+  if (indentWidth(line) <= optionIndent) return false;
+  return !/^[ \t]*(?:>|[-*+]\s|\d+[.)]\s|#)/.test(line);
 }
 
 function buildChoiceExercise(exercise, host) {

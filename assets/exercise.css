@@ -148,6 +148,13 @@
   background: var(--surface);
   color: var(--text);
 }
+/* The slot a reflection's optional opinion lands in, outside the button row so
+   a late answer cannot shift the three self-assessment buttons under the
+   reader's cursor. It styles nothing of its own -- .exercise-llm-advice styles
+   the opinion -- but it must not open a gap between the buttons and the
+   solution while it is empty, which is the state of every exercise whose
+   rubric is switched off or whose opinion never arrives. */
+.exercise-advice:empty { display: none; }
 
 .exercise-map { padding: 2rem 0; }
 .exercise-map-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }

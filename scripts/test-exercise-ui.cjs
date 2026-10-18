@@ -400,6 +400,86 @@ async function main() {
       'the wrapped second half of option A was dropped');
   });
 
+  /* ---- prose must never become an option label ------------------------- */
+  /* A prompt that runs a paragraph straight on from its options -- no blank
+     line, because authors do not think in blank lines -- used to hand that
+     paragraph to the LAST option. The reader saw option D end with a sentence
+     about something else entirely, which is the commonest way an option list
+     turns into unreadable text. Nothing in the shipped corpus does it; Task 14
+     is about to add 32 chapters that might. */
+
+  const choiceWith = prompt => exercise({
+    id: 'ch07-ex03', type: 'predict', starter: '', prompt,
+    checks: [{kind: 'output_choice', correct: ['A'], weight: 1}],
+  });
+
+  await check('选项后紧跟散文（中间没有空行）：散文不进选项标签，而是回到题干', async () => {
+    const item = choiceWith([
+      'Pick one', '',
+      'A. the first option', 'B. the second option',
+      '这段话是题目的补充说明，不是任何一个选项的一部分。',
+      '它紧跟在选项后面，中间没有空行。',
+    ].join('\n'));
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    // Exactly the two options, and nothing else: a paragraph inside a label is
+    // a label the reader cannot scan.
+    assert.deepEqual(body.querySelectorAll('label').map(node => node.textContent),
+      ['A. the first option', 'B. the second option'],
+      'prose was appended to the last option\'s label');
+    // It was not swallowed by the parser either -- it is the question's own
+    // wording, so the reader still sees all of it, once, in the stem.
+    const prompt = body.querySelector('.exercise-prompt').textContent;
+    assert.ok(prompt.includes('这段话是题目的补充说明'), `the prose was dropped: ${prompt}`);
+    assert.ok(prompt.includes('中间没有空行'), 'the second prose line was dropped');
+    assert.equal(body.querySelector('.exercise-fallback'), null,
+      'prose under the options made the question unparsable');
+    assert.equal(buttonsIn(body, 'submit')[0].disabled, false,
+      'prose under the options made the question unanswerable');
+  });
+
+  await check('选项后有空行再接散文：同样不进选项标签（空行连缩进也一并终止）', async () => {
+    // The blank line is the other half of the rule, and it has to end the
+    // block on its own: the indentation test alone cannot tell the two apart,
+    // because a paragraph at the margin is refused either way. What only the
+    // blank line decides is an INDENTED paragraph after one -- which is what
+    // "the list ended here" means in Markdown.
+    const item = choiceWith([
+      'Pick one', '',
+      'A. the first option', 'B. the second option', '',
+      '   补充说明在空行之后，和选项无关。',
+      '这句接着上面那句说。',
+    ].join('\n'));
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    assert.deepEqual(body.querySelectorAll('label').map(node => node.textContent),
+      ['A. the first option', 'B. the second option'],
+      'prose under a blank line was appended to the last option');
+    const prompt = body.querySelector('.exercise-prompt').textContent;
+    assert.ok(prompt.includes('补充说明在空行之后'), `the prose was dropped: ${prompt}`);
+    assert.ok(prompt.includes('这句接着上面那句说'), 'the line after it was dropped');
+  });
+
+  await check('缩进的引用与列表也不是续行（它们属于题干，不属于最后一个选项）', async () => {
+    // Indentation alone would still swallow these two shapes, and a chapter
+    // under a question is exactly where a quote or a bullet list appears.
+    const item = choiceWith([
+      'Pick one', '',
+      'A. the first option',
+      '   > 这是一段引用',
+      '   - 这是一条列表项',
+      'B. the second option',
+    ].join('\n'));
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    assert.deepEqual(body.querySelectorAll('label').map(node => node.textContent),
+      ['A. the first option', 'B. the second option'],
+      'an indented quote or bullet became part of option A');
+    const prompt = body.querySelector('.exercise-prompt').textContent;
+    assert.ok(prompt.includes('这是一段引用'), 'the quote was not kept in the stem');
+    assert.ok(prompt.includes('这是一条列表项'), 'the bullet was not kept in the stem');
+  });
+
   await check('解析不到 2 个选项或字母不连续时：禁用提交并说明，而不是让读者永远答错', async () => {
     const lone = exercise({
       id: 'ch07-ex03', type: 'predict', starter: '', prompt: 'Pick\n\nA. only one',
@@ -654,6 +734,45 @@ async function main() {
     await flush();
     assert.equal(h.calls.fetch.filter(call => call.url.includes('/api/exercises/grade')).length, 0,
       'a disabled rubric reached the grading endpoint from the reflection path');
+  });
+
+  /* ---- the slot an opinion lands in -------------------------------------- */
+  /* `.exercise-advice` is the node consultLlmRubric writes into, and the code
+     promises it a place: outside the button row, so a late answer cannot shift
+     the three self-assessment buttons under the reader's cursor, and gone from
+     the layout entirely while it is empty. The second half of that promise has
+     no CSS behind it, and an empty node that claims space is a visible gap
+     between the buttons and the solution on every exercise whose rubric is off. */
+
+  await check('自评意见落在按钮行之外的槽位里，空槽位不占位（CSS 有对应规则）', async () => {
+    const h = boot({
+      data: exerciseData([reflectWithRubric()]),
+      fetch: url => String(url).includes('/grade')
+        ? Promise.resolve({ok: true, json: () => Promise.resolve({score: 0.5, feedback: '还可以补充数据划分'})})
+        : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+    });
+    const body = await expand(h, 'ch13-ex03');
+    const slot = body.querySelector('.exercise-advice');
+    assert.ok(slot, 'the reflection has no slot for an opinion to land in');
+    const row = buttonsIn(body)[0].parentNode;
+    assert.notEqual(slot.parentNode, row,
+      'the slot sits inside the button row, so a late answer moves the buttons');
+
+    await buttonsIn(body, 'pass')[0].fire('click');
+    await flush();
+    const advice = body.querySelector('.exercise-llm-advice');
+    assert.ok(advice, 'the opinion was fetched but never shown');
+    assert.equal(advice.parentNode, slot,
+      'the opinion landed outside the slot that reserves its place');
+    assert.equal(slot.parentNode, row.parentNode,
+      'the opinion is no longer a sibling of the button row');
+
+    // The empty half of the promise: a slot with nothing in it takes no room.
+    const css = readFileSync(resolve(ROOT, 'assets/exercise.css'), 'utf8');
+    const rule = /\.exercise-advice:empty\s*\{[^}]*\}/.exec(css);
+    assert.ok(rule, '.exercise-advice has no rule for its empty state');
+    assert.ok(/display:\s*none/.test(rule[0]),
+      `the empty slot is not hidden, so it opens a gap: ${rule[0]}`);
   });
 
   await check('卡片被收起后迟到的 rubric 意见不会写进已经卸载的节点', async () => {

@@ -7,12 +7,18 @@
    behind that fake. Nothing is copied out of the worker: a bug in the shipped
    file fails here.
 
-   The fake Pyodide is faithful on the one point that matters — `runPython` is
+   The fake Pyodide is faithful on the two points that matter. `runPython` is
    SYNCHRONOUS and `globals.get()` sees what it just wrote, exactly like the real
-   one. That is achieved by replaying the request's Python snippets from a clean
-   interpreter on every read: the worker only reads globals right after a
-   runPython, so replaying the accumulated snippets in order reproduces the
-   state a persistent session would hold, with no cross-request leakage.
+   one — the worker reads globals immediately after a runPython and cannot await
+   in between. And the interpreter PERSISTS: one CPython process lives for the
+   whole file, driven over a request/response file pair, because the real worker
+   owns one interpreter that every run shares.
+
+   Both used to be false, and it mattered. The previous version started a
+   throwaway interpreter per run and replayed the snippets into a fresh dict,
+   which made "a previous run cannot leave a variable behind" pass for the wrong
+   reason: the fake had thrown the state away, so it could never have leaked.
+   That test was asserting something about the harness, not about the worker.
 
    Verdicts are then compared against scripts/check_exercise_references.py, the
    harness the corpus is proved against, so "the worker and the harness agree" is
@@ -22,19 +28,43 @@
 */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const WORKER = path.join(ROOT, 'assets/exercise-worker.js');
 const VENV_PYTHON = path.join(ROOT, '.venv/Scripts/python.exe');
 const PYTHON = process.env.PYTHON || (fs.existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python');
 
-// Executes a request's snippets in one throwaway interpreter and reports the
-// seven __sils_* globals plus any exception that escaped a snippet.
+/* A LONG-LIVED CPython process, driven one request at a time through a request
+   file and a response file in a temp directory.
+
+   Two properties matter here and neither was true of the version this replaced.
+
+   SYNCHRONOUS. The worker reads pyodide.globals.get(...) immediately after
+   runPython, exactly as the real Pyodide allows, and cannot await in between.
+   So the fake cannot answer from a microtask; it blocks until Python is done.
+   The node side waits on Atomics.wait, which parks the thread WITHOUT pumping
+   the event loop — that is what a synchronous runPython looks like from the
+   worker's side.
+
+   PERSISTENT. The real worker owns one interpreter that every run shares, so
+   "a previous run cannot leave a variable behind" can only fail if state really
+   does survive between runs. The version this replaced started a throwaway
+   interpreter per run and replayed the snippets into a fresh dict, which made
+   that case pass for the wrong reason: the fake had discarded the state, so it
+   could never have leaked.
+
+   File hand-off rather than pipes, because reading a child's stdout pipe
+   synchronously is not portable to Windows. */
 const DRIVER = `
-import json, sys, traceback
+import json, os, sys, time, traceback
+
+HERE = sys.argv[1]
+REQ = os.path.join(HERE, 'req.json')
+RES = os.path.join(HERE, 'res.json')
 
 NAMES = ['__sils_stdout', '__sils_error', '__sils_ok', '__sils_assert_ok',
          '__sils_assert_detail', '__sils_found', '__sils_value']
@@ -70,17 +100,61 @@ def snapshot(session):
             out[key] = {'__type__': type(value).__name__}
     return out
 
-request = json.loads(sys.stdin.read())
-session, error = {}, None
-try:
-    for code in request['codes']:
-        exec(compile(code, '<exercise>', 'exec'), session)
-except BaseException:
-    error = traceback.format_exc(limit=8)
-print(json.dumps({'error': error,
-                  'values': {name: encode(session.get(name)) for name in NAMES},
-                  'learner': snapshot(session)}))
+# The interpreter's own namespace, kept for the life of the process.
+SESSION = {}
+
+while True:
+    if not os.path.exists(REQ):
+        time.sleep(0.002)
+        continue
+    try:
+        with open(REQ, 'r', encoding='utf-8') as handle:
+            request = json.load(handle)
+        os.remove(REQ)
+    except (OSError, ValueError):
+        continue
+    if request.get('stop'):
+        break
+    error = None
+    try:
+        for code in request['codes']:
+            exec(compile(code, '<exercise>', 'exec'), SESSION)
+    except BaseException:
+        error = traceback.format_exc(limit=8)
+    payload = {'error': error,
+               'values': {name: encode(SESSION.get(name)) for name in NAMES},
+               'learner': snapshot(SESSION)}
+    with open(RES, 'w', encoding='utf-8') as handle:
+        json.dump(payload, handle)
 `;
+
+/* One CPython process that lives as long as the fake worker does. */
+function createInterpreter() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sils-worker-'));
+  const req = path.join(dir, 'req.json');
+  const res = path.join(dir, 'res.json');
+  const child = spawn(PYTHON, ['-X', 'utf8', '-u', '-c', DRIVER, dir], { stdio: 'ignore' });
+  const park = new Int32Array(new SharedArrayBuffer(4));
+
+  return {
+    run(codes) {
+      fs.writeFileSync(req, JSON.stringify({ codes }), 'utf8');
+      const deadline = Date.now() + 30000;
+      while (!fs.existsSync(res)) {
+        if (Date.now() > deadline) throw new Error('the python driver stopped responding');
+        Atomics.wait(park, 0, 0, 2);
+      }
+      const payload = JSON.parse(fs.readFileSync(res, 'utf8'));
+      fs.rmSync(res, { force: true });
+      return payload;
+    },
+    close() {
+      try { fs.writeFileSync(req, JSON.stringify({ stop: true }), 'utf8'); } catch (failure) { /* gone */ }
+      child.kill();
+      fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
 
 // The real corpus harness — the same module Task 3 wrote and CI runs.
 const PROBE = `
@@ -138,9 +212,15 @@ function createWorkerHost(override) {
   let snapshot = {};
   const replies = [];
   const imported = [];
+  // ONE interpreter for the lifetime of this host, exactly like the real
+  // worker: a single worker owns a single Python namespace that every run
+  // shares. Starting a fresh interpreter per run would make the cross-run
+  // leakage cases pass for the wrong reason.
+  const interpreter = createInterpreter();
 
   function flush() {
-    const result = python(DRIVER, { codes: codes.slice() });
+    const result = interpreter.run(codes.slice());
+    codes.length = 0;
     if (result.error) {
       const lines = String(result.error).trim().split('\n');
       throw new Error(lines[lines.length - 1] || 'python snippet failed');
@@ -204,6 +284,7 @@ function createWorkerHost(override) {
   return {
     loaded: typeof handler === 'function',
     imported,
+    close() { interpreter.close(); },
     async run(request) {
       codes = [];
       snapshot = {};
@@ -476,17 +557,22 @@ const CASES = [
       'throw new Error("runtime exploded");');
     assert.notEqual(broken, original, 'the mutation must apply');
     const crashed = createWorkerHost(broken);
-    const result = await crashed.run({
-      code: 'print("hi")\n',
-      checks: [
-        { kind: 'stdout_contains', value: 'hi', weight: 1 },
-        { kind: 'assert_python', code: 'assert True', weight: 1 },
-      ],
-    });
-    assert.equal(result.ok, false);
-    assert.match(result.error, /runtime exploded/);
-    assert.equal(result.outcomes.length, 2);
-    assert.deepEqual(result.outcomes.map(one => one.ok), [false, false]);
+    try {
+      const result = await crashed.run({
+        code: 'print("hi")\n',
+        checks: [
+          { kind: 'stdout_contains', value: 'hi', weight: 1 },
+          { kind: 'assert_python', code: 'assert True', weight: 1 },
+        ],
+      });
+      assert.equal(result.ok, false);
+      assert.match(result.error, /runtime exploded/);
+      assert.equal(result.outcomes.length, 2);
+      assert.deepEqual(result.outcomes.map(one => one.ok), [false, false]);
+    } finally {
+      // Its own interpreter: without this the child outlives the run.
+      crashed.close();
+    }
   }],
 
   ['every corpus reference scores the same as the harness says it does', async () => {
@@ -746,6 +832,9 @@ async function main() {
       console.error(`  FAIL ${name}\n       ${error.message}`);
     }
   }
+  // The shared interpreter is a real child process; without this the run would
+  // print PASS and then hang forever.
+  host.close();
   if (failures) {
     console.error(`\n${failures} failing`);
     process.exit(1);

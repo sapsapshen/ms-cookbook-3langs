@@ -531,13 +531,21 @@ check('the map is repainted when the reader arrives at the practice view', () =>
   assert.equal(PAPER.split('renderExerciseMap()').length - 1, 4);
 });
 
-check('the map is not wired into the page before the corpus it reads', () => {
-  // Task 10 owns the <script> tags, so this suite deliberately asserts nothing
-  // about the load order: assets/exercise-map.js has to be listed before
-  // assets/paper.js (paper.js paints the grid on startup), together with the
-  // corpus and the store it reads. Until then render() finds no data and no
-  // store and paints nothing, which is the state asserted above.
-  assert.ok(!INDEX.includes('assets/exercise-map.js'));
+check('the map is wired into the page after the corpus and store it reads', () => {
+  // Task 10 owns the <script> tags. It listed them, so this assertion is now
+  // the positive form of the placeholder it replaced: the map has to come
+  // after the corpus and the store it reads, and before paper.js, which paints
+  // the grid on startup. Listed too early, render() finds no data and no store
+  // and paints nothing -- the state the checks above were written against.
+  const order = [...INDEX.matchAll(/<script\b[^>]*\ssrc="assets\/([^"?]+\.js)/g)].map(m => m[1]);
+  const at = name => {
+    const index = order.indexOf(name);
+    assert.notEqual(index, -1, `${name} is not loaded by index.html`);
+    return index;
+  };
+  assert.ok(at('exercises.js') < at('exercise-map.js'), 'the map loads before the corpus it reads');
+  assert.ok(at('exercise-store.js') < at('exercise-map.js'), 'the map loads before the store it reads');
+  assert.ok(at('exercise-map.js') < at('paper.js'), 'the map must load before the router that paints it');
 });
 
 console.log('ExerciseMap · part names agree with paper.js');

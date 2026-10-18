@@ -47,9 +47,61 @@ checkLinks(read('assets/analytics.html'));
 assert(!/feishu\.cn/.test(read('index.html')),'Source UI must point to GitHub');
 assert(!/art:'plane'|paper\/plane\.webp/.test(read('assets/paper.js')+read('index.html')));
 checkLinks(read('README.md'));checkLinks(read('README.zh-CN.md'));
-for(const css of ['assets/styles.css','assets/paper.css','assets/review.css','assets/reader-tools.css']){
+for(const css of ['assets/styles.css','assets/paper.css','assets/review.css','assets/reader-tools.css','assets/exercise.css']){
   for(const m of read(css).matchAll(/url\(['"]?([^)'"\s]+)['"]?\)/g)){
     if(!/^(?:https?:|data:)/.test(m[1]))assert(existsSync(resolve(root,dirname(css),m[1].split('?')[0])),m[1]);
   }
 }
-console.log(`PASS: ${data.chapterCount} chapters, ${data.parts.length} parts, ${imageCount} image references, ${attachmentCount} attachments; local links and source routes valid.`);
+/* Load order is load-bearing (Task 8's M-6): a script listed before something
+   it reads leaves the panel silently absent, with nothing in the console. Every
+   exercise module therefore has to precede paper.js, which calls
+   renderExerciseMap() during its own startup. Checked here rather than only in
+   scripts/test-exercise-wiring.cjs because this is the check CI already runs. */
+const indexHtml=read('index.html');
+const scriptOrder=[...indexHtml.matchAll(/<script[^>]*\ssrc="assets\/([^"?]+\.js)/g)].map(m=>m[1]);
+const paperIndex=scriptOrder.indexOf('paper.js');
+assert(paperIndex!==-1,'index.html no longer loads paper.js');
+for(const module of ['exercises.js','exercise-grader.js','exercise-store.js','exercise-sandbox.js','exercise-map.js','exercise-ui.js']){
+  const at=scriptOrder.indexOf(module);
+  assert(at!==-1,module+' is not loaded by index.html');
+  assert(at<paperIndex,module+' must be loaded before paper.js');
+}
+const exerciseContext={window:{}};
+vm.runInNewContext(read('assets/exercises.js'),exerciseContext);
+const exercises=exerciseContext.window.EXERCISE_DATA;
+assert(exercises&&exercises.chapters,'EXERCISE_DATA did not load');
+const chapterIds=new Set(exercises.chapters?Object.keys(exercises.chapters):[]);
+for(const chapterId of chapterIds)assert(ids.has(chapterId),'Exercise chapter is not in the book: '+chapterId);
+const seenExercises=new Set();
+for(const [chapterId,chapter] of Object.entries(exercises.chapters)){
+  const counts=new Set();
+  for(const lang of exercises.languages){
+    const list=chapter.exercises[lang]||[];
+    counts.add(list.length);
+    // Ids are unique PER LANGUAGE, not globally: the localized lists carry the
+    // same ids in the same order and only the prose differs, so one cross-language
+    // seen-set reports every id in a three-language corpus as a duplicate. The
+    // seenExercises set below therefore tracks the FIRST language only, where
+    // uniqueness is a real invariant and spans chapters as well as languages.
+    const seenHere=new Set();
+    for(const item of list){
+      assert(!seenHere.has(item.id),'Duplicate exercise id '+item.id+' in '+chapterId+'/'+lang);
+      seenHere.add(item.id);
+      if(lang===exercises.languages[0]){
+        assert(!seenExercises.has(item.id),'Exercise id '+item.id+' is claimed by more than one chapter');
+        seenExercises.add(item.id);
+      }
+      assert(item.chapter===chapterId,item.id+' points at the wrong chapter');
+      assert(item.objective&&item.prompt&&item.explanation,item.id+' is missing required prose');
+      assert(['code','predict','fill','build','reflect'].includes(item.type),item.id+' has an unknown type');
+    }
+  }
+  assert(counts.size===1,chapterId+' language counts diverge');
+}
+assert(exercises.exerciseCount===seenExercises.size,'exerciseCount does not match the corpus');
+const sandboxScript=read('assets/exercise-sandbox.js');
+const workerScript=read('assets/exercise-worker.js');
+assert(!/<script[^>]*pyodide/i.test(indexHtml),'Pyodide must stay out of index.html');
+assert(workerScript.includes("importScripts('./vendor/pyodide/pyodide.js')"),'Worker must import the vendored Pyodide');
+assert(sandboxScript.includes('assets/exercise-worker.js'),'Sandbox must default to the bundled worker');
+console.log(`PASS: ${data.chapterCount} chapters, ${data.parts.length} parts, ${imageCount} image references, ${attachmentCount} attachments; ${seenExercises.size} exercises across ${chapterIds.size} chapters; local links and source routes valid.`);

@@ -1,0 +1,15 @@
+# Vendored Pyodide is published byte-for-byte on jsdelivr. core.autocrlf=true
+# would rewrite pyodide.js / pyodide.asm.js / pyodide-lock.json on a Windows
+# checkout, which (a) breaks the sha256 verification in
+# scripts/test_pyodide_vendor.py and (b) means the vendored bytes are not the
+# upstream bytes. Mark them binary so they land exactly as downloaded.
+*.wasm binary
+assets/vendor/** binary
+
+# Scripts and prose: keep them LF so the node/python sources hash the same on
+# every platform.
+*.js text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.md text eol=lf

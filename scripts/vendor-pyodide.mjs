@@ -6,7 +6,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const target = resolve(root, 'assets/vendor/pyodide');
 const VERSION = '0.26.4';
 const BASE = `https://cdn.jsdelivr.net/pyodide/v${VERSION}/full/`;
-const FILES = ['pyodide.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json'];
+/* pyodide.asm.js is NOT optional: pyodide.js calls
+   `loadScript(indexURL + 'pyodide.asm.js')` before it can instantiate the wasm
+   module, so omitting it makes every run die with ERR_MODULE_NOT_FOUND /
+   a bare 404 before a single line of learner code runs. The authoritative
+   list of what must be vendored lives in scripts/test_pyodide_vendor.py, not
+   here — a downloader that checks its own manifest cannot notice the manifest
+   itself is missing something, which is exactly how this file lost the wasm
+   glue in the first place. */
+const FILES = ['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json'];
 
 if (existsSync(resolve(target, 'VERSION')) && readFileSync(resolve(target, 'VERSION'), 'utf8').trim() === VERSION) {
   const complete = FILES.every(name => existsSync(resolve(target, name)));

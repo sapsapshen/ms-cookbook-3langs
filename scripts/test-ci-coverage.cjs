@@ -107,13 +107,26 @@ function parseRunBlocks(text) {
       continue;
     }
     const body = [];
+    // A `#` line inside a `run: |` block is a shell comment: bash never runs
+    // it, so it is not evidence that anything executed. Counting it would let
+    // the exact failure this file exists to catch pass silently -- comment out
+    // `node scripts/x.cjs` and the workflow ships the change with the script
+    // never running, while the coverage check stays green because the name is
+    // still on the page. The workflow's own comments name scripts (e.g. the
+    // sandbox step's "paired with the real-runtime test"), which is exactly
+    // why presence-in-the-text and executed-in-the-shell have to differ.
+    let consumed = 0;
     for (const next of lines.slice(i + 1)) {
-      if (!next.trim()) { body.push(''); continue; }
+      if (!next.trim()) { body.push(''); consumed += 1; continue; }
       if (indentOf(next) <= base) break;
+      consumed += 1;
+      if (next.trim().startsWith('#')) continue;
       body.push(next.trim());
     }
     blocks.push(body.join('\n'));
-    i += body.length;
+    // Skip what we read. Counting consumed lines rather than body.length, since
+    // comment lines are deliberately absent from `body`.
+    i += consumed;
   }
   return blocks;
 }
@@ -175,6 +188,28 @@ test('反向验证：run: 里删掉 test-exercise-locale.cjs，漏项检测必�
   const executed = scriptsIn(parseRunBlocks(text).join('\n'));
   assert.deepEqual(missing(REQUIRED, executed), ['scripts/test-exercise-locale.cjs'],
     'run: 里删掉一个脚本后，漏项检测没有定位到它');
+  // The unmodified workflow must be clean, or the mutation proved nothing.
+  assert.deepEqual(missing(REQUIRED, scriptsIn(parseRunBlocks(readWorkflow()).join('\n'))), [],
+    '未改动的 workflow 必须是绿的，否则上面的变异没有证明任何事');
+});
+
+/* The same deletion, but the line is kept and turned into a shell comment.
+ * This is the sneakier half of the same hole, and it is why the sandbox step's
+ * own prose ("paired with the real-runtime test") cannot be allowed to count as
+ * coverage: commenting a step out leaves the script name in the file, so a
+ * coverage check that reads text instead of executed lines stays green and the
+ * change ships with the suite never running. */
+test('反向验证：run: 里注释掉 test-exercise-map.cjs，漏项检测必须定位到它', () => {
+  const commented = readWorkflow().replace(
+    /^(\s*)node (scripts\/test-exercise-map\.cjs)$/m, '$1# node $2');
+  // The mutation must actually have landed, or the assertion below is vacuous.
+  assert.ok(!new RegExp(`^\\s*node ${'scripts/test-exercise-map.cjs'}$`, 'm').test(commented),
+    '变异没有生效：workflow 里找不到未注释的 test-exercise-map.cjs 行');
+  assert.ok(commented.includes('# node scripts/test-exercise-map.cjs'),
+    '变异没有生效：注释行不在文件里');
+  const executed = scriptsIn(parseRunBlocks(commented).join('\n'));
+  assert.deepEqual(missing(REQUIRED, executed), ['scripts/test-exercise-map.cjs'],
+    '把 run: 行注释掉后，漏项检测没有定位到它 —— 注释行被当成了执行证据');
   // The unmodified workflow must be clean, or the mutation proved nothing.
   assert.deepEqual(missing(REQUIRED, scriptsIn(parseRunBlocks(readWorkflow()).join('\n'))), [],
     '未改动的 workflow 必须是绿的，否则上面的变异没有证明任何事');

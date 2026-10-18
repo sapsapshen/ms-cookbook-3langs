@@ -539,7 +539,11 @@ async function main() {
         : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: ''})}),
     });
     const body = await expand(h, 'ch07-ex01');
-    await buttonsIn(body, 'run')[0].fire('click');
+    // The click is NOT awaited: a panel with no deadline would never resolve
+    // this promise, and the suite would hang instead of reporting. Not awaiting
+    // it is also the honest shape of the claim -- the reader is not waiting on
+    // the click either, they are looking at a disabled Run button.
+    buttonsIn(body, 'run')[0].fire('click');
     // Past the 8s deadline the race has already lost to the timeout.
     await new Promise(resolve => setTimeout(resolve, 8300));
     assert.equal(h.calls.grade.length, 1,
@@ -931,6 +935,30 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
     assert.equal(h.calls.langListener, null, 'the language listener survived teardown');
   });
 
+  await check('依赖脚本排在后面时面板不会静默消失（init 再来一次就恢复）', async () => {
+    /* assets/exercise-ui.js reading `window.ExerciseStore` at module scope
+       made script order load-bearing: listed before exercise-store.js, `store`
+       was null, init() returned before binding anything, and the panel was
+       absent on every chapter for the life of the page with nothing in the
+       console. Task 10 will list the scripts in the right order; the code
+       should not be fragile about it anyway. */
+    const h = boot({lateDependencies: true});
+    assert.equal(h.panel(), null, 'the panel was expected to be absent while the dependencies were missing');
+    assert.equal((h.listeners.get('hashchange') || []).length, 0);
+
+    h.installDependencies();
+    h.window.ExerciseUI.init();
+    assert.ok(h.panel(), 'the panel did not recover once its dependencies existed');
+    assert.ok(cardFor(h, 'ch07-ex01'), 'the cards did not come with it');
+    assert.equal((h.listeners.get('hashchange') || []).length, 1, 'hashchange was not bound exactly once');
+    // And it is usable, not merely present.
+    const body = await expand(h, 'ch07-ex01');
+    assert.ok(body.querySelector('textarea'), 'the recovered panel built no editor');
+    // Still idempotent afterwards, so a later wiring script cannot double-bind.
+    h.window.ExerciseUI.init();
+    assert.equal((h.listeners.get('hashchange') || []).length, 1, 'the recovery re-bound hashchange');
+  });
+
   await check('展开是惰性的：未展开的题不创建编辑器', () => {
     const h = boot();
     assert.equal(h.panel().querySelectorAll('textarea').length, 0,
@@ -1256,6 +1284,33 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
     const first = recorded.flatMap(payload => payload.items).find(row => row.exercise === 'ch07-ex01');
     assert.equal(first.passed, 1, 'the push-back carried a regressing pass instead of the merged one');
     assert.equal(first.score, 1);
+  });
+
+  await check('拉取按当前章节请求（不整表 GET）', async () => {
+    // The endpoint has no pagination and a row carries up to 20000 characters
+    // of the learner's own code, so an unfiltered pull is the whole corpus on
+    // every chapter entry: trivial at 9 exercises, hundreds of kilobytes at 100.
+    const h = boot({fetch: syncFetch({})});
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(pulls(h).length, 1);
+    assert.ok(pulls(h)[0].url.includes('chapter=chapter-7'),
+      `the pull did not ask for the current chapter: ${pulls(h)[0].url}`);
+    // Navigating changes the chapter, and therefore the question. The store
+    // still holds every chapter the reader has ever opened, so a chapter-scoped
+    // pull loses nothing -- it just stops re-fetching 34 chapters of badges this
+    // panel has no cards for.
+    h.window.location.hash = '#chapter-13';
+    for (const handler of h.listeners.get('hashchange') || []) handler();
+    await flush();
+    assert.ok(pulls(h).some(call => call.url.includes('chapter=chapter-13')),
+      'the second chapter asked for the first one again');
+    // And an earlier chapter's progress is still there without a re-fetch.
+    assert.equal(h.store().read('chapter-7', 'ch07-ex01'), null);
+    h.window.location.hash = '#chapter-7';
+    for (const handler of h.listeners.get('hashchange') || []) handler();
+    await flush();
+    assert.ok(pulls(h).some(call => call.url.includes('chapter=chapter-7')), 'going back did not re-ask for it');
   });
 
   await check('触发时机一：进入章节时拉取一次（首页进入章节也算）', async () => {

@@ -341,14 +341,34 @@ function boot(options) {
     },
   });
   window.ExerciseGraderReal = context.ExerciseGrader;
-  window.ExerciseGrader = graderFacade;
-  window.ExerciseStore = storeFacade;
+
+  /* `lateDependencies` reproduces assets/exercise-ui.js being listed BEFORE the
+     scripts it needs: the panel evaluates with ExerciseStore, ExerciseGrader
+     and EXERCISE_DATA still absent, exactly as it would in a page whose script
+     tags are in that order. `h.installDependencies()` then puts them in place,
+     so a test can assert what the panel looked like beforehand and whether it
+     recovers on a second init() rather than needing a page reload. */
+  const dataFixture = settings.data === undefined ? exerciseData([exercise()]) : settings.data;
+  let installDependencies = () => {};
+  if (settings.lateDependencies) {
+    window.ExerciseGrader = undefined;
+    window.ExerciseStore = undefined;
+    window.EXERCISE_DATA = undefined;
+    installDependencies = () => {
+      window.EXERCISE_DATA = dataFixture;
+      window.ExerciseGrader = graderFacade;
+      window.ExerciseStore = storeFacade;
+    };
+  } else {
+    window.ExerciseGrader = graderFacade;
+    window.ExerciseStore = storeFacade;
+  }
   vm.runInContext(UI, context);
 
   const panel = () => document.querySelector('#exercisePanel');
   return {
     window, document, root, pager, panel, calls, sandbox, listeners, storage,
-    store: () => liveStore,
+    store: () => liveStore, installDependencies,
   };
 }
 

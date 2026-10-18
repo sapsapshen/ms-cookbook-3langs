@@ -90,6 +90,59 @@ def test_round_trip_progress(site):
     assert stored[0]['code'] == 'print(1)'
 
 
+def test_a_chapter_filter_narrows_the_pull(site):
+    """The panel asks for one chapter at a time.
+
+    A row carries up to 20000 characters of the learner's own code and there is
+    no pagination, so an unfiltered pull is the whole corpus on every chapter
+    entry -- free at 9 exercises, hundreds of kilobytes at 100.
+    """
+    chapters = sorted(IDS)[:2]
+    client = reader(site)
+    for chapter in chapters:
+        assert client.post(PROGRESS, json={'items': [
+            {'chapter': chapter, 'exercise': IDS[chapter][0], 'passed': 1, 'score': 1, 'code': f'# {chapter}'},
+        ]}).status_code == 201
+    everything = client.get(PROGRESS).json()['items']
+    assert len(everything) == 2, 'the unfiltered read must still return everything'
+    only = client.get(PROGRESS, params={'chapter': chapters[0]}).json()['items']
+    assert [item['chapter'] for item in only] == [chapters[0]]
+    assert only[0]['code'] == f'# {chapters[0]}'
+    # A chapter with nothing recorded answers empty rather than everything.
+    assert client.get(PROGRESS, params={'chapter': sorted(IDS)[-1]}).json()['items'] == []
+
+
+def test_a_chapter_filter_never_widens_the_pull(site):
+    """An id the corpus does not hold matches no rows. Answering with the whole
+    table instead would be worse than useless: the caller asked a narrow
+    question and would merge everything back."""
+    client = reader(site)
+    client.post(PROGRESS, json={'items': [
+        {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'passed': 1, 'score': 1, 'code': 'print(1)'},
+    ]})
+    for chapter in ['chapter-999', "'; DROP TABLE exercise_progress; --"]:
+        response = client.get(PROGRESS, params={'chapter': chapter})
+        assert response.status_code == 200
+        assert response.json()['items'] == [], f'{chapter!r} returned the whole table'
+    # An over-long value is refused outright rather than compared. The panel
+    # always sends `chapter-N` from the address bar, so this is reachable only
+    # by something hand-crafting the URL -- and a 422 says so, where an empty
+    # list would read as "you have no progress".
+    assert client.get(PROGRESS, params={'chapter': 'x' * 200}).status_code == 422
+    # An empty filter is the same request as no filter, which is what the
+    # optional parameter means.
+    assert client.get(PROGRESS, params={'chapter': ''}).json()['items'] == client.get(PROGRESS).json()['items']
+    # The table is still there.
+    assert client.get(PROGRESS).json()['items'] != []
+
+
+def test_a_guest_gets_nothing_through_the_filter_either(site):
+    guest = TestClient(site[0])
+    response = guest.get(PROGRESS, params={'chapter': SAMPLE_CHAPTER})
+    assert response.status_code == 200
+    assert response.json()['items'] == []
+
+
 def test_unknown_exercise_is_rejected(site):
     """An id the corpus does not hold is not storable, but it is only that one
     row that is unstorable: it is skipped and counted, never a refusal of the

@@ -128,6 +128,15 @@ const MUTATIONS = [
   ['llm 没有客户端超时（挂起的请求把判定和按钮一起卡住）',
     "    return Promise.race([fetch(url, options), timeout])\n      .finally(() => clearTimeout(timer));",
     "    void timeout; void timer;\n    return fetch(url, options);"],
+  ['init() 不再重读依赖（脚本顺序一旦不对面板静默消失）',
+    "  function init() {\n    if (listenersBound) return;\n    if (!resolve()) return;",
+    "  function init() {\n    if (listenersBound) return;\n    if (!data || !data.chapters || !Grader || !store) return;"],
+  ['拉取不按章节过滤（每次进章节整表 GET）',
+    "        const path = chapterId ? `${PROGRESS_PATH}?chapter=${encodeURIComponent(chapterId)}` : PROGRESS_PATH;",
+    "        const path = PROGRESS_PATH;"],
+  ['迟到的 rubric 意见写进已卸载的节点',
+    "    if (!isAttached(host)) return;",
+    "    if (false) return;"],
 ];
 
 let survivors = 0;

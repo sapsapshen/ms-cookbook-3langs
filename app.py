@@ -849,11 +849,29 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             LOGGER.exception('Could not settle a grading call in the ledger')
 
     @app.get('/api/exercises/progress')
-    def list_exercise_progress(request: Request):
+    def list_exercise_progress(request: Request, chapter: str=''):
         u=user(request)
         if not u: return {'items':[]}
+        # `chapter` is an OPTIONAL filter. A reader who enters chapter 7 only
+        # ever renders chapter 7's badges, so answering with all 35 chapters'
+        # rows made every chapter entry cost the whole corpus: a row carries up
+        # to 20000 characters of the learner's own code and the endpoint has no
+        # pagination, so at 100+ exercises a full pull is hundreds of kilobytes
+        # to fill in a panel holding three cards.
+        #
+        # It is a filter, never a scope: with no `chapter` the answer is exactly
+        # what it always was, so the learning map (Task 9) and any other caller
+        # can still ask for everything. An unknown chapter is validated here
+        # rather than reaching SQL, and an over-long value is refused rather
+        # than compared -- the same reasoning as the write path's per-row skip.
+        if chapter:
+            if len(chapter)>64: raise HTTPException(422,'章节标识过长')
+            if chapter not in exercise_index: return {'items':[]}
         with db() as conn:
-            rows=conn.execute('SELECT chapter,exercise,passed,score,code,self_assessed,attempts,updated FROM exercise_progress WHERE user_id=? ORDER BY updated DESC',(u['id'],)).fetchall()
+            query='SELECT chapter,exercise,passed,score,code,self_assessed,attempts,updated FROM exercise_progress WHERE user_id=?'
+            params=[u['id']]
+            if chapter: query+=' AND chapter=?'; params.append(chapter)
+            rows=conn.execute(query+' ORDER BY updated DESC',params).fetchall()
         items=[dict(row) for row in rows]
         # Both columns go back exactly as stored. selfAssessed keeps its three
         # states because the client's chapterSummary counts every value except

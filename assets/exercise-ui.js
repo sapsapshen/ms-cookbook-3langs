@@ -39,11 +39,37 @@
     if (className) node.className = className;
     return node;
   };
-  const data = window.EXERCISE_DATA;
-  const t = window.MSI18N ? window.MSI18N.t : (key => key);
-  const Grader = window.ExerciseGrader;
-  const Sandbox = window.ExerciseSandbox;
-  const store = window.ExerciseStore ? window.ExerciseStore.create({}) : null;
+  /* Collaborators are read in init(), not at module scope.
+
+     Reading them here made script order load-bearing: `window.ExerciseStore`
+     is null if exercise-store.js happens to be listed after this file, so
+     `init()` took its early return, never bound a listener, and the panel
+     silently never appeared -- on every chapter, for the life of the page,
+     with nothing in the console. init() is idempotent, so re-reading the
+     globals there makes the panel work whichever order the tags end up in,
+     and a retry becomes a single extra call rather than a page reload. */
+  let data = null;
+  let t = key => key;
+  let Grader = null;
+  let Sandbox = null;
+  let store = null;
+
+  function resolve() {
+    data = window.EXERCISE_DATA || null;
+    // MSI18N.t is a bound-free lookup table reader in this repo, but nothing
+    // guarantees it is a bare function once it is reassigned by a language
+    // switch, so it is re-read rather than aliased.
+    const i18n = window.MSI18N;
+    t = i18n && typeof i18n.t === 'function' ? (key, vars) => i18n.t(key, vars) : (key => key);
+    Grader = window.ExerciseGrader || null;
+    Sandbox = window.ExerciseSandbox || null;
+    // create() snapshots localStorage at construction, so this must happen
+    // exactly once -- resolve() is only reached when the store is absent, and
+    // init() returns early otherwise, so a second call cannot double-create.
+    store = store || (window.ExerciseStore ? window.ExerciseStore.create({}) : null);
+    return !!(data && data.chapters && Grader && store);
+  }
+
   /* The facade only spawns its worker on the first run(), so constructing it
      here costs nothing and keeps one queue across every exercise on the page
      (G9: Pyodide is fetched on demand, never at load). onPhase lets the panel
@@ -358,7 +384,14 @@
       if (!current || !current.user || current.loginEnabled === false) return null;
       let rows = [];
       try {
-        const response = await fetch(PROGRESS_PATH, { credentials: 'same-origin' });
+        // Scoped to the chapter being read. The endpoint has no pagination and
+        // a row carries up to 20000 characters of the learner's own code, so
+        // an unfiltered pull is the whole corpus on every chapter entry --
+        // fine at 9 exercises, hundreds of kilobytes at 100. `chapterId` is
+        // always set by the time anything calls this; the bare path stays as
+        // the fallback so a pull from outside a chapter still works.
+        const path = chapterId ? `${PROGRESS_PATH}?chapter=${encodeURIComponent(chapterId)}` : PROGRESS_PATH;
+        const response = await fetch(path, { credentials: 'same-origin' });
         if (!response || !response.ok) return null;
         const payload = await response.json();
         if (payload && Array.isArray(payload.items)) rows = payload.items;
@@ -804,10 +837,15 @@ function buildChoiceExercise(exercise, host) {
 
   /* Idempotent: the wiring runs once per page no matter how often init() is
      called, so a second call cannot double-bind hashchange or the language
-     listener and re-render the panel twice per navigation. */
+     listener and re-render the panel twice per navigation.
+
+     The collaborators are resolved HERE rather than at module scope, so a
+     script listed after this one in index.html no longer leaves the panel
+     permanently absent: calling init() again once the page has settled is
+     enough to recover. */
   function init() {
     if (listenersBound) return;
-    if (!data || !data.chapters || !Grader || !store) return;
+    if (!resolve()) return;
     listenersBound = true;
     window.addEventListener('hashchange', onRoute);
     // Same channel assets/wishes.js listens on, so a sign-in or sign-out done

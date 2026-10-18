@@ -30,10 +30,12 @@
                import pyodide.ffi as f
                f.create_proxy(1).constructor.constructor("return 6*7")()   # -> 42
 
-           That path touches neither `js` nor sys.meta_path, so (a) does
+That path touches neither `js` nor sys.meta_path, so (a) does
            nothing for it. `pyodide.ffi` is removed along with every other route
-           to the same functions (`_pyodide_core`, `_pyodide._core_docs`,
-           `pyodide.code`), and a re-import fails too.
+           to the same functions (`_pyodide_core`, and `pyodide.code` for
+           `run_js`), and a re-import fails too. `_pyodide._core_docs` goes with
+           them as defence in depth -- measured on 0.26.4 its copy of
+           `create_proxy` is a type stub that returns its argument, not a route.
 
      In a real browser Worker `self` IS the WorkerGlobalScope, so (a) would also
      hand over `postMessage` -- enough to forge a perfect result. The nonce in
@@ -137,49 +139,83 @@ async function ensureRuntime() {
          sys.meta_path, so fix (1) does nothing for it. Verified against the
          vendored Pyodide 0.26.4 -- it runs today, on the shipped worker.
 
-         Every route into that factory is sealed below. `pyodide.ffi` is only the
-         public face of it; the same functions are reachable as
-         `_pyodide_core.create_proxy` (the native module), as
-         `_pyodide._core_docs.create_proxy`, and via `pyodide.code.eval_js`.
+Every route into that factory is sealed below. Measured on the vendored
+         0.26.4, by what each candidate name actually DOES when reached:
+
+             pyodide.ffi.create_proxy           real  -> a live JsProxy (42)
+             _pyodide_core.create_proxy         real  -> a live JsProxy (42)
+             _pyodide_core.create_once_callable real  -> a live JsProxy (42)
+             pyodide.code.run_js                real  -> evaluates JavaScript
+             _core_docs.create_proxy            STUB  -> returns its argument
+             _core_docs.create_once_callable    STUB  -> returns its argument
+
+         `pyodide.ffi` is only the public face; the same functions are reachable
+         as `_pyodide_core.create_proxy` (the native module, importable on its
+         own with no pyodide.* involved). The two `_core_docs` entries are NOT
+         routes -- see the note on _sils_BLOCKED -- and that module is sealed as
+         defence in depth, not because it was measured handing out a JavaScript
+         object.
 
    THE TWO LAYERS OF THE IMPORT-PATH SEAL, AND WHICH ONE CARRIES THE LOAD
    ====================================================================
-   Both layers are kept because each one closes a route the other does not, and
-   each is locked by its own mutation test. Measured, not assumed:
+   The two are NOT equal, and an earlier version of this comment claimed they
+   were. Measured on the vendored 0.26.4: one layer removed at a time, then an
+   eighteen-route battery replayed against each. An escape is counted only when
+   a LIVE JavaScript object is reached -- a learner's own Python value, or a
+   hollow proxy with js_id 0, is the inert boundary, not an escape.
 
-     LAYER A -- the baseline filter. _sils_ORIGINAL is captured with every
-     bridge-serving finder already removed, so sys.meta_path is rebuilt from a
-     list that cannot resolve `js` at all. What it stops on its own:
+         both layers                        -> 0 escapes of 18
+         layer A reverted, layer B intact   -> 0 escapes of 18
+         layer B removed, layer A intact    -> 0 escapes of 18
 
-         st.jsfinder.jsproxies['js'] = ...          # refill the live table
-         sys.meta_path = [f for f in sys.meta_path
-                          if type(f).__name__ != '_sils_SealedImport']
-         import js                                  # -> ESCAPES without layer A
+   Read that honestly: on TODAY's routes, removing either layer opens nothing,
+   so neither may be described as the one that stops `import js`. What layer A
+   does on its own is genuinely nothing. Measured with every other mechanism
+   stripped away (no emptying, no guard, no pin), `import js` fails only
+   because the finder is off the list -- and the moment the learner puts the
+   finder back, the bridge is theirs:
 
-     The guard list is not what stops that. `sys.meta_path = ...` reassigns an
-     attribute of the `sys` module and so reaches NO list mutator at all: a
-     guard list subclass can only intercept clear() / remove() / pop() /
-     __setitem__ / __delitem__ on ITSELF. An earlier version kept Pyodide's own
-     JS finder in sys.meta_path and relied on the guard; that does not hold.
+         sys.meta_path.append(pyodide._state.jsfinder)
+         import js                                  # -> a live JsProxy
+         js.constructor.constructor("return 6*7")()   # -> 42
+
+   So layer A HIDES the finder; it does not disarm it, which is the whole
+   reason layer B exists. Layer A's real contribution is the invariant it
+   maintains -- the live bridge finder is never on the list the seal rebuilds
+   from -- and layer B's is that no JsFinder, including one the learner
+   constructs, can resolve anything.
+
+   The guard list is not what closes that gap either. `sys.meta_path = ...`
+   reassigns an attribute of the `sys` module and so reaches NO list mutator
+   at all: a guard list subclass can only intercept clear() / remove() / pop()
+   / __setitem__ / __delitem__ on ITSELF. An earlier version kept Pyodide's
+   own JS finder in sys.meta_path and relied on the guard; that does not
+   hold.
 
      LAYER B -- pinning the bridge table. The live singleton at
      pyodide._state.jsfinder is reachable as an ordinary Python attribute, and
      its `jsproxies` dict is an ordinary mutable dict. Dropping the finder from
      the list HIDES it; it does not remove it. So the table is emptied, the
      emptied dict is hardened against refilling, and the pin is put on the
-     JsFinder CLASS, so a freshly constructed JsFinder is pinned too.
+     JsFinder CLASS, so a freshly constructed JsFinder is pinned too. Because
+     the pin is a data descriptor on the class, it outranks the instance dict
+     and so holds even against the class's own __init__.
 
-     What layer B stops on its own (measured on the previous implementation,
-     where layer B only emptied finders visible on sys.meta_path):
+     WHICH MUTATION TEST LOCKS WHICH LAYER -- and this is the part that must
+     not be overclaimed:
 
-         run 1:  st.jsfinder.jsproxies['js'] = 'anything'
-         run 2:  import sys, pyodide._state as st
-                 sys.meta_path = [st.jsfinder]
-                 import js                          # -> ESCAPED without layer B
+       * layer A is locked by an INVARIANT assertion, not by an escape route.
+         Reverting it turns the suite red on "the live bridge finder is back on
+         sys.meta_path". That is the property it actually provides, and it is
+         the honest thing to lock, because no escape route distinguishes it.
+       * the per-run re-pin and the class-level pin are each locked by
+         assertions that DO run through observable behaviour: refilling the
+         table must fail with the seal's own error, and a JsFinder the learner
+         constructs must come into the world pinned.
 
-     Learner code runs BETWEEN runs, so the object it dirtied in run 1 was
-     still live in run 2. That is the bug layer B exists to close, and it is why
-     the pin is re-applied before every run rather than only at boot.
+     Learner code runs BETWEEN runs, so an object it dirtied in run 1 was still
+     live in run 2. That is the bug the per-run re-pin exists to close, and it
+     is why the pin is re-applied before every run rather than only at boot.
 
    The guard class stays as defence in depth -- it still catches clear() and
    friends -- and the seal is re-applied before every run, so a learner who
@@ -210,11 +246,20 @@ _sils_BRIDGE = frozenset(('js', 'pyodide_js'))
 # the bridge and every route to the proxy factory that was measured reachable.
 #   js / pyodide_js      the bridge itself
 #   pyodide.ffi          the documented, public face of create_proxy
-#   _pyodide_core        the NATIVE module; create_proxy lives here, and it is
+#   _pyodide_core        the NATIVE module; create_proxy and create_once_callable
+#                        live here, and both hand back a live JsProxy. It is
 #                        importable on its own with no pyodide.* involved
-#   _pyodide._core_docs  create_proxy / to_js / JsProxy, reachable directly and
-#                        not merely through pyodide.ffi
-#   pyodide.code         eval_js / run_js
+#   _pyodide._core_docs  sealed as defence in depth, NOT because it was measured
+#                        handing out a JavaScript object. Measured on 0.26.4:
+#                        its create_proxy and create_once_callable are type
+#                        stubs -- each returns its own argument unchanged
+#                        (create_proxy(1) is int 1, create_once_callable(f) is
+#                        f), so neither wraps anything and neither reaches
+#                        Function. It is sealed anyway because a future Pyodide
+#                        could make them real, and sealing a name costs nothing.
+#   pyodide.code         run_js, which really does evaluate JavaScript. There is
+#                        NO eval_js on 0.26.4 -- the module's public names are
+#                        run_js / eval_code / eval_code_async / find_imports
 #   pyodide.webloop      the WebLoop, which is built out of JS callbacks
 _sils_BLOCKED = _sils_BRIDGE | frozenset((
     'pyodide.ffi', '_pyodide_core', '_pyodide._core_docs',
@@ -297,24 +342,44 @@ def _sils_empty_bridge(_sils_finder):
     attribute, reachable from learner code, so removing the finder from the
     list only hides it.
 
-    So this does two things, in this order, and the order is load-bearing:
+    So this empties the bridge out of one finder: the live entries are deleted
+    from the table and unregister_js_module() is called for each bridge name.
+    The other half of the job -- pinning the JsFinder CLASS -- lives in
+    _sils_pin_bridge below, and it is that half, not this one, that stops the
+    routes above.
 
-      1. unregister_js_module() empties the ORIGINAL dict;
-      2. the instance attribute is dropped and the pin moves onto the JsFinder
-         CLASS, so the finder resolves through an empty table no matter who
-         holds it, including a JsFinder() the learner constructs themselves.
+    What this leaves behind is measured on the vendored 0.26.4:
 
-    Step 2 is not cosmetic. A bare class-level swap still leaves the pre-seal
-    table sitting in the instance __dict__ under the same name:
+        st.jsfinder.__dict__.get('jsproxies')   # -> {}
 
-        st.jsfinder.__dict__['jsproxies']   # -> {'js': [object global], ...}
+    An ordinary EMPTY dict, not a table of live JavaScript objects: the loop
+    above already deleted the bridge entries from it. That is the truth this
+    function leaves behind, and it is deliberately all it leaves -- the class
+    pin, not this dict, is what the finder reads.
 
-    which hands the live global straight back. Measured, not hypothetical.
+    An earlier version of this comment claimed the leftover held
+    {'js': [object global], ...} and called that "measured, not hypothetical".
+    That display value is not reachable in this implementation, at any point.
+    It also popped the instance attribute here, so the value read None instead
+    of {}. That pop was measured to be dead weight and has been deleted,
+    because a learner CAN write into the leftover {} and it changes nothing:
 
-    Note what is NOT here: hardening the emptied dict in place. It was tried,
-    and a mutation test showed the suite stayed green without it -- the pop plus
-    the class pin already leave nothing reachable -- so it was removed rather
-    than kept as decoration. See the report.
+        st.jsfinder.__dict__['jsproxies']['js'] = 'SENTINEL'   # succeeds
+        sys.meta_path.append(st.jsfinder)
+        import js                          # -> blocked (ModuleNotFoundError)
+
+    The pin is what stops that line: it is a data descriptor on the CLASS, so it
+    outranks the instance dict no matter what the dict contains. A mutation
+    test agreed -- deleting the pop left the suite green across every escape
+    route and every pin invariant -- so the line was removed rather than kept as
+    decoration. See the report.
+
+    Note what is NOT here either: hardening the emptied dict in place. Same
+    measurement, same decision.
+
+    The deletion loop above IS load-bearing, even though removing it also
+    leaves the suite green: it is what makes that leftover {} empty instead
+    of holding the live global.
 
     Best effort by design: a future Pyodide may rename the singleton or the
     method, and failing to pin must not stop the rest of the seal from applying.
@@ -330,13 +395,8 @@ def _sils_empty_bridge(_sils_finder):
                     del _sils_live[_sils_name]
                 except BaseException:
                     pass
-    # The instance attribute goes: the CLASS pin below is what the finder reads
-    # now, and leaving the old dict reachable through __dict__ would hand the
-    # pre-seal contents to anyone who looks.
-    try:
-        _sils_finder.__dict__.pop('jsproxies', None)
-    except BaseException:
-        pass
+    # No pop of the instance attribute here. It was measured to be dead weight
+    # and deleted -- see the docstring above for the route replay that says so.
     for _sils_name in tuple(_sils_BRIDGE):
         try:
             _sils_finder.unregister_js_module(_sils_name)

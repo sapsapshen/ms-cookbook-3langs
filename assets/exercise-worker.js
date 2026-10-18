@@ -261,19 +261,21 @@ for _sils_key in _sils_drop:
 # plain del would raise NameError on a run that found nothing to clean.
 globals().pop('_sils_drop', None)
 globals().pop('_sils_key', None)
-import io, contextlib, traceback
-_out = io.StringIO()
-_err = None
-_ok = True
+# Imported under the __sils_ prefix so they are not mistaken for learner names.
+# Bare \`import io\` left io / contextlib / traceback in globals(), and they then
+# turned up in the result's values as three modules the learner never wrote.
+import io as __sils_io, contextlib as __sils_contextlib, traceback as __sils_traceback
+__sils_stdout_parts = __sils_io.StringIO()
+__sils_error = None
+__sils_ok = True
 try:
-    with contextlib.redirect_stdout(_out), contextlib.redirect_stderr(_out):
+    with __sils_contextlib.redirect_stdout(__sils_stdout_parts), __sils_contextlib.redirect_stderr(__sils_stdout_parts):
         exec(compile(${JSON.stringify(code)}, '<exercise>', 'exec'), globals())
 except BaseException:
-    _ok = False
-    _err = traceback.format_exc(limit=8)
-__sils_stdout = _out.getvalue()
-__sils_error = _err
-__sils_ok = _ok
+    __sils_ok = False
+    __sils_error = __sils_traceback.format_exc(limit=8)
+__sils_stdout = __sils_stdout_parts.getvalue()
+del __sils_stdout_parts
 `;
 }
 
@@ -317,9 +319,21 @@ function evaluateSandboxChecks(pyodide, checks) {
     if (check.kind === 'var_in_range') {
       pyodide.runPython(readVariable(check.name));
       const found = pyodide.globals.get('__sils_found') === true;
-      const value = found ? Number(pyodide.globals.get('__sils_value')) : NaN;
-      const ok = found && Number.isFinite(value) && value >= check.min && value <= check.max;
-      return { ok, detail: found ? `got ${value}` : `${check.name} was never assigned` };
+      const raw = found ? pyodide.globals.get('__sils_value') : undefined;
+      // `Number('abc')` is NaN, and the old detail printed "got NaN", which
+      // tells a learner nothing about what they actually assigned. Name the
+      // type instead, so the message is actionable.
+      if (!found) return { ok: false, detail: `${check.name} was never assigned` };
+      const value = Number(raw);
+      if (!Number.isFinite(value)) {
+        const described = typeof raw === 'string' ? `the text ${JSON.stringify(raw)}`
+          : raw === null ? 'null'
+            : Array.isArray(raw) ? 'a list'
+              : `a ${typeof raw}`;
+        return { ok: false, detail: `${check.name} is ${described}, not a number` };
+      }
+      const ok = value >= check.min && value <= check.max;
+      return { ok, detail: `got ${value}` };
     }
     return null;
   });
@@ -377,6 +391,19 @@ self.addEventListener('message', async event => {
     const ok = pyodide.globals.get('__sils_ok') !== false;
     const stdout = String(pyodide.globals.get('__sils_stdout') || '');
     const error = pyodide.globals.get('__sils_error') ? String(pyodide.globals.get('__sils_error')) : '';
+    // The capture function lives in the guard namespace but has to READ the
+    // learner's namespace, so it is bridged across for the length of one call.
+    const captured = pyodide.runPython('_sils_capture', { globals: guard });
+    pyodide.globals.set('__sils_capture_fn', captured);
+    let values = {};
+    try {
+      const snapshot = pyodide.runPython('__sils_capture_fn(globals())');
+      values = snapshot && typeof snapshot.toJs === 'function'
+        ? snapshot.toJs({ dict_converter: Object.fromEntries })
+        : {};
+    } finally {
+      pyodide.globals.delete('__sils_capture_fn');
+    }
     // Both evaluators return one slot per check so the two arrays stay aligned
     // by index; a mismatch here would silently mislabel which assertion failed.
     const sandboxOutcomes = ok ? evaluateSandboxChecks(pyodide, checks) : checks.map(() => null);
@@ -386,13 +413,14 @@ self.addEventListener('message', async event => {
       return own || { ok: false, detail: ok ? 'not evaluated' : 'code did not run' };
     });
     reply({
-      type: 'result', nonce, ok, stdout, error, outcomes, ms: Date.now() - started,
+      type: 'result', nonce, ok, stdout, error, values, outcomes, ms: Date.now() - started,
     });
   } catch (failure) {
     // Still one slot per check: the grader reads outcomes by index, so a short
     // array would mislabel every check after the real fault.
     reply({
       type: 'result', nonce, ok: false, stdout: '', error: String(failure && failure.message || failure),
+      values: {},
       outcomes: checks.map(() => ({ ok: false, detail: 'the sandbox runtime failed' })),
       ms: Date.now() - started,
     });

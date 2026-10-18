@@ -25,6 +25,17 @@
      rather than borrowing from the learner's execution allowance. */
   const DEFAULT_LOAD_TIMEOUT = 120000;
 
+  /* The `reason` values a caller may see on a failed result, exported so
+     callers branch on a constant rather than on a bare string. Frozen because
+     this is the contract between the sandbox and its callers: a page that
+     rewrote it could make its own error handling unreachable. */
+  const SandboxOutcome = Object.freeze({
+    TIMEOUT: 'timeout',
+    LOAD_TIMEOUT: 'load_timeout',
+    CRASH: 'crash',
+    WORKER_ERROR: 'worker_error',
+  });
+
   /* A per-run token. Learner code that reaches postMessage can shape any
      message it likes, so the facade only believes a reply carrying the nonce it
      minted for THIS run. crypto.getRandomValues, never a counter: a guessable
@@ -85,6 +96,9 @@
         ok: false,
         stdout: '',
         error,
+        // Every exit path returns the same shape, so a caller never has to
+        // ask whether `values` exists before reading it.
+        values: {},
         outcomes: (Array.isArray(checks) ? checks : []).map(() => ({ ok: false, detail: '' })),
         ms: 0,
         ...extra,
@@ -95,7 +109,7 @@
       return new Promise((resolve, reject) => {
         let instance;
         try { instance = ensureWorker(); }
-        catch (error) { reject({ reason: 'worker_error', message: String(error.message || error) }); return; }
+        catch (error) { reject({ reason: SandboxOutcome.WORKER_ERROR, message: String(error.message || error) }); return; }
         const limit = request.timeoutMs || defaultTimeout;
         const nonce = randomNonce();
         let settled = false;
@@ -118,14 +132,14 @@
             finish(failed(
               `运行环境下载超时（${Math.round(loadTimeout / 1000)}秒），请检查网络后重试`,
               request.checks,
-              { ms: loadTimeout, reason: 'load_timeout' }));
+              { ms: loadTimeout, reason: SandboxOutcome.LOAD_TIMEOUT }));
           }, loadTimeout);
         };
         const armRunTimeout = () => {
           if (timer) clearTimeout(timer);
           timer = setTimeout(() => {
             destroy();
-            finish(failed(`运行超时（${Math.round(limit / 1000)}秒），请检查是否有死循环`, request.checks, { ms: limit, reason: 'timeout' }));
+            finish(failed(`运行超时（${Math.round(limit / 1000)}秒），请检查是否有死循环`, request.checks, { ms: limit, reason: SandboxOutcome.TIMEOUT }));
           }, limit);
         };
         const onMessage = event => {
@@ -141,11 +155,18 @@
             return;
           }
           if (data.type !== 'result') return;
-          finish({ ok: data.ok === true, stdout: data.stdout || '', error: data.error || '', outcomes: data.outcomes || [], ms: data.ms || 0 });
+          finish({
+            ok: data.ok === true,
+            stdout: data.stdout || '',
+            error: data.error || '',
+            values: data.values || {},
+            outcomes: data.outcomes || [],
+            ms: data.ms || 0,
+          });
         };
         const onError = event => {
           destroy();
-          finish(failed((event && event.message) || '运行环境异常', request.checks, { reason: 'crash' }));
+          finish(failed((event && event.message) || '运行环境异常', request.checks, { reason: SandboxOutcome.CRASH }));
         };
         instance.addEventListener('message', onMessage);
         instance.addEventListener('error', onError);
@@ -175,12 +196,12 @@
         if (thrown && thrown.reason) {
           return failed(String(thrown.message || ''), request.checks, { reason: thrown.reason });
         }
-        return failed(String(thrown && thrown.message || thrown), request.checks, { reason: 'worker_error' });
+        return failed(String(thrown && thrown.message || thrown), request.checks, { reason: SandboxOutcome.WORKER_ERROR });
       }
     }
 
     return { preload, run, destroy, get busy() { return worker !== null; } };
   }
 
-  return { DEFAULT_TIMEOUT, DEFAULT_LOAD_TIMEOUT, create };
+  return { DEFAULT_TIMEOUT, DEFAULT_LOAD_TIMEOUT, SandboxOutcome, create };
 });

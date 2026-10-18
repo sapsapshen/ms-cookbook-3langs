@@ -52,6 +52,24 @@ def encode(value):
     except (TypeError, ValueError):
         return {'__opaque__': type(value).__name__}
 
+def snapshot(session):
+    # The learner's globals, as the worker's values field reports them.
+    out = {}
+    for key, value in list(session.items()):
+        if key.startswith('__sils_') or key.startswith('_sils_'):
+            continue
+        if value is None or isinstance(value, (bool, int, float, str)):
+            out[key] = value
+        elif isinstance(value, (list, tuple, dict)):
+            try:
+                json.dumps(value)
+                out[key] = list(value) if isinstance(value, tuple) else value
+            except (TypeError, ValueError):
+                out[key] = {'__type__': type(value).__name__}
+        else:
+            out[key] = {'__type__': type(value).__name__}
+    return out
+
 request = json.loads(sys.stdin.read())
 session, error = {}, None
 try:
@@ -60,7 +78,8 @@ try:
 except BaseException:
     error = traceback.format_exc(limit=8)
 print(json.dumps({'error': error,
-                  'values': {name: encode(session.get(name)) for name in NAMES}}))
+                  'values': {name: encode(session.get(name)) for name in NAMES},
+                  'learner': snapshot(session)}))
 `;
 
 // The real corpus harness — the same module Task 3 wrote and CI runs.
@@ -110,7 +129,7 @@ const SHARED_KINDS = new Set([
 /* The private guard namespace the worker seals the JS bridge into. Only the
    protocol matters to this fake; the seal's Python is exercised for real
    against a real Pyodide by scripts/test-exercise-sandbox-real.cjs. */
-const guard = {};
+const guard = { capture: {} };
 
 function createWorkerHost(override) {
   const source = override || fs.readFileSync(WORKER, 'utf8');
@@ -127,9 +146,12 @@ function createWorkerHost(override) {
       throw new Error(lines[lines.length - 1] || 'python snippet failed');
     }
     snapshot = result.values;
+    // The `values` field the real runtime produces for the result.
+    guard.capture = result.learner;
   }
 
   function makeRuntime() {
+    const bindings = Object.create(null);
     return {
       silsGuard: null,
       globals: {
@@ -137,15 +159,31 @@ function createWorkerHost(override) {
           if (name === 'dict') return () => guard;
           return Object.prototype.hasOwnProperty.call(snapshot, name) ? snapshot[name] : undefined;
         },
+        // Names bound into the interpreter namespace from JS. The real
+        // pyodide globals.set() takes any value and converts it; the only
+        // thing the worker binds is a Python function proxy, which JSON
+        // cannot express, so it is kept here and re-entered when the matching
+        // runPython call comes around.
+        set(name, value) { bindings[name] = value; },
+        delete(name) { delete bindings[name]; },
       },
       runPython(code, options) {
         // runPython(code, {globals}) targets the private guard namespace where
         // the JS-bridge seal lives. This fake models the PROTOCOL of that; the
         // seal's Python is executed for real against a real Pyodide by
-        // scripts/test-exercise-sandbox-real.cjs.
-        if (options && options.globals) return undefined;
+        // scripts/test-exercise-sandbox-real.cjs. What the worker reads back
+        // out of the namespace is the capture function.
+        if (options && options.globals) {
+          // The real Pyodide hands back a Python function proxy here, and the
+          // matching call comes back as a dict proxy carrying toJs().
+          if (code === '_sils_capture') return () => ({ toJs: () => guard.capture });
+          return undefined;
+        }
+        const call = /^([A-Za-z_]\w*)\(globals\(\)\)$/.exec(code);
+        if (call && bindings[call[1]]) return bindings[call[1]]();
         codes.push(code);
         flush();
+        return undefined;
       },
     };
   }
@@ -340,6 +378,18 @@ const CASES = [
     ]);
   }],
 
+  ['var_in_range names the type when the value is not a number', async () => {
+    // `Number('abc')` is NaN, and the old detail printed "got NaN", which tells
+    // a learner nothing about what they actually assigned.
+    const result = await host.run({
+      code: 'score = "not a number"\n',
+      checks: [{ kind: 'var_in_range', name: 'score', min: 1, max: 10, weight: 1 }],
+    });
+    assert.equal(result.outcomes[0].ok, false);
+    assert.equal(result.outcomes[0].detail, 'score is the text "not a number", not a number');
+    assert.ok(!/NaN/.test(result.outcomes[0].detail), 'NaN must not be shown to the learner');
+  }],
+
   ['var_equals reads the variable the check names, not one called `name`', async () => {
     // The brief's readVariable emitted a bare `name in globals()`. A learner who
     // happens to define `name` would silently answer a different question, and
@@ -362,6 +412,41 @@ const CASES = [
     });
     assert.equal(second.outcomes[0].ok, false, 'a stale global must not satisfy this run');
     assert.equal(second.outcomes[0].detail, 'total was never assigned');
+  }],
+
+  ['an underscore-prefixed global is cleaned too, not just a plain one', async () => {
+    // The cleanup once kept every name starting with '_', so a learner who
+    // wrote `_total = 5` still had it on the next run and could pass a check
+    // they had stopped satisfying. Only this worker's own __sils_* slots stay.
+    await host.run({ code: '_total = 5\n', checks: [] });
+    const second = await host.run({
+      code: 'pass\n',
+      checks: [{ kind: 'var_equals', name: '_total', value: 5, weight: 1 }],
+    });
+    assert.equal(second.outcomes[0].ok, false, 'a stale _global must not satisfy this run');
+    assert.equal(second.outcomes[0].detail, '_total was never assigned');
+  }],
+
+  ['the result carries a snapshot of the learner globals in `values`', async () => {
+    const result = await host.run({
+      code: 'answer = 42\nlabel = "hi"\nitems = [1, 2]\nclass Thing:\n    pass\nthing = Thing()\n',
+      checks: [],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.values.answer, 42);
+    assert.equal(result.values.label, 'hi');
+    assert.deepEqual(result.values.items, [1, 2]);
+    // Anything that cannot cross into JSON is reported by type rather than
+    // dropped: "there is a thing and it is a Thing" is information a caller
+    // can use, whereas a silent omission is indistinguishable from "never set".
+    assert.deepEqual(result.values.thing, { __type__: 'Thing' });
+    assert.ok(!('__sils_stdout' in result.values), 'worker internals must not leak into values');
+  }],
+
+  ['a failed run still returns a `values` field', async () => {
+    const result = await host.run({ code: 'def broken(:\n    pass\n', checks: [] });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.values, {}, 'callers must never have to test whether values exists');
   }],
 
   ['mixed check kinds stay index-aligned', async () => {
@@ -531,7 +616,7 @@ const CASES = [
     posted.emit('message', { data: { type: 'loading', nonce: data.nonce } });
     const result = await settled;
     assert.equal(result.ok, false);
-    assert.equal(result.reason, 'timeout');
+    assert.equal(result.reason, box.api.SandboxOutcome.TIMEOUT);
     assert.match(result.error, /运行超时/);
     assert.ok(!/下载/.test(result.error),
       'a learner told to check for dead loops must not also be told it was a download');
@@ -557,7 +642,7 @@ const CASES = [
     box.take();  // never answers
     const result = await settled;
     assert.equal(result.ok, false);
-    assert.equal(result.reason, 'load_timeout');
+    assert.equal(result.reason, box.api.SandboxOutcome.LOAD_TIMEOUT);
     assert.match(result.error, /运行环境下载超时/);
     assert.ok(!/死循环/.test(result.error), 'the download failure must not blame the learner code');
     assert.equal(result.outcomes.length, checks.length);
@@ -595,7 +680,7 @@ const CASES = [
     box.take().worker.emit('error', { message: 'worker exploded' });
     const result = await settled;
     assert.equal(result.ok, false);
-    assert.equal(result.reason, 'crash');
+    assert.equal(result.reason, box.api.SandboxOutcome.CRASH);
     assert.equal(result.error, 'worker exploded');
     assert.equal(result.outcomes.length, checks.length);
     assert.equal(box.spawned[0].terminated, true);
@@ -632,6 +717,20 @@ const CASES = [
     sandbox.destroy();
     assert.equal(box.spawned[0].terminated, true);
     assert.equal(sandbox.busy, false);
+  }],
+  ['the facade exports the outcome constants its callers branch on', async () => {
+    const box = createSandbox();
+    const { SandboxOutcome, DEFAULT_TIMEOUT, DEFAULT_LOAD_TIMEOUT } = box.api;
+    assert.equal(SandboxOutcome.TIMEOUT, 'timeout');
+    assert.equal(SandboxOutcome.LOAD_TIMEOUT, 'load_timeout');
+    assert.equal(SandboxOutcome.CRASH, 'crash');
+    assert.equal(SandboxOutcome.WORKER_ERROR, 'worker_error');
+    assert.ok(Object.isFrozen(SandboxOutcome), 'callers must not be able to rewrite the contract');
+    assert.equal(DEFAULT_TIMEOUT, 15000);
+    // The download budget has to be meaningfully larger than the run budget,
+    // or splitting the two clocks achieves nothing.
+    assert.ok(DEFAULT_LOAD_TIMEOUT > DEFAULT_TIMEOUT * 2,
+      `load budget ${DEFAULT_LOAD_TIMEOUT} must dwarf the run budget ${DEFAULT_TIMEOUT}`);
   }],
 ];
 

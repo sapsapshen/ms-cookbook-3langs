@@ -1,5 +1,5 @@
 """Reading community API and static site; OAuth credentials never leave this process."""
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, closing, contextmanager
 from datetime import datetime, timedelta
 import hashlib
 import hmac
@@ -105,7 +105,9 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         return any(marker in message for marker in ('malformed', 'file is not a database', 'database disk image'))
 
     def check_analytics_database(path):
-        with sqlite3.connect(path, timeout=5) as conn:
+        # `with sqlite3.connect(...)` only commits; it leaves the file handle open,
+        # and Windows refuses to replace or delete a file that is still held open.
+        with closing(sqlite3.connect(path, timeout=5)) as conn, conn:
             result = conn.execute('PRAGMA quick_check').fetchone()[0]
         if result != 'ok': raise sqlite3.DatabaseError(result)
 
@@ -118,7 +120,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         temporary = analytics_runtime / f'.restore-{secrets.token_hex(6)}.sqlite3'
         try:
             uri = f'file:{source.resolve()}?mode=ro'
-            with sqlite3.connect(uri, uri=True, timeout=10) as source_db, sqlite3.connect(temporary) as target_db:
+            with closing(sqlite3.connect(uri, uri=True, timeout=10)) as source_db, source_db, \
+                    closing(sqlite3.connect(temporary)) as target_db, target_db:
                 source_db.backup(target_db)
             check_analytics_database(temporary)
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -190,7 +193,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             if not force and time.monotonic() - analytics_snapshot_state['last'] < 15: return False
             snapshot = analytics_runtime / f'.snapshot-{secrets.token_hex(6)}.sqlite3'
             try:
-                with sqlite3.connect(analytics_path, timeout=5) as source_db, sqlite3.connect(snapshot) as target_db:
+                with closing(sqlite3.connect(analytics_path, timeout=5)) as source_db, source_db, \
+                        closing(sqlite3.connect(snapshot)) as target_db, target_db:
                     source_db.backup(target_db)
                 check_analytics_database(snapshot)
                 if last_snapshot_path.exists(): durable_copy(last_snapshot_path, previous_analytics_path)

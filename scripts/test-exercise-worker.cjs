@@ -148,10 +148,28 @@ function createInterpreter() {
       fs.rmSync(res, { force: true });
       return payload;
     },
-    close() {
+    /* `child.kill()` only asks the OS to terminate the process; the child can
+       still be holding req.json open for a few milliseconds afterwards. On
+       Windows an unlink against a file with a live handle fails with EBUSY, so
+       deleting the directory straight after kill() loses that race about one run
+       in three -- a flake in the suite CI now depends on. Wait for the actual
+       exit, then retry briefly: Windows also holds handles open asynchronously
+       for reasons that outlive the process (indexers, virus scanners). */
+    async close() {
       try { fs.writeFileSync(req, JSON.stringify({ stop: true }), 'utf8'); } catch (failure) { /* gone */ }
-      child.kill();
-      fs.rmSync(dir, { recursive: true, force: true });
+      if (child.exitCode === null && child.signalCode === null) {
+        await new Promise(resolve => {
+          child.once('exit', resolve);
+          child.kill();
+        });
+      }
+      for (let attempt = 0; ; attempt++) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); return; }
+        catch (error) {
+          if (attempt >= 20 || (error.code !== 'EBUSY' && error.code !== 'EPERM')) throw error;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
     },
   };
 }
@@ -284,7 +302,7 @@ function createWorkerHost(override) {
   return {
     loaded: typeof handler === 'function',
     imported,
-    close() { interpreter.close(); },
+    async close() { await interpreter.close(); },
     async run(request) {
       codes = [];
       snapshot = {};
@@ -571,7 +589,7 @@ const CASES = [
       assert.deepEqual(result.outcomes.map(one => one.ok), [false, false]);
     } finally {
       // Its own interpreter: without this the child outlives the run.
-      crashed.close();
+      await crashed.close();
     }
   }],
 
@@ -834,7 +852,7 @@ async function main() {
   }
   // The shared interpreter is a real child process; without this the run would
   // print PASS and then hang forever.
-  host.close();
+  await host.close();
   if (failures) {
     console.error(`\n${failures} failing`);
     process.exit(1);

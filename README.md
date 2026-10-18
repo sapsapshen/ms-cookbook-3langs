@@ -71,6 +71,16 @@ Reading locally requires Python 3 and a modern browser; it requires no project d
 
 Basic Python and command-line familiarity are useful for the coding exercises. Begin with a chapter that fits your current task, check its environment requirements, reproduce the example, and then test it with your own inputs. Record results and limitations before moving on.
 
+## Hands-on exercises
+
+Exercised chapters ship two to four exercises each. Write code in the browser, run it in a Pyodide sandbox, and get per-check feedback right in the page. Progress is kept locally for guests and synced to your ModelScope account once you sign in, so it follows you across devices. The `#practice` view doubles as a learning map showing which chapters you have worked through.
+
+The Python runtime is about 13 MB and loads lazily: nothing is downloaded while you read, only when you press **Run** for the first time. The download gets its own generous budget, separate from the 15 seconds your code is allowed to run, so a slow first run never gets reported as a timeout in your own code.
+
+Exercises that would need a GPU, a training cluster or an external API are written as reflection prompts instead: you write your reasoning, compare it with the reference answer, and self-assess. We would rather say a topic cannot run in a browser than ship a Run button that always fails.
+
+Your exercise code runs in a sandbox with no network access, no filesystem writes and no subprocesses, and progress sync uploads only the exercise id, whether it passed, your pass rate, attempt count and the code you wrote — so keep production keys and personal data out of it. See [AUTH-AND-DISCUSSION.md](https://github.com/modelscope/ms-cookbook/blob/main/AUTH-AND-DISCUSSION.md) for the full data-handling notes.
+
 ## Book contents
 
 Read each chapter on GitHub, or use the [online reading website](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook). Chapter titles are in Chinese.

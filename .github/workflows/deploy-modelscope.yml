@@ -18,14 +18,26 @@ on:
       - 'scripts/chapter_markdown.py'
       - 'scripts/test_chapter_markdown.py'
       - 'scripts/build-content.mjs'
+      - 'scripts/build-i18n.py'
       - 'scripts/check-site.mjs'
+      - 'scripts/vendor-pyodide.mjs'
       - 'scripts/build-exercises.py'
       - 'scripts/test_exercises.py'
       - 'scripts/check_exercise_references.py'
       - 'scripts/check_regex_parity.py'
+      - 'scripts/test_pyodide_vendor.py'
+      - 'scripts/test-exercise-grader.cjs'
+      - 'scripts/test-exercise-store.cjs'
       - 'scripts/test-exercise-worker.cjs'
       - 'scripts/test-exercise-sandbox-real.cjs'
-      - 'scripts/test_pyodide_vendor.py'
+      - 'scripts/test-exercise-ui.cjs'
+      - 'scripts/test-exercise-ui-corpus.cjs'
+      - 'scripts/test-exercise-ui-harness.cjs'
+      - 'scripts/test-exercise-map.cjs'
+      - 'scripts/test-exercise-wiring.cjs'
+      - 'scripts/test-exercise-locale.cjs'
+      - 'scripts/test-i18n.cjs'
+      - 'scripts/test-ci-coverage.cjs'
       - 'README*.md'
       - 'LICENSE'
       - 'scripts/deploy-modelscope.mjs'
@@ -72,21 +84,37 @@ jobs:
           # Needs `node` (step "Set up Node.js", same job) to compare each
           # stdout_matches pattern under JS RegExp as well as Python re.
           python3 scripts/check_regex_parity.py
-      - name: Verify the exercise sandbox
+      - name: Verify the exercise modules
         run: |
           # The grading logic, against the corpus harness. Its fake Pyodide is
           # fast and hermetic but cannot see the runtime itself, so this is
-          # paired with the real-runtime test below.
+          # paired with the real-runtime test in its own step below.
           node scripts/test-exercise-worker.cjs
           node scripts/test-exercise-grader.cjs
           node scripts/test-exercise-store.cjs
+          node scripts/test-exercise-ui.cjs
+          node scripts/test-exercise-ui-corpus.cjs
+          node scripts/test-exercise-map.cjs
+          node scripts/test-exercise-wiring.cjs
+          node scripts/test-exercise-locale.cjs
+          node scripts/test-i18n.cjs
+          python3 scripts/test_pyodide_vendor.py
+      - name: Verify the sandbox against a real Pyodide runtime
+        run: |
           # The escape routes, against the real vendored Pyodide: `import js`
           # must raise ImportError, the network globals must stay sealed, and a
           # forged postMessage must be discarded. Two Critical defects shipped
           # with 17 green tests because the fake loads no files and has no js
-          # module, so this step is the one that can see them.
+          # module, so this is the one check that can see them.
+          #
+          # It stands alone because it loads a 13 MB wasm and starts a fresh
+          # interpreter per case: ~10 s locally, and on a cold CI runner the
+          # fetch dominates. Isolating it keeps a timeout here legible as
+          # "the sandbox broke" instead of failing whichever script happened to
+          # share the step, and it stays well inside the job's 20-minute cap.
           node scripts/test-exercise-sandbox-real.cjs
-          python3 scripts/test_pyodide_vendor.py
+      - name: Verify the CI wiring itself
+        run: node scripts/test-ci-coverage.cjs
       - name: Sync and deploy the website
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}

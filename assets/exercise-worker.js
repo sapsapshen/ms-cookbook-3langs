@@ -244,17 +244,11 @@ def _sils_serves_bridge(_sils_finder):
     return False
 
 class _sils_SealedBridgeTable(dict):
-    """An emptied bridge table that refuses to be refilled.
+    """The bridge table, permanently empty, refusing to be refilled.
 
     A dict subclass rather than a plain dict because \`table['js'] = x\`,
-    \`table.update(...) \`, \`table.setdefault(...)\` and \`|= \` are all separate
+    \`table.update(...)\`, \`table.setdefault(...)\` and \`|= \` are all separate
     routes in, and overriding only __setitem__ would leave the other three open.
-    Measured: with __setitem__ alone overridden, dict.__setitem__(table, 'js', v)
-    still wrote through -- so the honest statement is that this closes the
-    ordinary dict API, not the C-level one. What it buys is that the remaining
-    C-level route needs an actual JavaScript object to put in the table, and
-    after the pin there is none: create_proxy is sealed, and every other source
-    of a JsProxy has been measured closed.
 
     Deletions are deliberately ALLOWED. \`del table[k]\`, pop() and clear() can
     only ever empty it further, and Pyodide's own unregister_js_module() is a
@@ -287,22 +281,24 @@ def _sils_empty_bridge(_sils_finder):
     attribute, reachable from learner code, so removing the finder from the
     list only hides it.
 
-    So this does three things, in this order, and the order is load-bearing:
+    So this does two things, in this order, and the order is load-bearing:
 
       1. unregister_js_module() empties the ORIGINAL dict;
-      2. the emptied dict is hardened in place, so anything still holding THAT
-         object -- including a learner who saved it -- cannot refill it;
-      3. the instance attribute is dropped and the pin moves onto the JsFinder
+      2. the instance attribute is dropped and the pin moves onto the JsFinder
          CLASS, so the finder resolves through an empty table no matter who
          holds it, including a JsFinder() the learner constructs themselves.
 
-    Step 3 on its own is not enough and neither is step 2, which is why all
-    three are here: after a bare class-level swap the pre-seal table is still
-    sitting in the instance __dict__ under the same name, and
+    Step 2 is not cosmetic. A bare class-level swap still leaves the pre-seal
+    table sitting in the instance __dict__ under the same name:
 
         st.jsfinder.__dict__['jsproxies']   # -> {'js': [object global], ...}
 
-    hands the live global straight back. Measured, not hypothetical.
+    which hands the live global straight back. Measured, not hypothetical.
+
+    Note what is NOT here: hardening the emptied dict in place. It was tried,
+    and a mutation test showed the suite stayed green without it -- the pop plus
+    the class pin already leave nothing reachable -- so it was removed rather
+    than kept as decoration. See the report.
 
     Best effort by design: a future Pyodide may rename the singleton or the
     method, and failing to pin must not stop the rest of the seal from applying.
@@ -318,13 +314,6 @@ def _sils_empty_bridge(_sils_finder):
                     del _sils_live[_sils_name]
                 except BaseException:
                     pass
-        # Harden the object we just emptied, so a reference the learner kept
-        # cannot write to it. Assigning __class__ on a dict subclass instance is
-        # what makes this stick.
-        try:
-            _sils_live.__class__ = _sils_SealedBridgeTable
-        except BaseException:
-            pass
     # The instance attribute goes: the CLASS pin below is what the finder reads
     # now, and leaving the old dict reachable through __dict__ would hand the
     # pre-seal contents to anyone who looks.

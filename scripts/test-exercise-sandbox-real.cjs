@@ -28,7 +28,10 @@
    Runtime
    -------
    Loads ~13 MB of wasm and compiles it, which takes a few seconds locally and
-   a bit longer on a loaded CI machine. Set SILS_REAL_PYODIDE=0 to skip it.
+   a bit longer on a loaded CI machine. The mutation cases each boot their own
+   interpreter, so the file costs roughly (1 + number of mutations) boots. Set
+   SILS_REAL_PYODIDE=0 to skip it all, or SILS_SKIP_MUTATIONS=1 to run the
+   cases without the mutation pass (useful when iterating on a case).
 
    Usage:  node scripts/test-exercise-sandbox-real.cjs
 */
@@ -61,9 +64,13 @@ const PYTHON = process.env.PYTHON || (fs.existsSync(VENV_PYTHON) ? VENV_PYTHON :
      * the scope really does have fetch / XMLHttpRequest / WebSocket /
        importScripts on it before the worker seals them. Without a global that
        genuinely had them, the network assertions would be checking that a
-       property was never there. */
-function createRealHost() {
-  const source = fs.readFileSync(WORKER, 'utf8');
+       property was never there.
+
+   `override` boots a MUTATED copy of the worker instead of the shipped one, so
+   the mutation cases can ask what the suite would say if a layer were removed.
+   The default reads the file, so a defect in the shipped source fails here. */
+function createRealHost(override) {
+  const source = override || fs.readFileSync(WORKER, 'utf8');
   let handler = null;
   const replies = [];
   const imported = [];
@@ -110,6 +117,9 @@ function createRealHost() {
     scope,
     imported,
     get runtime() { return runtime; },
+    /* Releases the interpreter. Needed for a host that ran a probe which
+       deliberately broke interpreter-wide state. */
+    close() { if (runtime) { try { runtime.destroy(); } catch (failure) { /* already gone */ } runtime = null; } },
     async run(request) {
       const nonce = request.nonce || 'real-nonce';
       replies.length = 0;
@@ -204,6 +214,74 @@ function tryPython(runtime, code) {
   }
 }
 
+/* Invariants that must hold on an INTACT, freshly sealed session.
+
+   These live in one place because they are the assertions most easily got
+   wrong: they all have to be checked before anything has deliberately broken
+   sys.meta_path, and they answer "is the bridge ABSENT", not merely "does the
+   import fail". A namespace that refused to import `js` while still holding a
+   live object would pass the weaker question and leak through the back door.
+
+   NOTE on find_spec: the sealed names RAISE ImportError rather than returning
+   None, because _sils_SealedImport.find_spec raises. `import js` does the same.
+   That is stricter than returning None, so the assertions accept either: the
+   invariant is "does not hand back a usable spec". */
+const ABSENCE = [
+  // The baseline the seal rebuilds from must contain no finder that can serve
+  // the bridge. Asked of the FINDER rather than matched on its name, because
+  // Pyodide could rename the class -- and a name match would then quietly stop
+  // matching while still reporting a sealed import path.
+  //
+  // The previous version of this asserted `!String(list).split(', ')
+  // .includes('JsFinder')`, which is ALWAYS TRUE: String(list) renders each
+  // element with quotes ("['JsFinder']"), so the unquoted needle can never
+  // match. The assertion passed no matter what the baseline contained. This one
+  // asks the interpreter instead.
+  ['no finder on sys.meta_path can serve js',
+    'import sys\n'
+    + 'for f in sys.meta_path:\n'
+    + '    try:\n'
+    + '        assert f.find_spec("js", None) is None, "a finder on the list can still resolve js"\n'
+    + '    except ImportError:\n'
+    + '        pass  # the seal refuses it outright, which is stricter'],
+  ['and none can serve pyodide_js',
+    'import sys\n'
+    + 'for f in sys.meta_path:\n'
+    + '    try:\n'
+    + '        assert f.find_spec("pyodide_js", None) is None\n'
+    + '    except ImportError:\n'
+    + '        pass'],
+  ["sys.modules['js'] is absent", 'import sys\nassert sys.modules.get("js") is None'],
+  ["sys.modules['pyodide_js'] is absent", 'import sys\nassert sys.modules.get("pyodide_js") is None'],
+  ['find_spec("js") hands back no usable spec',
+    'import importlib.util as u\n'
+    + 'try:\n'
+    + '    assert u.find_spec("js") is None\n'
+    + 'except ImportError:\n'
+    + '    pass'],
+];
+
+const SEALED_ABSENT = [
+  ['find_spec("pyodide.ffi")', 'import importlib.util as u\ntry:\n    assert u.find_spec("pyodide.ffi") is None\nexcept ImportError:\n    pass'],
+  ['find_spec("_pyodide_core")', 'import importlib.util as u\ntry:\n    assert u.find_spec("_pyodide_core") is None\nexcept ImportError:\n    pass'],
+  ['find_spec("_pyodide._core_docs")', 'import importlib.util as u\ntry:\n    assert u.find_spec("_pyodide._core_docs") is None\nexcept ImportError:\n    pass'],
+  ['find_spec("pyodide.code")', 'import importlib.util as u\ntry:\n    assert u.find_spec("pyodide.code") is None\nexcept ImportError:\n    pass'],
+  ['find_spec("pyodide.webloop")', 'import importlib.util as u\ntry:\n    assert u.find_spec("pyodide.webloop") is None\nexcept ImportError:\n    pass'],
+  ['sys.modules has no pyodide.ffi', 'import sys\nassert "pyodide.ffi" not in sys.modules'],
+  ['sys.modules has no _pyodide_core', 'import sys\nassert "_pyodide_core" not in sys.modules'],
+  ['sys.modules has no _pyodide._core_docs', 'import sys\nassert "_pyodide._core_docs" not in sys.modules'],
+  ['sys.modules has no pyodide.code', 'import sys\nassert "pyodide.code" not in sys.modules'],
+  // `import pyodide` must keep working: the seal matches on dotted PREFIX, and
+  // Pyodide's own internals live under that package.
+  ['import pyodide still works', 'import pyodide\nassert pyodide.__version__'],
+  ['pyodide.ffi is off the package object',
+    'import pyodide\nassert not hasattr(pyodide, "ffi"), "the attribute survived the seal"'],
+  ['pyodide.code is off the package object',
+    'import pyodide\nassert not hasattr(pyodide, "code"), "the attribute survived the seal"'],
+  ['_pyodide._core_docs is off the package object',
+    'import _pyodide\nassert not hasattr(_pyodide, "_core_docs"), "the attribute survived the seal"'],
+];
+
 const CASES = [];
 const caseOf = (name, fn) => CASES.push([name, fn]);
 
@@ -243,17 +321,27 @@ caseOf('js.fetch, js.eval and js.postMessage are all unreachable', async host =>
   }
 });
 
-caseOf('no route to the bridge: seven meta_path routes and six import routes', async host => {
+caseOf('no route to the bridge: nine meta_path routes and six import routes', async host => {
   await host.run({ code: 'pass\n', checks: [] });
 
-  // The baseline the seal builds from must not contain a finder that can serve
-  // the bridge AT ALL -- otherwise `sys.meta_path = list(sys.meta_path)[1:]`
-  // reassigns an attribute of the sys module, reaches no list mutator, and
-  // walks straight past a guard that only ever intercepted clear()/remove().
-  const before = tryPython(host.runtime, 'import sys\n[type(f).__name__ for f in sys.meta_path]');
-  assert.equal(before.ok, true, before.error);
-  assert.ok(!before.value.split(', ').includes('JsFinder'),
-    `the sealed baseline must not contain JsFinder, got ${before.value}`);
+  // ORDER MATTERS, and this is the whole point of the two blocks below.
+  //
+  // The ROUTES block destroys sys.meta_path on purpose -- several of those
+  // snippets end with `sys.meta_path = []`. Anything asserted AFTER it is
+  // therefore asserting about a session the ROUTES block already wrecked, and
+  // the previous version of this case had exactly that bug: its sys.modules
+  // and find_spec assertions sat below the routes, so they passed against a
+  // gutted import system rather than against a working sealed one. A seal that
+  // broke every import would have passed them.
+  //
+  // So the ABSENCE assertions come FIRST, against an intact session, and each
+  // ROUTE gets a fresh `host.run` so no route inherits the previous one's
+  // damage. Nothing here depends on the order the routes happen to run in.
+  for (const [name, code] of ABSENCE) {
+    const outcome = tryPython(host.runtime, code);
+    assert.equal(outcome.ok, true,
+      `${name} must hold on an intact sealed session: ${String(outcome.error || '').slice(-160)}`);
+  }
 
   const ROUTES = [
     ['sys.meta_path = list(meta_path)[1:]', 'import sys\nsys.meta_path = list(sys.meta_path)[1:]\nimport js'],
@@ -262,50 +350,228 @@ caseOf('no route to the bridge: seven meta_path routes and six import routes', a
     ['sys.meta_path.clear()', 'import sys\nsys.meta_path.clear()\nimport js'],
     ['sys.meta_path[:] = []', 'import sys\nsys.meta_path[:] = []\nimport js'],
     ['del sys.meta_path[:]', 'import sys\ndel sys.meta_path[:]\nimport js'],
+    ['sys.meta_path = []', 'import sys\nsys.meta_path = []\nimport js'],
     ["sys.modules['js'] = None", 'import sys\nsys.modules["js"] = None\nimport js'],
-    // Routes that reach the finder object rather than the list it sits in.
-    // pyodide._state.jsfinder is the LIVE singleton with js in its jsproxies
-    // table, so a seal that only filtered sys.meta_path would leave this open.
-    ['append pyodide._state.jsfinder', 'import sys, pyodide._state as st\nsys.meta_path.append(st.jsfinder)\nimport js'],
-    ['sys.meta_path = [pyodide._state.jsfinder]', 'import sys, pyodide._state as st\nsys.meta_path = [st.jsfinder]\nimport js'],
-    ['insert(0, pyodide._state.jsfinder)', 'import sys, pyodide._state as st\nsys.meta_path.insert(0, st.jsfinder)\nimport js'],
-    ['construct a fresh JsFinder', 'import sys\nfrom _pyodide._importhook import JsFinder\nsys.meta_path.append(JsFinder())\nimport js'],
+    // Routes that reach the finder OBJECT rather than the list it sits in.
+    // pyodide._state.jsfinder is the LIVE singleton; a seal that only filtered
+    // sys.meta_path would hide it without removing it.
+    ['append pyodide._state.jsfinder', 'import sys, pyodide._state as st\nst.jsfinder.jsproxies["js"] = "X"\nsys.meta_path.append(st.jsfinder)\nimport js'],
+    ['sys.meta_path = [pyodide._state.jsfinder]', 'import sys, pyodide._state as st\nst.jsfinder.jsproxies["js"] = "X"\nsys.meta_path = [st.jsfinder]\nimport js'],
+    ['insert(0, pyodide._state.jsfinder)', 'import sys, pyodide._state as st\nst.jsfinder.jsproxies["js"] = "X"\nsys.meta_path.insert(0, st.jsfinder)\nimport js'],
+    ['replace the jsproxies attribute wholesale', 'import sys, pyodide._state as st\nst.jsfinder.jsproxies = {"js": "X"}\nsys.meta_path = [st.jsfinder]\nimport js'],
+    ['construct a fresh JsFinder and fill it', 'import sys\nfrom _pyodide._importhook import JsFinder\nf = JsFinder()\nf.jsproxies = {"js": "X"}\nsys.meta_path.append(f)\nimport js'],
+    ['refill the table, then drop the guard from the list', 'import sys, pyodide._state as st\n'
+      + 'st.jsfinder.jsproxies["js"] = "X"\nst.jsfinder.jsproxies["pyodide_js"] = "X"\n'
+      + 'sys.meta_path = [f for f in sys.meta_path if type(f).__name__ != "_sils_SealedImport"]\nimport js'],
+    ['register_js_module then import', 'import sys\nfrom _pyodide._importhook import register_js_module, JsProxy\n'
+      + 'o = object.__new__(JsProxy)\ntry:\n    register_js_module("js", o)\nexcept BaseException:\n    pass\nimport js'],
     // The import routes, all of which must fail on their own.
     ['import js', 'import js'],
     ['importlib.import_module("js")', 'import importlib\nimportlib.import_module("js")'],
     ['__import__("js")', '__import__("js")'],
     ['from js import eval', 'from js import eval'],
     ['import pyodide_js', 'import pyodide_js'],
-    ['js re-added to sys.modules then imported', 'import sys, pyodide._state as st\n'
-      + 'sys.modules["js"] = st.jsfinder.jsproxies.get("js")\nimport js'],
+    // Pre-seeding sys.modules does let `import js` return a value, but only a
+    // value the learner already had in hand -- there is no JavaScript object
+    // left to put there. So the assertion is about REACH, not about the import
+    // failing: what comes back must be inert. (sys.modules['js'] = None blocks
+    // outright, since a None entry halts the import.)
+    ['js pre-seeded in sys.modules yields nothing usable',
+      'import sys\n'
+      + 'sys.modules["js"] = "SENTINEL"\n'
+      + 'import js\n'
+      + 'assert isinstance(js, str), "got %r" % (type(js),)\n'
+      + 'assert not hasattr(js, "constructor"), "the pre-seeded value reached a JS property"\n'
+      + '"inert"'],
   ];
   for (const [name, code] of ROUTES) {
+    // One run per route. Each route rewrites sys.meta_path, and reusing the
+    // session would make a later route's verdict depend on an earlier route's
+    // damage instead of on the seal.
+    await host.run({ code: 'pass\n', checks: [] });
     const outcome = tryPython(host.runtime, code);
-    assert.equal(outcome.ok, false,
+    // Every route either raises, or prints 'blocked' / 'inert' itself. Anything
+    // else means the code ran to completion without reaching `import js`.
+    assert.ok(outcome.ok === false || /blocked|inert/.test(outcome.value || ''),
       `${name} must not reach the bridge, got: ${String(outcome.value || '').slice(0, 120)}`);
   }
 
-  // sys.modules and find_spec must report the module as absent, not merely
-  // refuse to import it. A namespace that answered with a live object would
-  // leak the bridge through the back door.
-  for (const [name, code] of [
-    ["sys.modules['js']", 'import sys\nassert sys.modules["js"] is None'],
-    ["importlib.util.find_spec('js')", 'import importlib.util as u\nassert u.find_spec("js") is None'],
-  ]) {
-    const outcome = tryPython(host.runtime, code);
-    assert.equal(outcome.ok, true, `${name} must report the bridge as absent: ${String(outcome.error || '').slice(-140)}`);
-  }
-
   // And the seal must be re-armed for the NEXT run, not just the current one.
-  const second = await host.run({ code: 'import sys\nsys.meta_path.clear()\n', checks: [] });
-  assert.equal(second.result.ok, true, 'tampering itself is legal learner code');
+  // Learner code runs BETWEEN runs, so whatever a run did to the import system
+  // is still in place when the next one starts.
+  await host.run({ code: 'import sys\nsys.meta_path.clear()\n', checks: [] });
   assert.equal(tryPython(host.runtime, 'import js').ok, false,
     'the next run must still be sealed');
   // A learner who re-attached the live finder must not have bought the next run
-  // anything either: the seal empties the table again before every run.
+  // anything either.
   await host.run({ code: 'import sys, pyodide._state as st\nsys.meta_path = [st.jsfinder]\n', checks: [] });
   assert.equal(tryPython(host.runtime, 'import js').ok, false,
-    'a re-attached live finder must be emptied again before the next run');
+    'a re-attached live finder must be sealed again before the next run');
+});
+
+caseOf('the proxy factory is sealed on every route into it', async host => {
+  await host.run({ code: 'pass\n', checks: [] });
+
+  // pyodide.ffi is only the public face. create_proxy also lives in the native
+  // _pyodide_core module and in _pyodide._core_docs, and both are reachable
+  // without any pyodide.* package involved -- which is why sealing pyodide.ffi
+  // alone would have left the door open.
+  for (const [name, code] of [
+    ['import pyodide.ffi', 'import pyodide.ffi'],
+    ['from pyodide.ffi import create_proxy', 'from pyodide.ffi import create_proxy'],
+    ['create_proxy escape', 'import pyodide.ffi as f\nf.create_proxy(1).constructor.constructor("return 6*7")()'],
+    ['pyodide.ffi.JsProxy', 'import pyodide.ffi.JsProxy'],
+    ['pyodide.ffi as an attribute', 'import pyodide\npyodide.ffi'],
+    ['import _pyodide_core', 'import _pyodide_core'],
+    ['_pyodide_core.create_proxy escape', 'import _pyodide_core\n_pyodide_core.create_proxy(1).constructor.constructor("return 6*7")()'],
+    ['_pyodide_core.create_once_callable', 'import _pyodide_core\n_pyodide_core.create_once_callable'],
+    ['import _pyodide._core_docs', 'import _pyodide._core_docs'],
+    ['_core_docs.create_proxy escape', 'from _pyodide._core_docs import create_proxy\ncreate_proxy(1).constructor.constructor("return 6*7")()'],
+    ['_core_docs.to_js', 'from _pyodide._core_docs import to_js\nto_js(1)'],
+    ['import pyodide.code', 'import pyodide.code'],
+    ['from pyodide.code import eval_js', 'from pyodide.code import eval_js'],
+    ['import pyodide.webloop', 'import pyodide.webloop'],
+    ['importlib.import_module("pyodide.ffi")', 'import importlib\nimportlib.import_module("pyodide.ffi")'],
+    ['__import__("pyodide.ffi")', '__import__("pyodide.ffi")'],
+    ['__import__("_pyodide_core")', '__import__("_pyodide_core")'],
+    ['importlib pyodide.code', 'import importlib\nimportlib.import_module("pyodide.code")'],
+    // Deleting the module and re-importing must fail too, or the seal would
+    // only ever hold for the first import.
+    ['re-import after deleting from sys.modules', 'import sys\nsys.modules.pop("pyodide.ffi", None)\nsys.modules.pop("_pyodide_core", None)\nimport pyodide.ffi'],
+    ['re-import _pyodide_core after deleting it', 'import sys\nsys.modules.pop("_pyodide_core", None)\nimport _pyodide_core'],
+  ]) {
+    const outcome = tryPython(host.runtime, code);
+    assert.equal(outcome.ok, false, `${name} must not be reachable`);
+  }
+
+  // Same standard as for `js`: absent from the namespace, not merely
+  // un-importable. A module that could not be imported but was still sitting in
+  // sys.modules would hand the factory straight back.
+  for (const [name, code] of SEALED_ABSENT) {
+    const outcome = tryPython(host.runtime, code);
+    assert.equal(outcome.ok, true,
+      `${name} must report the factory as absent: ${String(outcome.error || '').slice(-160)}`);
+  }
+
+  // The hollow JsProxy a learner can build with object.__new__ is not a bridge:
+  // it has no underlying JavaScript object. Asserted, because "JsProxy cannot
+  // be instantiated" is exactly the kind of claim that stops being true.
+  const hollow = tryPython(host.runtime,
+    'from _pyodide._importhook import JsProxy\n'
+    + 'o = object.__new__(JsProxy)\n'
+    + 'assert not hasattr(o, "constructor"), "a hollow proxy reached a JS property"\n'
+    + '"inert"');
+  assert.equal(hollow.ok, true, String(hollow.error || '').slice(-160));
+  assert.equal(hollow.value, 'inert');
+});
+
+caseOf('each layer of the import seal is load-bearing on its own', async host => {
+  // LAYER A is the baseline filter: _sils_ORIGINAL is captured with every
+  // bridge-serving finder already removed. LAYER B is the pin on the emptied
+  // jsproxies table, installed on the JsFinder CLASS.
+  //
+  // WHICH ONE CARRIES THE LOAD, MEASURED: layer B. Deleting layer B opens the
+  // two-run route below. Deleting layer A, with layer B intact, opens NO
+  // measured route -- the class-level pin already makes any JsFinder resolve
+  // nothing, whether or not it is on sys.meta_path. That was not true before
+  // this round: the previous pin was per-instance, so a JsFinder the learner
+  // constructed came into the world open.
+  //
+  // So layer A is defence in depth, and it is asserted as the INVARIANT it
+  // actually provides -- the live singleton is not on the rebuilt list -- rather
+  // than through an escape route it no longer closes. The mutation at the
+  // bottom of this file re-runs this case with layer A deleted and requires it
+  // to fail, which is what keeps the line honest.
+  await host.run({ code: 'pass\n', checks: [] });
+
+  // LAYER A's invariant: the finder Pyodide registered is not on the list the
+  // seal rebuilds from. Asked of the interpreter by IDENTITY, not by class
+  // name, because Pyodide could rename the class.
+  const baseline = tryPython(host.runtime,
+    'import sys, pyodide._state as st\n'
+    + 'assert not any(f is st.jsfinder for f in sys.meta_path), '
+    + '"the live bridge finder is back on sys.meta_path"\n'
+    + 'assert not any(getattr(getattr(f, "__name__", ""), "startswith", lambda _n: False)("JsFinder") for f in sys.meta_path)\n'
+    + '"clean"');
+  assert.equal(baseline.ok, true, String(baseline.error || '').slice(-200));
+  assert.equal(baseline.value, 'clean');
+
+  // LAYER B's invariant, and the route it exists for: the table is pinned empty
+  // and unfillable. Learner code runs BETWEEN runs, so a table dirtied in run 1
+  // is still live in run 2 unless the pin is re-applied per run.
+  const dirty = await host.run({
+    code: 'import pyodide._state as st\nst.jsfinder.jsproxies["js"] = "SENTINEL"\n'
+      + 'st.jsfinder.jsproxies["pyodide_js"] = "SENTINEL"\nprint("dirtied")\n',
+    checks: [],
+  });
+  assert.equal(dirty.result.ok, false,
+    'refilling the pinned table must itself fail -- that is the pin doing its job');
+  assert.match(dirty.result.error || '', /sealed off inside the exercise sandbox/);
+
+  const exploit = await host.run({
+    code: 'import sys, pyodide._state as st\nsys.meta_path = [st.jsfinder]\nimport js\nprint("ESCAPED")\n',
+    checks: [],
+  });
+  assert.ok(!/ESCAPED/.test(exploit.result.stdout || ''),
+    'layer B must stop the two-run route: a table dirtied in run 1 was still live in run 2');
+  assert.equal(exploit.result.ok, false);
+
+  // The pinned state itself, asserted directly as well as through the routes:
+  // empty, unfillable, pinned on the CLASS, and with the pre-seal dict not left
+  // behind in the instance __dict__.
+  const PINS = [
+    ['the table is empty', 'import pyodide._state as st\nassert dict(st.jsfinder.jsproxies) == {}', true],
+    ['the table refuses item assignment', 'import pyodide._state as st\nst.jsfinder.jsproxies["js"] = "X"', false],
+    ['update() is refused too', 'import pyodide._state as st\nst.jsfinder.jsproxies.update({"js": "X"})', false],
+    ['the attribute cannot be replaced', 'import pyodide._state as st\nst.jsfinder.jsproxies = {"js": "X"}', false],
+    // A data descriptor on the class outranks the instance dict, so the pin
+    // holds even against the class's own __init__.
+    ['a freshly constructed JsFinder is born pinned', 'import sys\nfrom _pyodide._importhook import JsFinder\n'
+      + 'f = JsFinder()\nassert dict(f.jsproxies) == {}, "a new JsFinder came into the world open"\n'
+      + 'try:\n    f.jsproxies = {"js": "X"}\nexcept ImportError:\n    "sealed"', false],
+    ['the pre-seal table is not left in __dict__', 'import pyodide._state as st\n'
+      + 't = st.jsfinder.__dict__.get("jsproxies")\n'
+      + 'assert t is None or not t, "a non-empty table is still reachable: %r" % (t,)', true],
+  ];
+  for (const [name, code, shouldSucceed] of PINS) {
+    const outcome = tryPython(host.runtime, code);
+    assert.equal(outcome.ok, shouldSucceed,
+      `${name} (expected ${shouldSucceed ? 'success' : 'refusal'}): ${String(outcome.error || '').slice(-160)}`);
+  }
+
+  // The strongest form of layer B, and the reason it is a class-level pin: a
+  // learner can delete the descriptor, but two things still stop them.
+  //
+  // First, registering a module only means something if the finder is ON
+  // sys.meta_path, and layer A is what keeps it off -- so `import mine` fails
+  // even after the learner deletes the pin and builds their own finder.
+  //
+  // This runs in its OWN worker run on purpose. `del JsFinder.jsproxies` removes
+  // the descriptor for the whole interpreter, and every later case in this file
+  // shares one runtime -- so doing it here would break the cases that follow.
+  // That the descriptor can be deleted at all is worth stating plainly: it is a
+  // plain class attribute and Python offers no way to make it private. The
+  // defence is that deleting it does not get anyone a JavaScript object.
+  const hollowHost = createRealHost();
+  try {
+    const { result } = await hollowHost.run({
+      code: 'import sys\nfrom _pyodide._importhook import JsFinder, JsProxy\n'
+        + 'try:\n    del JsFinder.jsproxies\nexcept BaseException:\n    pass\n'
+        + 'f = JsFinder()\n'
+        + 'f.register_js_module("mine", object.__new__(JsProxy))\n'
+        + 'sys.meta_path = [x for x in sys.meta_path if type(x).__name__ != "_sils_SealedImport"]\n'
+        + 'sys.meta_path.append(f)\n'
+        + 'import mine\n'
+        + 'assert not hasattr(mine, "constructor"), "a hollow proxy reached a JS property"\n'
+        + 'assert mine.js_id == 0, "the hollow proxy claims a live JS handle"\n'
+        + 'print("inert")\n',
+      checks: [],
+    });
+    assert.equal(result.ok, true, result.error);
+    assert.equal(result.stdout, 'inert\n');
+  } finally {
+    hollowHost.close();
+  }
 });
 
 caseOf('the network globals are sealed after the runtime boots', async host => {
@@ -602,6 +868,129 @@ print(json.dumps(items))
   return JSON.parse(run.stdout);
 }
 
+/* ---------------------------------------------------------------- mutations -- */
+
+/* Every layer of the seal has to be locked by a case that fails when the layer
+   is removed. A green suite proves nothing on its own, and the previous version
+   of this file left two of the layers unpinned: deleting either kept every test
+   green, because the layer that survived happened to cover the same routes.
+
+   Each mutation below edits the SHIPPED worker source, boots a real runtime
+   from it, and re-runs one case. `SILS_SKIP_MUTATIONS=1` skips them: each boots
+   a Pyodide instance, which is the expensive part of this file.
+
+   The mutation list is deliberately NOT the same as the list of things the
+   seal does. One step was REMOVED because a mutation test proved it redundant:
+   hardening the emptied dict in place (`live.__class__ = _sils_SealedBridgeTable`).
+   With the instance attribute popped and the pin on the class, the suite stayed
+   green without it, so it was deleted from the worker rather than kept as
+   decoration. Two further limits are recorded rather than asserted as routes:
+
+     * dict.__setitem__ still writes through the override -- what it yields is a
+       learner-chosen PYTHON value, never a JavaScript object, so it is
+       asserted as inertness rather than as a blocked route;
+     * a learner CAN `del JsFinder.jsproxies` (it is a plain class attribute and
+       Python has no way to make it private). Layer A is what still stops them,
+       and the hollow-proxy check asserts the outcome. */
+const MUTATIONS = [
+  {
+    name: 'layer A: the baseline filter',
+    expect: 'each layer of the import seal is load-bearing on its own',
+    why: 'with the filter gone, _sils_ORIGINAL keeps the JsFinder, so the live '
+      + 'bridge finder is back on sys.meta_path',
+    from: [
+      '    if _sils_serves_bridge(_sils_f):',
+      '        _sils_empty_bridge(_sils_f)',
+      '    else:',
+      '        _sils_KEPT.append(_sils_f)',
+    ].join('\n'),
+    to: [
+      '    if _sils_serves_bridge(_sils_f):',
+      '        _sils_empty_bridge(_sils_f)',
+      '    _sils_KEPT.append(_sils_f)',
+    ].join('\n'),
+  },
+  {
+    name: 'layer B: the per-run re-pin',
+    expect: 'each layer of the import seal is load-bearing on its own',
+    why: 'with the re-pin gone, a table dirtied in run 1 is still live in run 2, '
+      + 'because learner code runs BETWEEN runs',
+    from: '    _sils_pin_bridge()\n',
+    to: '',
+  },
+  {
+    name: 'the class-level pin',
+    expect: 'each layer of the import seal is load-bearing on its own',
+    why: 'pinning only the instance lets a freshly constructed JsFinder() be '
+      + 'born open, and the class __init__ assigns self.jsproxies = {}',
+    from: [
+      '        from _pyodide._importhook import JsFinder as _sils_JsFinder',
+      '        _sils_JsFinder.jsproxies = property(',
+      '            lambda _sils_self: _sils_TABLE,',
+      '            lambda _sils_self, _sils_value: _sils_TABLE._sils_deny(_sils_self),',
+      '        )',
+    ].join('\n'),
+    to: '        pass',
+  },
+  {
+    name: 'the bridge names in the import seal',
+    expect: 'the proxy factory is sealed on every route into it',
+    why: 'with pyodide.ffi and friends no longer sealed, create_proxy is '
+      + 'reachable again and arbitrary JavaScript runs',
+    from: "_sils_BRIDGE | frozenset((\n    'pyodide.ffi', '_pyodide_core', '_pyodide._core_docs',\n    'pyodide.code', 'pyodide.webloop',\n))",
+    to: '_sils_BRIDGE',
+  },
+  {
+    name: 'the prefix match on sealed names',
+    expect: 'the proxy factory is sealed on every route into it',
+    why: 'matching only the first component lets `pyodide.ffi` through, because '
+      + "the first component of 'pyodide.ffi' is 'pyodide'",
+    from: "        if _sils_name == _sils_entry or _sils_name.startswith(_sils_entry + '.'):",
+    to: '        if _sils_name.split(".")[0] == _sils_entry:',
+  },
+  {
+    name: 'the attribute cleanup on the pyodide package',
+    expect: 'the proxy factory is sealed on every route into it',
+    why: 'without it, `import pyodide; pyodide.ffi` reads the attribute straight '
+      + 'off the module without ever consulting sys.meta_path',
+    from: "            ('pyodide', ('ffi', 'code', 'webloop')),",
+    to: "            ('pyodide', ()),",
+  },
+];
+
+async function runMutations() {
+  if (process.env.SILS_SKIP_MUTATIONS === '1') {
+    console.log('  skip  SILS_SKIP_MUTATIONS=1');
+    return 0;
+  }
+  const original = fs.readFileSync(WORKER, 'utf8');
+  let failures = 0;
+  for (const mutation of MUTATIONS) {
+    if (!original.includes(mutation.from)) {
+      console.error(`  FAIL mutation "${mutation.name}" does not apply -- the worker source moved`);
+      failures += 1;
+      continue;
+    }
+    const mutated = original.replace(mutation.from, mutation.to);
+    assert.notEqual(mutated, original, `mutation "${mutation.name}" must change the source`);
+
+    // A fresh host per mutation: each boots its own real Pyodide, because the
+    // seal mutates interpreter state that cannot be rewound inside one session.
+    const host = createRealHost(mutated);
+    const target = CASES.find(([name]) => name === mutation.expect);
+    assert.ok(target, `no case named ${mutation.expect} to re-run`);
+    try {
+      await target[1](host);
+      console.error(`  FAIL the suite stayed green without ${mutation.name} -- that layer is not locked\n`
+        + `       ${mutation.why}`);
+      failures += 1;
+    } catch (error) {
+      console.log(`  ok    without ${mutation.name}, "${mutation.expect}" fails`);
+    }
+  }
+  return failures;
+}
+
 /* -------------------------------------------------------------------- main -- */
 
 async function main() {
@@ -626,6 +1015,10 @@ async function main() {
       console.error(`  FAIL ${name}\n       ${error.message}`);
     }
   }
+
+  console.log('ExerciseSandboxReal mutations');
+  failures += await runMutations();
+
   if (failures) {
     console.error(`\n${failures} failing`);
     process.exit(1);

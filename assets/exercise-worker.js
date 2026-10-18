@@ -48,9 +48,25 @@
      reaches the learner's real disk or the host. There is no NODEFS mount, so
      `/etc/passwd` and the rest of the host filesystem are not there.
 
-   Learner code still reaches: the full CPU-bound Python standard library it
-   shipped with, the clock, and unbounded memory and CPU (which is why the
-   main thread enforces a wall-clock timeout and terminates the worker). */
+   Learner code still reaches: the CPU-bound Python standard library Pyodide
+   ships, the clock, and unbounded memory and CPU (which is why the main thread
+   enforces a wall-clock timeout and terminates the worker). "The standard
+   library" is what Pyodide ships, not all of CPython's: `sqlite3`, `ssl`,
+   `lzma` and `curses` are absent upstream, before any sealing here, and their
+   absence is not something this worker caused.
+
+   WHAT THIS WORKER CANNOT CLAIM
+   =============================
+   * No syscall isolation. WebAssembly has no user/kernel split, so the "no
+     sockets, no subprocess, no ctypes" facts above are Pyodide's shims doing
+     the work, not a boundary constructed here.
+   * `socket.getaddrinfo` still resolves names (WASI proxy), so DNS is not fully
+     cut off. Connecting is.
+   * The seal is a Python-level seal inside one interpreter. It assumes Pyodide's
+     public surface stays roughly as measured; a future Pyodide that renames
+     `jsproxies` or the JsFinder class would need the seal re-measured, and the
+     mutation cases in scripts/test-exercise-sandbox-real.cjs exist so that a
+     change which stops being load-bearing is noticed rather than assumed. */
 'use strict';
 
 let runtime = null;

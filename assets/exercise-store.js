@@ -67,12 +67,21 @@
       };
     }
 
-    /* A chapter slot corrupted into a non-object (a hand-edited localStorage
-       entry can parse cleanly yet hold a string) is replaced rather than
-       assigned through — writing a property onto a primitive throws in strict
-       mode, and that must never surface as a broken exercise panel. */
+    /* A chapter slot corrupted into something that cannot hold records (a
+       hand-edited localStorage entry can parse cleanly yet hold a string) is
+       replaced rather than assigned through — writing a property onto a
+       primitive throws in strict mode, and that must never surface as a broken
+       exercise panel.
+
+       Arrays and null are rejected too, because `typeof` reports `'object'` for
+       both. An array would be the worse of the two: `'ch01-ex01' => record`
+       lands on a NON-index property, and JSON.stringify only serialises an
+       array's indices. The record would therefore read back fine for the rest
+       of the session and be silently absent from the flushed payload — a
+       progress record lost on the next page load, with no error anywhere. */
     function bucket(chapterId) {
-      if (!data[chapterId] || typeof data[chapterId] !== 'object') data[chapterId] = Object.create(null);
+      const slot = data[chapterId];
+      if (!slot || typeof slot !== 'object' || Array.isArray(slot)) data[chapterId] = Object.create(null);
       return data[chapterId];
     }
 
@@ -119,7 +128,11 @@
       const rows = [];
       for (const chapterId of Object.keys(data)) {
         const chapter = data[chapterId];
-        if (!chapter || typeof chapter !== 'object') continue;
+        /* An array chapter has to be skipped for the same reason bucket()
+           rebuilds one: iterating it yields '0', '1', … as if they were
+           exercise ids, so the sync endpoint would be handed rows describing
+           exercises that do not exist. */
+        if (!chapter || typeof chapter !== 'object' || Array.isArray(chapter)) continue;
         for (const exerciseId of Object.keys(chapter)) {
           const record = normalize(chapter[exerciseId]);
           rows.push({
@@ -137,11 +150,31 @@
       return rows;
     }
 
-    /* Three-way merge, last-write-wins on `updated` with one deliberate tie
-       break: when both sides carry the same stamp, passing wins, so a record can
-       never be un-passed by a tie. Clock skew between devices is harmless — a
-       skewed stamp only decides which of two complete rows is kept, it cannot
-       corrupt either.
+    /* Merge with the server.
+
+       `passed` and `score` are MONOTONE across the merge, exactly like the
+       write path and exactly like the server: the plan's upsert uses
+       passed=MAX(...), score=MAX(...) (docs/superpowers/plans/2026-10-18-sils-implementation.md:2417-2418).
+       Timestamp arbitration alone would let a newer local failure un-pass a
+       record the server had already accepted, which breaks the "a pass is
+       never revoked" rule and makes the learning map drop a badge the server
+       still holds. The server's MAX would repair the row on the next sync, but
+       the client stays wrong in the meantime — the two layers must agree, or the
+       push-back would carry a regressing value.
+
+       `updated` still decides the OTHER fields (code, selfAssessed) and still
+       decides whether the local side has to be pushed back, so a device with a
+       skewed clock can only pick between two complete rows — it can never
+       corrupt one.
+
+       `attempts` is taken wholesale from the winning side rather than max()'d:
+       it is a per-device counter, and the server's copy is the accumulated one
+       for a signed-in reader. Accepting a server value that is lower than the
+       local one can therefore lower the count, which is a deliberate trade — the
+       alternative (max) would inflate it forever on a device that was reset.
+       Nothing user-visible depends on it; `passed` and `score` are what the map
+       renders.
+
        Returns {changed, records}: `changed` counts the rows the local side owns
        and the caller must push back to the server; `records` lists the server
        rows adopted locally as {chapterId, exerciseId, record}. The push-back
@@ -162,12 +195,21 @@
           records.push({ chapterId, exerciseId, record: incoming });
           continue;
         }
-        const serverWins = incoming.updated > local.updated
-          || (incoming.updated === local.updated && incoming.passed && !local.passed);
-        if (serverWins) {
-          bucket(chapterId)[exerciseId] = incoming;
-          records.push({ chapterId, exerciseId, record: incoming });
-        } else if (local.updated > incoming.updated) {
+        const serverWins = incoming.updated > local.updated;
+        /* Fields the timestamp owns: the winning side's latest text. */
+        const winner = serverWins ? incoming : local;
+        /* Fields the winner must never be allowed to lose: passing is a latch
+           and the score only ever ratchets up. */
+        const merged = normalize(Object.assign({}, winner, {
+          passed: incoming.passed || local.passed,
+          score: Math.max(incoming.score, local.score),
+        }));
+        bucket(chapterId)[exerciseId] = merged;
+        if (serverWins) records.push({ chapterId, exerciseId, record: merged });
+        else if (local.updated > incoming.updated) {
+          /* Push-back rides on snapshot(), which reads the bucket we just wrote,
+             so the row sent up carries the merged latch/max score rather than
+             the local value that would have regressed the server. */
           changed += 1;
         }
       }
@@ -176,7 +218,13 @@
     }
 
     /* `total` counts the ids handed in, not the ids with a record, so a chapter
-       reports "3 exercises, 1 passed" rather than hiding unattempted work. */
+       reports "3 exercises, 1 passed" rather than hiding unattempted work.
+
+       A self-assessment of 'fail' is the learner saying "I did not get it" and
+       is therefore NOT counted as a self-assessed pass — it matches the
+       reference store in the plan (line 3002). Any other self-assessment
+       ('pass', 'hint', …) still counts, so a learner who reached for a hint
+       without being graded is visible rather than invisible. */
     function chapterSummary(chapterId, exerciseIds) {
       const ids = Array.isArray(exerciseIds) ? exerciseIds : [];
       let passed = 0;
@@ -185,7 +233,7 @@
         const record = read(chapterId, exerciseId);
         if (!record) continue;
         if (record.passed) passed += 1;
-        else if (record.selfAssessed) selfAssessed += 1;
+        else if (record.selfAssessed && record.selfAssessed !== 'fail') selfAssessed += 1;
       }
       return { total: ids.length, passed, selfAssessed };
     }

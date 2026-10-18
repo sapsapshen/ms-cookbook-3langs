@@ -145,6 +145,107 @@ check('a code payload beyond the cap is trimmed before storing', () => {
   assert.equal(store.read('chapter-1', 'ch01-ex01').code.length, 20000);
 });
 
+/* --- Review round: guards, monotonicity and wire format ------------------ */
+
+check('an array chapter slot does not swallow the new record', () => {
+  /* An array passes `typeof === 'object'`, so a record written into it lands on
+     a non-index property that JSON.stringify drops: read-back is fine until the
+     page is reloaded, then the progress is gone. Rebuilding the slot is what
+     keeps the flush lossless. */
+  const storage = memoryStorage({ 'ms-cookbook.exercise.v1': JSON.stringify({ 'chapter-1': [{ passed: true, score: 0.5 }] }) });
+  const store = create({ storage });
+  const written = store.write('chapter-1', 'ch01-ex01', { passed: true, score: 0.9 });
+  assert.equal(written.passed, true);
+  /* Reload the same storage to stand in for a fresh page view. */
+  const reloaded = create({ storage });
+  const record = reloaded.read('chapter-1', 'ch01-ex01');
+  assert.notEqual(record, null);
+  assert.equal(record.passed, true);
+  assert.equal(record.score, 0.9);
+});
+
+check('snapshot skips an array chapter instead of inventing index rows', () => {
+  const storage = memoryStorage({ 'ms-cookbook.exercise.v1': JSON.stringify({ 'chapter-1': [{ passed: true }, { passed: false }] }) });
+  const rows = create({ storage }).snapshot();
+  assert.deepEqual(rows.map(row => row.exercise), []);
+});
+
+check('snapshot reports passed as the number 0 or 1, never a boolean', () => {
+  /* These rows are POSTed to the sync endpoint, whose `passed` column is an
+     Integer — a boolean here is dirty data on the wire. */
+  const store = create({ storage: memoryStorage() });
+  store.write('chapter-1', 'ch01-ex01', { passed: true });
+  store.write('chapter-1', 'ch01-ex02', { passed: false });
+  const rows = store.snapshot();
+  assert.deepEqual(rows.map(row => row.passed).sort(), [0, 1]);
+  for (const row of rows) {
+    assert.equal(typeof row.passed, 'number');
+    assert.equal(row.passed === 0 || row.passed === 1, true);
+  }
+});
+
+check('merge never un-passes a record the server has already passed', () => {
+  /* Local is newer but failed; the server is older but holds a pass. Monotone
+     merge must latch passed=true, exactly as the server's MAX(passed) would. */
+  const store = create({ storage: memoryStorage(), now: () => 900 });
+  store.write('chapter-1', 'ch01-ex01', { passed: false, score: 0.2 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 0.8, updated: 400 }]);
+  assert.equal(result.changed, 1);
+  const merged = store.read('chapter-1', 'ch01-ex01');
+  assert.equal(merged.passed, true);
+  assert.equal(merged.score, 0.8);
+});
+
+check('merge never lowers the score of an already-passed exercise', () => {
+  const store = create({ storage: memoryStorage(), now: () => 900 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0, updated: 400 }]);
+  const merged = store.read('chapter-1', 'ch01-ex01');
+  assert.equal(merged.passed, true);
+  assert.equal(merged.score, 1);
+});
+
+check('the push-back row carries the merged pass, not the regressing local one', () => {
+  /* changed=1 means the caller will ship snapshot() to the server; that payload
+     must already hold the monotone value or the write-back re-regresses it. */
+  const store = create({ storage: memoryStorage(), now: () => 900 });
+  store.write('chapter-1', 'ch01-ex01', { passed: false, score: 0.1 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 0.7, updated: 400 }]);
+  assert.equal(result.changed, 1);
+  assert.equal(store.snapshot()[0].passed, 1);
+  assert.equal(store.snapshot()[0].score, 0.7);
+});
+
+check('merge takes attempts from the winning side even when it is lower', () => {
+  /* Documented trade: attempts is a per-device counter and the server copy is
+     the accumulated one, so the newer side's value wins the field outright —
+     which can lower it. Only passed/score are latched. */
+  const store = create({ storage: memoryStorage(), now: () => 900 });
+  for (let i = 0; i < 10; i += 1) store.write('chapter-1', 'ch01-ex01', {});
+  assert.equal(store.read('chapter-1', 'ch01-ex01').attempts, 10);
+  store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0, attempts: 3, updated: 1000 }]);
+  assert.equal(store.read('chapter-1', 'ch01-ex01').attempts, 3);
+});
+
+check('merge ignores rows whose chapter or exercise id is not a string', () => {
+  const store = create({ storage: memoryStorage() });
+  const result = store.merge([
+    { chapter: 1, exercise: 'ch01-ex01', passed: 1 },
+    { chapter: 'chapter-1', exercise: 2, passed: 1 },
+    { chapter: '', exercise: 'ch01-ex01', passed: 1 },
+  ]);
+  assert.equal(result.records.length, 0);
+  assert.equal(store.read('chapter-1', 'ch01-ex01'), null);
+});
+
+check("a self-assessment of 'fail' is not counted as self-assessed progress", () => {
+  const store = create({ storage: memoryStorage() });
+  store.write('chapter-1', 'ch01-ex01', { passed: false, selfAssessed: 'fail' });
+  store.write('chapter-1', 'ch01-ex02', { passed: false, selfAssessed: 'pass' });
+  const summary = store.chapterSummary('chapter-1', ['ch01-ex01', 'ch01-ex02']);
+  assert.equal(summary.selfAssessed, 1);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

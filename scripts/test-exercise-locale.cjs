@@ -1,8 +1,23 @@
-const {test} = require('node:test');
+const {test: nodeTest} = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const {resolve} = require('node:path');
 const vm = require('node:vm');
+
+/* A floor on the number of cases. Deleting every `test(...)` below leaves this
+ * file passing with nothing to say, so an emptied suite would ship as a green
+ * CI run proving nothing. The floor sits below the current count on purpose:
+ * adding cases on purpose must never trip it, only losing them should.
+ *
+ * Registration is counted rather than executed: node:test runs a file's tests
+ * after the module finishes evaluating, so `registered` is already final by the
+ * time the floor check below runs. */
+const MIN_CASES = 5;
+let registered = 0;
+function test(name, fn) {
+  registered += 1;
+  return nodeTest(name, fn);
+}
 
 /* The exercise panel's copy.
  *
@@ -248,4 +263,10 @@ function boundNames(body) {
       assert.deepEqual(names, expected, `${key} in ${file} passes ${names}, dictionary expects ${expected}`);
     }
   }
+});
+// Must be the LAST registration: it reads `registered`, which is only final
+// once every case above has been declared.
+test('这个套件自己还有足够的用例（下限断言）', () => {
+  assert.ok(registered >= MIN_CASES,
+    `only ${registered} cases are registered, the floor is ${MIN_CASES} — cases were lost, not fixed`);
 });

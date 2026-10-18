@@ -2,8 +2,16 @@
 const assert = require('node:assert/strict');
 const { create } = require('../assets/exercise-store.js');
 
+/* A floor on the number of cases. Deleting every `check(...)` below leaves
+ * `failures` at 0 and exits 0, so an emptied suite would ship as a green CI run
+ * proving nothing. The floor sits below the current count on purpose: adding
+ * cases on purpose must never trip it, only losing them should. */
+const MIN_CASES = 32;
+
 let failures = 0;
+let cases = 0;
 function check(name, fn) {
+  cases += 1;
   try { fn(); console.log(`  ok  ${name}`); }
   catch (error) { failures += 1; console.error(`  FAIL ${name}\n       ${error.message}`); }
 }
@@ -414,4 +422,9 @@ if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);
 }
-console.log('\nPASS: exercise store');
+// Asserted, not just printed: a suite emptied of cases still exits 0.
+if (cases < MIN_CASES) {
+  console.error(`\nFAIL: only ${cases} cases ran, the floor is ${MIN_CASES} — cases were lost, not fixed`);
+  process.exit(1);
+}
+console.log(`\nPASS: exercise store (${cases} cases)`);

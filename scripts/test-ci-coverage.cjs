@@ -1,7 +1,25 @@
-const {test} = require('node:test');
+const {test: nodeTest} = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync, existsSync, readdirSync} = require('node:fs');
 const {resolve} = require('node:path');
+
+/* A floor on the number of cases, on this file too. This one matters more than
+ * most: its whole job is to be the thing that notices when another check stops
+ * being enforced, so a silently emptied test-ci-coverage.cjs would leave the
+ * feature with no automated defence at all and still go green.
+ *
+ * `registered` counts declarations; node:test runs a file's tests after the
+ * module finishes evaluating, so it is already final when the floor check runs.
+ *
+ * SILS_CASE_FLOOR raises the floor and nothing else, and exists so the self
+ * check at the bottom can prove the assertion bites by running this very file
+ * with a floor no run could ever meet. `Math.max` means it can only tighten. */
+const MIN_CASES = Math.max(8, Number(process.env.SILS_CASE_FLOOR) || 0);
+let registered = 0;
+function test(name, fn) {
+  registered += 1;
+  return nodeTest(name, fn);
+}
 
 /* The CI wiring is the last line of defence for the exercise feature, and it
  * fails silently: a `paths:` entry that nobody added means the script still
@@ -246,4 +264,39 @@ test('反向验证：paths: 整体消失时必须报红，而不是因为"没解
   // Same for run: blocks.
   assert.deepEqual(missing(REQUIRED, scriptsIn('')), REQUIRED,
     '一个脚本都不执行时，漏项检测必须把 15 个全报出来');
+});
+/* Self-check for the floor above. The floor is a guard against a suite that
+ * goes quiet, and a guard nobody has seen fire is indistinguishable from no
+ * guard at all -- the same objection this file raises about the CI wiring. So
+ * run this file again with the floor raised past anything a real run could
+ * reach, and require the run to FAIL. If MIN_CASES were not actually wired to
+ * the exit status, this test would go green and the guard would be decorative. */
+test('反向验证：把用例数下限调到不可能达到，本文件必须报红退出', () => {
+  // Disabled in the children: they exist only to observe the floor firing, and
+  // re-entering here would make each level spawn two more runs.
+  if (process.env.SILS_CASE_FLOOR || process.env.SILS_CASE_FLOOR_PROBE) {
+    console.log('  skip  this run is a floor probe (SILS_CASE_FLOOR* is set)');
+    return;
+  }
+  const {spawnSync} = require('node:child_process');
+  const base = {...process.env, SILS_CASE_FLOOR_PROBE: '1'};
+  const run = spawnSync(process.execPath, [__filename], {
+    encoding: 'utf8',
+    env: {...base, SILS_CASE_FLOOR: '100000'},
+  });
+  assert.notEqual(run.status, 0,
+    '下限调到 100000 之后本文件仍然退出 0 —— 下限断言没有真的接在退出码上');
+  assert.match(`${run.stdout}${run.stderr}`, /cases were lost, not fixed/,
+    '下限生效了但失败信息没有点名「用例被删掉了」');
+  // Without the override the same file must be green, or the self-check above
+  // proved nothing beyond "some exit code is nonzero".
+  const clean = spawnSync(process.execPath, [__filename], {encoding: 'utf8', env: base});
+  assert.equal(clean.status, 0, `未改动时本文件必须是绿的：\n${clean.stdout}${clean.stderr}`);
+});
+
+// Must be the LAST registration: it reads `registered`, which is only final
+// once every case above has been declared.
+test('反向验证：这个套件自己还有足够的用例（下限断言）', () => {
+  assert.ok(registered >= MIN_CASES,
+    `only ${registered} cases are registered, the floor is ${MIN_CASES} — cases were lost, not fixed`);
 });

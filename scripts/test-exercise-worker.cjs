@@ -371,6 +371,12 @@ function createSandbox() {
   };
 }
 
+/* A floor on the number of cases. Deleting every entry of CASES below leaves
+ * `failures` at 0 and exits 0, so an emptied suite would ship as a green CI run
+ * proving nothing. The floor sits below the current count on purpose: adding
+ * cases on purpose must never trip it, only losing them should. */
+const MIN_CASES = 21;
+
 const CASES = [
   ['G9: Pyodide stays out of index.html and is loaded from the worker, on demand', async () => {
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -857,7 +863,12 @@ async function main() {
     console.error(`\n${failures} failing`);
     process.exit(1);
   }
-  console.log('\nPASS: exercise worker agrees with the corpus harness');
+  // Asserted, not just printed: a suite emptied of cases still exits 0.
+  if (CASES.length < MIN_CASES) {
+    console.error(`\nFAIL: only ${CASES.length} cases ran, the floor is ${MIN_CASES} — cases were lost, not fixed`);
+    process.exit(1);
+  }
+  console.log(`\nPASS: exercise worker agrees with the corpus harness (${CASES.length} cases)`);
 }
 
 main().catch(error => {

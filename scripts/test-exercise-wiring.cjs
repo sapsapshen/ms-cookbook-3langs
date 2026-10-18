@@ -30,9 +30,18 @@ const ROOT = resolve(__dirname, '..');
 const read = path => readFileSync(resolve(ROOT, path), 'utf8');
 const INDEX = read('index.html');
 
+/* A floor on the number of cases. Deleting every `check(...)` below leaves
+ * `passed` and `failures` both at 0 and exits 0 — `PASS: 0 passed, 0 failed` —
+ * so an emptied suite would ship as a green CI run proving nothing. The floor
+ * sits below the current count on purpose: adding cases on purpose must never
+ * trip it, only losing them should. */
+const MIN_CASES = 15;
+
 let failures = 0;
 let passed = 0;
+let cases = 0;
 async function check(name, fn) {
+  cases += 1;
   try {
     const result = fn();
     if (result && typeof result.then === 'function') await result;
@@ -538,8 +547,14 @@ await check('no Pyodide was fetched while the page loaded (G9)', () => {
   assert.ok(!chapter.window.location.hash.includes('pyodide'));
 });
 
-console.log(`\n${failures ? 'FAILED' : 'PASS'}: ${passed} passed, ${failures} failed`);
-process.exit(failures ? 1 : 0);
+// Asserted, not just printed: an emptied suite would otherwise report
+  // `PASS: 0 passed, 0 failed` and exit 0.
+  if (cases < MIN_CASES) {
+    console.error(`\nFAIL: only ${cases} cases ran, the floor is ${MIN_CASES} — cases were lost, not fixed`);
+    process.exit(1);
+  }
+  console.log(`\n${failures ? 'FAILED' : 'PASS'}: ${passed} passed, ${failures} failed`);
+  process.exit(failures ? 1 : 0);
 }
 
 main().catch(error => {

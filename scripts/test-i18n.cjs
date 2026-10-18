@@ -1,8 +1,24 @@
-const {test} = require('node:test');
+const {test: nodeTest} = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const {resolve} = require('node:path');
 const vm = require('node:vm');
+
+/* A floor on the number of cases. Deleting every `test(...)` below leaves this
+ * file passing with nothing to say, so an emptied suite would ship as a green
+ * CI run proving nothing. The floor sits at the current count minus the floor
+ * check itself: adding cases on purpose must never trip it, only losing them
+ * should.
+ *
+ * Registration is counted rather than executed: node:test runs a file's tests
+ * after the module finishes evaluating, so `registered` is already final by the
+ * time the floor check below runs. */
+const MIN_CASES = 3;
+let registered = 0;
+function test(name, fn) {
+  registered += 1;
+  return nodeTest(name, fn);
+}
 
 // The three dictionaries share one flat namespace, so every key must exist in every
 // language and the markup must only reference keys that were shipped.
@@ -48,4 +64,9 @@ test('中文为缺省语言，其余语言不回落为键名',()=>{
     assert.notEqual(dictionaries.zh[key],key,`${key} 缺少中文翻译`);
     for(const language of ['en','es']) assert.notEqual(dictionaries[language][key],key,`${key} 缺少 ${language} 翻译`);
   }
+});
+// Must be the LAST registration: it reads `registered`, which is only final
+// once every case above has been declared.
+test('这个套件自己还有足够的用例（下限断言）',()=>{
+  assert.ok(registered>=MIN_CASES,`只注册了 ${registered} 个用例，下限是 ${MIN_CASES} —— 用例是被删掉了，不是被修好了`);
 });

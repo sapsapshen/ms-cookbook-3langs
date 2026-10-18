@@ -392,3 +392,27 @@ function rowsIn(root) {
   return list ? list.querySelectorAll('li') : [];
 }
 module.exports = {Node, boot, exercise, exerciseData, cardFor, expand, buttonsIn, rowsIn, flush, parseSelector};
+
+/* No case-count floor here, deliberately: this file runs nothing on its own
+ * (`node scripts/test-exercise-ui-harness.cjs` prints nothing and exits 0), so
+ * "0 cases" is its normal state, not a symptom. The case floors live in the
+ * three suites that require it -- test-exercise-ui.cjs, -ui-corpus.cjs and
+ * -map.cjs -- which is where an emptied suite can actually go green.
+ *
+ * What CAN be gutted here without anything noticing is the surface below: drop
+ * a helper and its callers throw on require (loud), but drop one the callers
+ * no longer use and the suites keep passing with one less way to see the panel.
+ * So this file guards the shape of what it exports, which is the only thing
+ * about it that can rot unnoticed. */
+const API = module.exports;
+const MIN_EXPORTS = 10;
+const missing = Object.keys({
+  Node: 1, boot: 1, exercise: 1, exerciseData: 1, cardFor: 1,
+  expand: 1, buttonsIn: 1, rowsIn: 1, flush: 1, parseSelector: 1,
+}).filter(name => typeof API[name] !== 'function');
+if (Object.keys(API).length < MIN_EXPORTS || missing.length) {
+  console.error(`ExerciseUiHarness FAIL: ${Object.keys(API).length} exports (floor ${MIN_EXPORTS})` +
+    `${missing.length ? `, missing or non-callable: ${missing.join(', ')}` : ''}`);
+  console.error('  a suite that silently lost a helper still exits 0 — restore the export or the floor');
+  process.exit(1);
+}

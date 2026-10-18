@@ -12,9 +12,18 @@ const {boot, expand, buttonsIn, flush} = require('./test-exercise-ui-harness.cjs
 const ROOT = resolve(__dirname, '..');
 const DATA = vm.runInNewContext(readFileSync(resolve(ROOT, 'assets/exercises.js'), 'utf8'), {window: {}});
 
+/* A floor on the number of cases. Deleting every `check(...)` below leaves
+ * `passed` and `failures` both at 0 and exits 0 — `PASS: 0 passed, 0 failed` —
+ * so an emptied suite would ship as a green CI run proving nothing. The floor
+ * sits below the current count on purpose: adding cases on purpose must never
+ * trip it, only losing them should. */
+const MIN_CASES = 5;
+
 let failures = 0;
 let passed = 0;
+let cases = 0;
 async function check(name, fn) {
+  cases += 1;
   try {
     await fn();
     passed += 1;
@@ -220,7 +229,13 @@ await check('语料里配了 rubric 的 reflect 题真的会请求评分接口�
   assert.equal(DATA.exerciseCount, total);
 });
 
-console.log(`\n${failures ? 'FAIL' : 'PASS'}: ${passed} passed, ${failures} failed — the shipped corpus renders end to end`);
+// Asserted, not just printed: an emptied suite would otherwise report
+  // `PASS: 0 passed, 0 failed` and exit 0.
+  if (cases < MIN_CASES) {
+    console.error(`\nFAIL: only ${cases} cases ran, the floor is ${MIN_CASES} — cases were lost, not fixed`);
+    process.exit(1);
+  }
+  console.log(`\n${failures ? 'FAIL' : 'PASS'}: ${passed} passed, ${failures} failed — the shipped corpus renders end to end`);
   process.exit(failures ? 1 : 0);
 }
 

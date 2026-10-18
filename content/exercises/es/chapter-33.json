@@ -16,6 +16,11 @@
       },
       {
         "kind": "assert_python",
+        "code": "assert judge(0, 0.9) == 'pass'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
         "code": "assert judge(1, 0.03) == 'warn'",
         "weight": 3
       },
@@ -35,7 +40,7 @@
       "criteria": "¿Ordenó las ramas de la más estricta a la más flexible usando retornos tempranos?"
     },
     "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
-    "explanation": "Las cláusulas de salida anticipada se leen mejor que el anidamiento y facilitan añadir reglas. Lo clave es no meter la comprobación de área dentro de la rama de cero defectos: sin defectos, cualquier área pasa."
+    "explanation": "Las cláusulas de salida anticipada se leen mejor que el anidamiento y facilitan añadir reglas. Lo clave es no meter la comprobación de área dentro de la rama de cero defectos: sin defectos, cualquier área pasa, así que `judge(0, 0.9)` también debe devolver \"pass\". Ese caso se comprueba a propósito."
   },
   {
     "id": "ch33-ex02",
@@ -66,6 +71,11 @@
         "kind": "assert_python",
         "code": "m = metrics(1,0,0)\nassert m['accuracy'] == 1.0, m",
         "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "z = metrics(0, 0, 0)\nassert z == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, z",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -73,7 +83,7 @@
       "criteria": "¿Protejo el caso de un total igual a cero?"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "round(x, 3) mantiene el resultado en 0,7 en lugar de 0,7000000000000001, lo que importa al comparar informes de evaluación. La protección contra cero también: pasar cero muestras debe devolver ceros, no romperse."
+    "explanation": "round(x, 3) mantiene el resultado en 0,7 en lugar de 0,7000000000000001, lo que importa al comparar informes de evaluación. La protección contra cero también: pasar cero muestras debe devolver ceros, no romperse, así que `metrics(0, 0, 0)` tiene que devolver tres 0.0 en lugar de lanzar ZeroDivisionError. Ese caso se comprueba a propósito."
   },
   {
     "id": "ch33-ex03",

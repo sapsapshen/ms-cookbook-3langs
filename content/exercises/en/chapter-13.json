@@ -16,6 +16,16 @@
       },
       {
         "kind": "assert_python",
+        "code": "assert args['dataset'] == ['alpaca-gpt4-data.json']",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['output'] == 'output/v0-5b-lora'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
         "code": "assert args['train_type'] == 'lora'",
         "weight": 2
       },
@@ -25,13 +35,13 @@
         "weight": 1
       },
       {
-        "kind": "assert_python",
-        "code": "assert isinstance(args['dataset'], list) and args['dataset']",
-        "weight": 1
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 2
       },
       {
         "kind": "stdout_matches",
-        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "pattern": "--output\\s+output/v0-5b-lora",
         "weight": 2
       }
     ],
@@ -49,7 +59,7 @@
     "difficulty": 3,
     "minutes": 12,
     "objective": "Split a dataset into train and validation parts",
-    "prompt": "Given a sample count `total` and a validation ratio `val_ratio` (a decimal between 0 and 1), compute the validation size `val_size` and the training size `train_size`. Use floor division, and make sure the two never exceed `total` when summed.",
+    "prompt": "Given a sample count `total` and a validation ratio `val_ratio` (a decimal between 0 and 1), compute the validation size `val_size` and the training size `train_size`. Use floor division, and make the two add up to exactly `total` so that no sample is dropped.",
     "starter": "def split(total, val_ratio):\n    # return (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
     "checks": [
       {
@@ -64,8 +74,8 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert sum(split(777, 0.33)) <= 777",
-        "weight": 1
+        "code": "t, v = split(777, 0.33)\nassert t + v == 777, (t, v)",
+        "weight": 2
       }
     ],
     "llm_rubric": {

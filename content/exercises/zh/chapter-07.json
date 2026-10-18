@@ -13,6 +13,16 @@
         "kind": "stdout_matches",
         "pattern": "我是.{1,20}，我想学.{1,30}",
         "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(name, str) and name.strip(), 'name 必须是非空字符串'",
+        "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(role, str) and role.strip(), 'role 必须是非空字符串'",
+        "weight": 1
       }
     ],
     "llm_rubric": {
@@ -20,7 +30,7 @@
       "criteria": "是否真的用了两个变量而不是把内容写死在字符串里"
     },
     "reference": "name = \"沈愐\"\nrole = \"Agent 开发\"\nprint(f\"我是{name}，我想学{role}\")",
-    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用。"
+    "explanation": "f-string 用 {} 把变量的值嵌进字符串，不需要手写字符串拼接。注意 name 和 role 要先赋值再使用，否则句子里会留下空洞。自动判分看得到的是「两个变量有没有被赋成非空字符串」和「打印出来的句子长什么样」；有没有真的用 f-string 而不是把字面量写死，这一点只能由你的代码本身说明。"
   },
   {
     "id": "ch07-ex02",
@@ -43,7 +53,7 @@
       "enabled": false,
       "criteria": "是否理解了参数量单位是十亿"
     },
-    "reference": "weight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
+    "reference": "params_billion = 7\nbytes_per_param = 2\nweight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
     "explanation": "70 亿 = 7 × 10^9。乘以每参数 2 字节得 1.4 × 10^10 字节，约 13 GB。这只是权重，实际加载还要加 KV cache 和激活值。"
   },
   {
@@ -69,7 +79,7 @@
       "enabled": false,
       "criteria": ""
     },
-    "reference": "A、C、D。B 是对的但 Jupyter 会自动显示最后一个表达式的值，在脚本环境里不会打印出来。",
+    "reference": "A、C、D。B 的写法本身合法 —— Jupyter 会回显最后一个表达式的值 —— 但在 .py 脚本或服务端调用里什么都不会打印，所以它不算「能直接得到模型输出」。",
     "explanation": "推理结果一定要拿到并输出。B 在 Jupyter 里看起来\"有效\"是因为最后一个单元格表达式会回显，但在 .py 脚本或服务端调用中什么都不会输出 —— 这是新手最常见的\"模型跑了但没反应\"原因。"
   }
 ]

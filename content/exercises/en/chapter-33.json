@@ -16,6 +16,11 @@
       },
       {
         "kind": "assert_python",
+        "code": "assert judge(0, 0.9) == 'pass'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
         "code": "assert judge(1, 0.03) == 'warn'",
         "weight": 3
       },
@@ -35,7 +40,7 @@
       "criteria": "Did the learner order the branches from strictest to loosest using early returns?"
     },
     "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
-    "explanation": "Guard clauses read better than nesting and make new rules easy to add. The key point is not putting the area test inside the zero-defect branch -- with no defects, any area still passes."
+    "explanation": "Guard clauses read better than nesting and make new rules easy to add. The key point is not putting the area test inside the zero-defect branch -- with no defects, any area still passes, so `judge(0, 0.9)` has to keep returning \"pass\" too. That case is asserted on purpose."
   },
   {
     "id": "ch33-ex02",
@@ -66,6 +71,11 @@
         "kind": "assert_python",
         "code": "m = metrics(1,0,0)\nassert m['accuracy'] == 1.0, m",
         "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "z = metrics(0, 0, 0)\nassert z == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, z",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -73,7 +83,7 @@
       "criteria": "Did the learner guard against a zero total?"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "round(x, 3) keeps the return value at 0.7 instead of 0.7000000000000001, which matters when diffing evaluation reports. The zero guard matters too: passing zero samples should return zeros, not crash."
+    "explanation": "round(x, 3) keeps the return value at 0.7 instead of 0.7000000000000001, which matters when diffing evaluation reports. The zero guard matters too: passing zero samples should return zeros, not crash, so `metrics(0, 0, 0)` has to come back as three 0.0 values instead of raising ZeroDivisionError. That case is asserted on purpose."
   },
   {
     "id": "ch33-ex03",

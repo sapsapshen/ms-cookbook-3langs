@@ -16,6 +16,11 @@
       },
       {
         "kind": "assert_python",
+        "code": "assert judge(0, 0.9) == 'pass'",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
         "code": "assert judge(1, 0.03) == 'warn'",
         "weight": 3
       },
@@ -35,7 +40,7 @@
       "criteria": "是否用早返回让条件从最严格到最宽松排列"
     },
     "reference": "def judge(defects, area_ratio):\n    if defects == 0:\n        return 'pass'\n    if defects == 1 and area_ratio <= 0.05:\n        return 'warn'\n    return 'fail'",
-    "explanation": "早返回（guard clause）比嵌套 if 更易读，也更容易扩展新规则。关键是没有把面积条件放到 0 缺陷的分支里 —— 0 缺陷时无论面积多少都该pass。"
+    "explanation": "早返回（guard clause）比嵌套 if 更易读，也更容易扩展新规则。关键是没有把面积条件放到 0 缺陷的分支里 —— 0 缺陷时无论面积多少都该 pass，所以 `judge(0, 0.9)` 仍然必须返回 `\"pass\"`，断言里专门盯的就是这一条。"
   },
   {
     "id": "ch33-ex02",
@@ -66,6 +71,11 @@
         "kind": "assert_python",
         "code": "m = metrics(1,0,0)\nassert m['accuracy'] == 1.0, m",
         "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "z = metrics(0, 0, 0)\nassert z == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, z",
+        "weight": 3
       }
     ],
     "llm_rubric": {
@@ -73,7 +83,7 @@
       "criteria": "是否处理了总数为 0 的除零情况"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "round(x, 3) 保证返回的是 0.7 而不是 0.7000000000000001，这在评测报告里对比很重要。除零保护不能省 —— 传 0 条样本时程序应该返回 0 而不是崩溃。"
+    "explanation": "round(x, 3) 保证返回的是 0.7 而不是 0.7000000000000001，这在评测报告里对比很重要。除零保护不能省 —— 传 0 条样本时程序应该返回 0 而不是崩溃，所以 `metrics(0, 0, 0)` 必须返回三个 0.0 而不是抛 ZeroDivisionError，断言里专门盯的就是这一条。"
   },
   {
     "id": "ch33-ex03",

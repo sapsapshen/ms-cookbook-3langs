@@ -16,6 +16,16 @@
       },
       {
         "kind": "assert_python",
+        "code": "assert args['dataset'] == ['alpaca-gpt4-data.json']",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert args['output'] == 'output/v0-5b-lora'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
         "code": "assert args['train_type'] == 'lora'",
         "weight": 2
       },
@@ -25,13 +35,13 @@
         "weight": 1
       },
       {
-        "kind": "assert_python",
-        "code": "assert isinstance(args['dataset'], list) and args['dataset']",
-        "weight": 1
+        "kind": "stdout_matches",
+        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "weight": 2
       },
       {
         "kind": "stdout_matches",
-        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "pattern": "--output\\s+output/v0-5b-lora",
         "weight": 2
       }
     ],
@@ -49,7 +59,7 @@
     "difficulty": 3,
     "minutes": 12,
     "objective": "按占比切分训练集与验证集",
-    "prompt": "给定一个样本数 `total` 和验证集占比 `val_ratio`（0 到 1 之间的小数），计算验证集样本数 `val_size` 与训练集样本数 `train_size`。要求用整除向下取整，且两者之和不超过 `total`。",
+    "prompt": "给定一个样本数 `total` 和验证集占比 `val_ratio`（0 到 1 之间的小数），计算验证集样本数 `val_size` 与训练集样本数 `train_size`。要求用整除向下取整，且两者之和恰好等于 `total`，一条样本都不丢。",
     "starter": "def split(total, val_ratio):\n    # 返回 (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
     "checks": [
       {
@@ -64,8 +74,8 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert sum(split(777, 0.33)) <= 777",
-        "weight": 1
+        "code": "t, v = split(777, 0.33)\nassert t + v == 777, (t, v)",
+        "weight": 2
       }
     ],
     "llm_rubric": {

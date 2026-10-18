@@ -6,21 +6,31 @@
     "difficulty": 1,
     "minutes": 5,
     "objective": "Build a self-introduction with an f-string",
-    "prompt": "Two variables are given: `name` holds your name and `role` holds what you want to learn. The starter already defines the sentence fragments `HEAD` and `MID` (their meaning is in the comments). Print the whole sentence on a single line with one f-string, interpolating the four pieces in order.",
-    "starter": "HEAD = \"我是\"      # \"I am\"\nMID = \"，我想学\"    # \"I want to learn\"\nname = \"\"\nrole = \"\"\n# print HEAD + name + MID + role on one line, using an f-string\n",
+    "prompt": "Define two variables: `name` holding your name and `role` holding what you want to learn. Then print one Chinese sentence that says who you are and what you want to learn, built from those two variables with an f-string. The starter shows the sentence template to use.",
+    "starter": "name = \"\"\nrole = \"\"\n# Print the Chinese line with one f-string, using both variables.\n# Template: 我是{name}，我想学{role}   (\"I am {name}, I want to learn {role}\")\n",
     "checks": [
       {
         "kind": "stdout_matches",
         "pattern": "我是.{1,20}，我想学.{1,30}",
         "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(name, str) and name.strip(), 'name must be a non-empty string'",
+        "weight": 1
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(role, str) and role.strip(), 'role must be a non-empty string'",
+        "weight": 1
       }
     ],
     "llm_rubric": {
       "enabled": false,
       "criteria": "Did the learner really use two variables instead of hard-coding the string?"
     },
-    "reference": "name = \"Mian\"\nrole = \"Agent development\"\nprint(f\"{HEAD}{name}{MID}{role}\")",
-    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally."
+    "reference": "name = \"Mian\"\nrole = \"Agent development\"\n# \\u-escapes keep this answer CJK-free while still printing the Chinese line.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
+    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally; the escape sequences above are just that same sentence written in ASCII. The automated checks can only see that both variables hold non-empty strings and that the printed line has the right shape — whether you really used an f-string instead of a literal is something your own code has to show."
   },
   {
     "id": "ch07-ex02",
@@ -43,7 +53,7 @@
       "enabled": false,
       "criteria": "Does the learner understand that the parameter count is in billions?"
     },
-    "reference": "weight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
+    "reference": "params_billion = 7\nbytes_per_param = 2\nweight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
     "explanation": "7 billion = 7 x 10^9. Times 2 bytes each gives 1.4 x 10^10 bytes, about 13 GB. That is weights only; a real deployment also needs KV cache and activations."
   },
   {

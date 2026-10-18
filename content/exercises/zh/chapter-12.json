@@ -1,1 +1,155 @@
-[]
+[
+  {
+    "id": "ch12-ex01",
+    "chapter": "chapter-12",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "按本章口径清洗 FAQ 文本",
+    "prompt": "按本章的清洗口径写一个 `clean_text(text)`：依次做四件事 —— 去掉形如 `<p>` 的 HTML 标签（标签本身连尖括号一起去掉）、把不换行空格 `\\xa0` 换成普通空格、把连续的空白字符合并成一个空格、去掉首尾空格。空字符串和 `None` 都返回 `\"\"`。返回清洗后的文本。",
+    "starter": "def clean_text(text):\n    # 四步清洗，返回结果字符串\n    return text\n\nprint(clean_text('<p>  客服电话为 400-123-4567\\xa0 </p>'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('<p>进入个人中心</p>') == '进入个人中心', 'HTML 标签连尖括号一起去掉'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('客服电话为 400-123-4567\\xa0') == '客服电话为 400-123-4567', '不换行空格要换成普通空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('点击\\n\\n按照提示操作。') == '点击 按照提示操作。', '连续空白合并成一个空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('  如何修改登录密码？  ') == '如何修改登录密码？', '最后要去掉首尾空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('') == '' and clean_text(None) == ''",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('<p>客服电话为 400-123-4567\\xa0 </p>') == '客服电话为 400-123-4567', '四步要按顺序一起生效'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('a  b') == 'a b' and clean_text('\\t\\tx') == 'x' and clean_text('  ') == ''",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in (None, '', '  ', 'x', ' x ', 'a  b', 'a\\nb', 'a\\xa0b', '<p>a</p>', ' <b>c</b> d ', '<p></p>', 'a\\t\\t\\tb'):\n    _r = clean_text(_t)\n    assert isinstance(_r, str), (_t, _r)\n    if not _t:\n        assert _r == '', (_t, _r)\n    else:\n        _expect = ' '.join(_t.replace('\\xa0', ' ').split())\n        while '<' in _expect and '>' in _expect:\n            _i = _expect.index('<')\n            _j = _expect.index('>', _i)\n            _expect = _expect[:_i] + _expect[_j + 1:]\n            _expect = ' '.join(_expect.split())\n        assert _r == _expect.strip(), (_t, _r, _expect)",
+        "weight": 24
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解清洗不等于删除所有特殊内容"
+    },
+    "reference": "import re\n\n\ndef clean_text(text):\n    if not text:\n        return \"\"\n    text = re.sub(r'<[^>]+>', '', text)\n    text = text.replace('\\xa0', ' ')\n    text = re.sub(r'\\s+', ' ', text)\n    return text.strip()\n\nprint(clean_text('<p>  客服电话为 400-123-4567\\xa0 </p>'))",
+    "explanation": "本章这四步的顺序照抄即可，但有一点要说清楚：**并不是每一步的顺序都影响结果**。\n\n实测结论是：把「合并空白」提到「去标签」之前，输出**完全一样** —— 因为 `strip()` 在最后执行，标签内部多出来的空格最终仍会被压掉。所以判据没有把顺序当成考点。\n\n同样地，`\\xa0`（不换行空格）在 Python 的 `re` 里是能匹配 `\\s` 的，所以即使省略「换成普通空格」这一步，后面的合并空白也会把它变成普通空格，结果一致。判据里那条 `客服电话为 400-123-4567\\xa0` 用来确认结果对，不用来区分两种写法。\n\n真正影响结果的是两处：**`if not text` 必须在最前面**（`None` 和 `''` 直接返回 `\"\"`，否则对 `None` 调 `re.sub` 会抛异常），以及**末尾的 `strip()`**（只合并空白不去掉首尾空格的话，`'  如何修改登录密码？  '` 会保留两端的空格）。判据分别用 `clean_text(None)` 和带首尾空格的输入钉住这两条。\n\n本章还有一句容易被当成多余的话：**清洗并不是删除所有特殊内容**。代码、公式、单位和标点符号可能本身就是训练内容的一部分。本题只按题面这四步做，所以形如 `x=1`、`5kg` 的内容不该被动过 —— 判据里用 `'a  b'` 合并成 `'a b'` 但保留其余字符来体现这一点。\n\n最后一条判据把 12 条输入全跑一遍，其中一条是用**另一种算法**（按字符逐个剥离标签再 split）算出期望值再比对，不是复用被测函数的思路。这是专门防「把答案背下来」的。边界诚实说明：这 12 条输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch12-ex02",
+    "chapter": "chapter-12",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "对合并后的 FAQ 数据做完全去重",
+    "prompt": "不同来源的数据汇总后会出现内容完全一致的重复样本。写函数 `dedupe(rows)`：把每条的 `question` 与 `answer` **直接拼接**（中间不加任何分隔符）得到一条文本；如果这条拼接后的文本此前已经出现过，就丢掉当前这条；否则保留并记下这条文本。返回保留的列表，顺序与输入一致。",
+    "starter": "def dedupe(rows):\n    # 返回去重后的列表\n    return rows\n\ndata = [\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n    {'question': '忘记密码怎么办？', 'answer': '点击忘记密码。'},\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n]\nprint(dedupe(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1'}, {'question': 'q1', 'answer': 'a1'}]\nout = dedupe(rows)\nassert len(out) == 1 and out[0]['question'] == 'q1', out",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1'}, {'question': 'q1', 'answer': 'a2'}]\nassert len(dedupe(rows)) == 2, '答案不同就不能算重复'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a'}, {'question': 'q', 'answer': '1a'}]\nassert len(dedupe(rows)) == 1, '拼接时中间不加分隔符：q1+a 和 q+1a 都是 q1a，算重复'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'b', 'answer': 'a'}, {'question': 'a', 'answer': 'b'}]\nassert len(dedupe(rows)) == 2, '只按拼接结果比对，不比较字段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = [{'question': 'q1', 'answer': 'a1'}]\nsnapshot = [dict(r) for r in src]\ndedupe(src)\nassert src == snapshot, 'dedupe 不应该改动传入的字典'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q3', 'answer': 'a3'}, {'question': 'q1', 'answer': 'a1'}, {'question': 'q3', 'answer': 'a3'}, {'question': 'q2', 'answer': 'a2'}]\nout = dedupe(rows)\nassert [r['question'] for r in out] == ['q3', 'q1', 'q2'], '保留第一次出现的，顺序按输入'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1', 'tag': 'first'}, {'question': 'q1', 'answer': 'a1', 'tag': 'second'}, {'question': 'q1', 'answer': 'a2', 'tag': 'third'}]\nout = dedupe(rows)\nassert [r['tag'] for r in out] == ['first', 'third'], ('重复项保留的是第一次出现的那一条，不是最后一次', out)",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _i in range(1, 9):\n    _rows = [{'question': f'Q{_i}', 'answer': '0'}, {'question': 'Q', 'answer': f'{_i}0'}]\n    assert len(dedupe(_rows)) == 1, ('拼接时加分隔符会把本该合并的两条拆开', _i, dedupe(_rows))",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _i in range(4):\n    _rows = [{'question': f'Q{_i}', 'answer': 'a', 'tag': _t}\n             for _t in ('first', 'second', 'third')]\n    assert [r['tag'] for r in dedupe(_rows)] == ['first'], (_i, dedupe(_rows))",
+        "weight": 18
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 7):\n    for _dups in range(0, 4):\n        _rows = []\n        for _i in range(_n):\n            _q = f'问题{_i % max(1, _n - _dups)}'\n            _rows.append({'question': _q, 'answer': f'答案{_i}'})\n        _seen = set()\n        _want = []\n        for _r in _rows:\n            _key = _r['question'] + _r['answer']\n            if _key not in _seen:\n                _seen.add(_key)\n                _want.append(_r)\n        assert dedupe(_rows) == _want, (_n, _dups, dedupe(_rows), _want)",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解这是完全去重，相似去重是另一套方法"
+    },
+    "reference": "def dedupe(rows):\n    seen = set()\n    result = []\n    for item in rows:\n        text = item['question'] + item['answer']\n        if text not in seen:\n            seen.add(text)\n            result.append(item)\n    return result\n\ndata = [\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n    {'question': '忘记密码怎么办？', 'answer': '点击忘记密码。'},\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n]\nprint(dedupe(data))",
+    "explanation": "本章把去重分成两类：相同数据去重（内容完全一致，用文本匹配或哈希值）和相似数据去重（文字不同但内容高度接近，用 MinHash、SimHash 或向量相似度）。这道题做的是**第一类** —— 只判断是否逐字一致，`\"如何修改登录密码？\"` 和 `\"登录密码怎么修改？\"` 不会被这道函数去掉，那是第二类方法的工作。\n\n拼接方式有两个细节，都被判据单独盯住：\n\n**中间不加分隔符**。本章示例是 `item[\"question\"] + item[\"answer\"]`。所以 `'q1' + 'a'` 和 `'q' + '1a'` 拼出来都是 `'q1a'`，会被判成重复 —— 判据里 `len(dedupe(rows)) == 1` 这一条就是钉这个行为的：`{q:'q1', a:'a'}` 与 `{q:'q', a:'1a'}` 都被合并成一条。加个空格或竖线做分隔，结论就不一样了。\n\n**只看拼接结果，不分别比较两个字段**。`{q:'b', a:'a'}` 和 `{q:'a', a:'b'}` 拼出来都是 `'ba'`，所以它们被判成重复、只留一条 —— 判据里 `len(dedupe(rows)) == 2` 反着写，表示这两条**必须被合并**。如果实现里逐字段判断（`question` 和 `answer` 分别查 `seen`），结论会和这里不同。\n\n保留的是**第一次出现**的那条，不是最后一次。判据专门用一组「q1/a1、q1/a1、q1/a2」并给每条打上 `tag` 来区分：第一条和第二条的 `question` 与 `answer` 完全一样，只有 `tag` 不同，所以正确的输出是 `['first', 'third']`。写成「先收集全部键、最后统一取值」的实现会保留最后一条（`['second', 'third']`），在这一条上判不过。\n\n最后一条判据把条数 0 到 6 × 重复档 0 到 3 共 28 组输入全跑一遍，逐组用集合重算期望结果 —— 这是专门防「把答案背下来」的：查表覆盖不了 28 组输入。边界诚实说明：这 28 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch12-ex03",
+    "chapter": "chapter-12",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "判断数据处理流程是否符合本章",
+    "prompt": "你要把一份跨来源的 FAQ 数据整理成可训练的数据集。下面哪些做法与本章一致？（多选）\n\nA. 不同来源的数据结构可能不同，先统一字段名称再往下走\nB. 清洗时把所有特殊字符和标点都删掉，这样更干净\nC. 合并后的数据要先做统一去重，再考虑脱敏\nD. 手机号、身份证号这类格式固定的信息可以用正则识别，姓名和地址则更适合用识别模型\nE. 合成数据里高度相似的样本可以适当过滤，保留有代表性的那些",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、C、D、E。B 错在本章明确说了「数据清洗并不是删除所有特殊内容」—— 代码、公式、单位和标点符号可能本身就是训练内容的一部分。",
+    "explanation": "本章把整条流程排成了一条链：**数据采集 → 数据清洗 → 数据去重 → 数据脱敏**。A 和 C 分别落在前两步和中间两步。\n\nB 是本章专门写了一段来纠正的直觉。清洗要做的是去掉 HTML 标签、把特殊空格换成普通空格、合并连续空白、删掉空记录，而不是把所有标点和特殊字符一律清除 —— 因为训练内容本身就可能包含它们。\n\nD 对应本章的正则与模型两条识别路线。本章说得很清楚：正则依赖格式特征，对结构固定的信息效果较好；而姓名、地址这种要结合上下文理解的信息，单纯依靠正则较难准确识别，所以有对应的敏感信息识别模型可用。\n\nE 对应合成数据那一节：「如何修改登录密码？」和「登录密码怎么修改？」表达不同但内容基本相同，这类样本过多会降低数据集的有效信息量，所以要过滤完全重复的、并控制高度相似样本的数量。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

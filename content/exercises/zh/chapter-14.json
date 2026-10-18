@@ -1,1 +1,150 @@
-[]
+[
+  {
+    "id": "ch14-ex01",
+    "chapter": "chapter-14",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "判断四种对齐方法的工程特征",
+    "prompt": "把本章的四种后训练方法整理成可查询的表。写两个函数：\n\n`needs_online(method)` 返回布尔值，表示该方法在训练时是否需要在线生成新回答。取值与本章一致：`\"RLHF\"`、`\"PPO\"`、`\"GRPO\"` 需要，`\"DPO\"` 不需要。\n\n`needs_components(method)` 返回一个长度为 2 的列表 `[奖励模型, 价值模型]`，两个元素是布尔值。按本章的表格：`RLHF` 是 `[True, False]`（价值模型取决于所用优化算法，经典路线之外可以不用）；`PPO` 是 `[True, True]`；`GRPO` 是 `[False, False]`（可以用规则奖励代替，且不需要价值模型）；`DPO` 是 `[False, False]`。\n\n传入表里没有的方法时，两个函数都抛出 `ValueError`。",
+    "starter": "ONLINE = {'RLHF', 'PPO', 'GRPO'}\n\n\ndef needs_online(method):\n    pass\n\n\ndef needs_components(method):\n    pass\n\nprint(needs_online('DPO'), needs_components('PPO'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert needs_online('DPO') is False and needs_online('GRPO') is True",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_online('PPO') is True and needs_online('RLHF') is True",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('PPO') == [True, True], 'PPO 既要奖励模型也要价值模型'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('DPO') == [False, False], 'DPO 两者都不需要'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('GRPO') == [False, False], 'GRPO 不用价值模型，奖励可以用规则'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('RLHF') == [True, False], 'RLHF 的价值模型取决于所用算法'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    needs_online('SFT')\n    assert False, 'SFT 不在这张表里'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    needs_components('RLHF')\nexcept ValueError:\n    assert False, 'RLHF 在表里，不该抛异常'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('RLHF', 'PPO', 'GRPO', 'DPO'):\n    _on = {'RLHF': True, 'PPO': True, 'GRPO': True, 'DPO': False}[_m]\n    _cp = {'RLHF': [True, False], 'PPO': [True, True],\n           'GRPO': [False, False], 'DPO': [False, False]}[_m]\n    assert needs_online(_m) is _on, (_m, needs_online(_m))\n    assert needs_components(_m) == _cp, (_m, needs_components(_m))\nfor _bad in ('SFT', 'rlhf', '', 'PPO2'):\n    for _fn in (needs_online, needs_components):\n        try:\n            _fn(_bad)\n            assert False, '未知方法应该抛 ValueError: %r' % (_bad,)\n        except ValueError:\n            pass",
+        "weight": 32
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否分清了「框架 / 在线算法 / 离线方法」三种定位"
+    },
+    "reference": "ONLINE = {'RLHF', 'PPO', 'GRPO'}\nCOMPONENTS = {\n    'RLHF': [True, False],\n    'PPO': [True, True],\n    'GRPO': [False, False],\n    'DPO': [False, False],\n}\n\n\ndef needs_online(method):\n    if method not in COMPONENTS:\n        raise ValueError('unknown method: ' + method)\n    return method in ONLINE\n\n\ndef needs_components(method):\n    if method not in COMPONENTS:\n        raise ValueError('unknown method: ' + method)\n    return list(COMPONENTS[method])\n\nprint(needs_online('DPO'), needs_components('PPO'))",
+    "explanation": "本章最后那张对照表是这一节的核心。这两个函数把它变成可执行的，重点在**别把四种方法记成同一类东西**。\n\n**PPO 最重**：在线生成、要有奖励模型、还要有价值模型。本章说它「通过价值估计和概率比裁剪稳定更新策略」，价值模型是它区别于 GRPO 的地方。\n\n**GRPO 砍掉了价值模型**：本章说它是 PPO 的一种变体，主要变化就是不再单独训练价值模型，改用同一个 Prompt 下多条回答的组内相对得分。所以奖励模型那一列也是 False —— 因为可以用规则奖励（比如答案校验、单元测试）代替，不一定先训练一个专门的奖励模型。\n\n**DPO 两者都不要**：它不需要单独训练奖励模型，也不需要运行在线强化学习循环，训练形式接近普通 SFT。\n\n**RLHF 是唯一有歧义的一格**。本章表格里它「是否需要价值模型」写的是「取决于所用优化算法」，所以这道题按 `[True, False]` 处理：价值模型不是 RLHF 框架的必需品，而是经典 PPO 路线的产物。判据专门留了一条反过来的断言（RLHF 不该抛异常），防止实现里把它当成「不确定所以不处理」。\n\n「训练时是否生成新回答」这一列，RLHF 通常需要，PPO 和 GRPO 需要，DPO 通常不需要在线生成。\n\n最后一条判据把 4 种方法 × 两个函数走一遍，再用四个非法输入（含小写 `'rlhf'`、空串）逐一验证要抛 `ValueError` —— 这是专门防「把答案背下来」的。边界诚实说明：这 4 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch14-ex02",
+    "chapter": "chapter-14",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "算出 GRPO 的组内相对优势",
+    "prompt": "GRPO 对同一个 Prompt 生成一组回答，先算这组奖励的平均值和标准差，再把每条回答换成组内相对优势。写函数 `advantages(rewards)` 返回一个字典：键是下标，值是该回答的相对优势 `(r - 平均值) / 标准差`。标准差用**总体**标准差（除以 `n`，不是 `n-1`）。组内奖励完全相同、标准差为 0 时，返回 `None`。",
+    "starter": "def advantages(rewards):\n    # 返回 {下标: 相对优势}，标准差为 0 时返回 None\n    return None\n\nprint(advantages([1.0, 2.0, 3.0, 4.0]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([1.0, 0.0]) == {0: 1.0, 1: -1.0}, '两个奖励的相对优势恒为 ±1'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([1.0, 1.0]) is None, '组内得分完全相同要返回 None'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([2.0, 2.0, 2.0]) is None, '三条也一样要返回 None'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nassert sorted(out) == [0, 1, 2, 3] and out[0] < out[1] < out[2] < out[3], out",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nassert abs(sum(out.values())) < 1e-9, '相对优势之和应当接近 0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([0.0, 4.0])\nassert abs(out[0] - -1.0) < 1e-9 and abs(out[1] - 1.0) < 1e-9, out",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nmean, pop = 2.5, (1.25 ** 0.5)\nassert abs(out[0] - (1.0 - mean) / pop) < 1e-9, '必须用总体标准差（除以 n）'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nsample = (1.25 * 4 / 3) ** 0.5\nassert abs(out[0] - (1.0 - 2.5) / sample) > 1e-6, '这一条排除样本标准差（除以 n-1）：两种算法在这组输入上给出的值必须不同'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (2, 3, 4, 5, 6):\n    for _base in (0.0, 1.0, -2.5):\n        _r = [_base + _i * 0.5 for _i in range(_n)]\n        _out = advantages(_r)\n        _mean = sum(_r) / _n\n        _var = sum((_x - _mean) ** 2 for _x in _r) / _n\n        _sd = _var ** 0.5\n        assert abs(sum(_out.values())) < 1e-9, (_r, _out)\n        assert len(_out) == _n, (_r, _out)\n        for _i in range(_n):\n            _want = (_r[_i] - _mean) / _sd\n            assert abs(_out[_i] - _want) < 1e-9, (_r, _i, _out[_i], _want)\nassert advantages([3.0, 3.0]) is None and advantages([-5.0, -5.0]) is None",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解相对优势是组内比较而非绝对分数"
+    },
+    "reference": "def advantages(rewards):\n    n = len(rewards)\n    mean = sum(rewards) / n\n    var = sum((r - mean) ** 2 for r in rewards) / n\n    sd = var ** 0.5\n    if sd == 0:\n        return None\n    return {i: (r - mean) / sd for i, r in enumerate(rewards)}\n\nprint(advantages([1.0, 2.0, 3.0, 4.0]))",
+    "explanation": "本章说 GRPO「先计算这一组奖励的平均值和标准差，再把每条回答的得分转换为组内相对优势」。这个函数就是那两步。\n\n**分母是总体标准差**。本章没说用哪种，但题面写明了「除以 `n`，不是 `n-1`」，判据用 `[1.0, 2.0, 3.0, 4.0]` 这组专门区分两种算法：平均值 2.5，总体方差是 1.25（除以 4），标准差 ≈ 1.118，第一个优势是 -1.34；样本方差是 1.25 × 4/3 ≈ 1.667，标准差 ≈ 1.291，第一个优势是 -1.16。判据里两条断言分别钉住这个区别 —— 一条要求等于总体标准差的结果，另一条要求**不等于**样本标准差的结果，所以写成 `statistics.stdev` 会判不过。\n\n**标准差为 0 返回 None**，而不是返回一个全零字典。本章解释了原因：同一组回答得分完全相同，标准差接近 0，组内比较就很难提供有效方向，实际实现需要跳过、平滑或重新采样这类数据。判据用 `[1.0, 1.0]` 和 `[2.0, 2.0, 2.0]` 两组盯住这条。\n\n**返回字典的键是下标而不是奖励值**。奖励值可能重复（两条都是 1.0），用值当键会丢数据；用下标则一一对应。\n\n还有一个可以自己验的性质：**相对优势之和恒为 0**，因为每个数都减了同一个平均值。主判据对 5 档组大小 × 3 档基准共 15 组算出来的优势逐个与公式比对，并检查总和接近 0 —— 这是专门防「把答案背下来」的：查表覆盖不了 15 组输入。边界诚实说明：这 15 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。",
+    "_note": ""
+  },
+  {
+    "id": "ch14-ex03",
+    "chapter": "chapter-14",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "为一个场景选后训练方法",
+    "prompt": "你的模型已经能稳定完成客服问答任务，但回答有时啰嗦、有时会做出没有依据的承诺。你手里有一批人工标注好的偏好数据（同一个问题下的优选和非优选回答），没有奖励模型，也没有强化学习基础设施。请说明你会选哪种后训练方法、为什么，以及你会怎么判断训练有没有效果。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否推荐 DPO 并说明它不需要奖励模型与在线强化学习、是否提到偏好数据质量决定学到的是能力还是表面风格、以及是否强调不能只看训练损失和偏好胜率"
+    },
+    "reference": "选 DPO。理由：本章说「已有高质量偏好数据、希望快速完成第一轮对齐时，可以优先考虑 DPO」，而我手里正好有现成的偏好数据；同时「DPO 不需要在线生成回答，也不需要单独训练奖励模型和价值模型」，我没有奖励模型也没有强化学习基础设施，PPO 和 GRPO 都跑不起来。GRPO 虽然也不要价值模型，但它仍然是需要在线生成回答的算法，采样本身会消耗大量计算资源。\n\n数据上的注意点：本章提醒偏好数据表达的是相对关系，不是给每个回答贴上正确的标签 —— 非优选回答可能只是遗漏必要条件或包含没有依据的承诺，正好对应我要解决的两个问题。但也正因为如此，要确认 chosen 里没有事实错误、rejected 没有过于低劣，否则模型可能学到表面风格而不是目标能力。\n\n判断效果：本章明确说不能只用训练损失、奖励分数或偏好胜率判断效果，而应回到真实任务中持续评估准确性、任务完成度、安全性、业务边界和通用能力。所以我会在一组从未参与训练的真实客服问题上看啰嗦率和无依据承诺率有没有下降，同时确认通用能力没有退化。",
+    "explanation": "这道题的条件设置得很具体，几乎是在照着本章那张对照表做排除法：没有奖励模型 → PPO 排除；没有强化学习基础设施 → PPO 排除得更彻底；只有现成的偏好数据、没有可验证的规则奖励 → GRPO 也不合适（它虽然是规则奖励友好，但仍然需要在线生成一组回答）。剩下的就是 DPO。\n\n第二问比方法选择更重要。本章说 DPO「只能学习偏好数据中已经出现的差异」，还举了三种失效方式：优选回答本身有事实错误、非优选回答过于低劣、数据来自分布差异过大的生成分布。这个场景里两个症状（啰嗦、无依据承诺）恰好就是非优选回答的典型形态，所以数据质量直接决定 DPO 能学到什么。\n\n第三问对应本章最后那句话：后训练的最终目标不是获得更高的奖励，而是让模型在真实使用环境中更稳定、更可靠地完成目标任务。偏好胜率上升只说明模型更倾向于输出 chosen，不说明输出本身变好了。\n\n这题跑不了真实的 DPO 训练，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的判断。"
+  }
+]

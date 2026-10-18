@@ -1,1 +1,159 @@
-[]
+[
+  {
+    "id": "ch15-ex01",
+    "chapter": "chapter-15",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "从混淆矩阵算出分类任务的指标",
+    "prompt": "给定一个混淆矩阵，行表示真实类别、列表示预测类别。写函数 `metrics(matrix)` 返回一个字典：\n\n`accuracy` 是对角线之和除以全部元素之和；`per_class` 是每个类别的字典，键为类别下标，值为 `{\"precision\": ..., \"recall\": ..., \"f1\": ...}`。其中某类的 precision = 该类对角线 / 该**列**之和，recall = 该类对角线 / 该**行**之和，分母为 0 时该项记 0.0。f1 = `2 × precision × recall / (precision + recall)`，两者都为 0 时 f1 记 0.0。\n\n所有结果保留 4 位小数。",
+    "starter": "def metrics(matrix):\n    # 返回 {'accuracy': ..., 'per_class': {...}}\n    return {}\n\nprint(metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['accuracy'] == 0.8933, '对角线 45+47+42=134，总共 150 条'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][0]['recall'] == 0.9, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][0]['precision'] == 0.8654, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][2]['recall'] == 0.84, '软件故障这一行是 6+2+42=50'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][2]['precision'] == 0.8936, '软件故障这一列是 3+2+42=47'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 0], [0, 5]])\nassert m['per_class'][0]['precision'] == 0.0 and m['per_class'][0]['recall'] == 0.0 and m['per_class'][0]['f1'] == 0.0, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 0], [0, 5]])\nassert m['per_class'][1]['f1'] == 1.0, '唯一预测正确的那一类 f1 是 1.0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 1], [1, 0]])\nassert m['per_class'][0]['precision'] == 0.0 and m['per_class'][0]['f1'] == 0.0\nassert m['per_class'][1]['precision'] == 0.0 and m['per_class'][1]['f1'] == 0.0",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (2, 3, 4):\n    for _i in range(_n):\n        for _j in range(_n):\n            _mat = [[0] * _n for _ in range(_n)]\n            _mat[_i][_j] = 7\n            for _c in range(_n):\n                if _c != _i:\n                    _mat[_i][_c] = 1\n                if _c != _j:\n                    _mat[_c][_j] = 1\n            _m = metrics(_mat)\n            _total = sum(sum(r) for r in _mat)\n            _diag = sum(_mat[_k][_k] for _k in range(_n))\n            assert abs(_m['accuracy'] - round(_diag / _total, 4)) < 1e-12, (_mat, _m)\n            for _c in range(_n):\n                _col = sum(_mat[_r][_c] for _r in range(_n))\n                _row = sum(_mat[_c])\n                _p = round(_mat[_c][_c] / _col, 4) if _col else 0.0\n                _rc = round(_mat[_c][_c] / _row, 4) if _row else 0.0\n                _f = round(2 * _p * _rc / (_p + _rc), 4) if (_p + _rc) else 0.0\n                _got = _m['per_class'][_c]\n                assert abs(_got['precision'] - _p) < 1e-12, (_mat, _c, _got, _p)\n                assert abs(_got['recall'] - _rc) < 1e-12, (_mat, _c, _got, _rc)\n                assert abs(_got['f1'] - _f) < 1e-12, (_mat, _c, _got, _f)",
+        "weight": 27
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否分清了行与列：recall 看行、precision 看列"
+    },
+    "reference": "def metrics(matrix):\n    n = len(matrix)\n    total = sum(sum(row) for row in matrix)\n    diag = sum(matrix[i][i] for i in range(n))\n    accuracy = round(diag / total, 4) if total else 0.0\n    per_class = {}\n    for i in range(n):\n        row_sum = sum(matrix[i])\n        col_sum = sum(matrix[r][i] for r in range(n))\n        precision = round(matrix[i][i] / col_sum, 4) if col_sum else 0.0\n        recall = round(matrix[i][i] / row_sum, 4) if row_sum else 0.0\n        if precision + recall:\n            f1 = round(2 * precision * recall / (precision + recall), 4)\n        else:\n            f1 = 0.0\n        per_class[i] = {'precision': precision, 'recall': recall, 'f1': f1}\n    return {'accuracy': accuracy, 'per_class': per_class}\n\nprint(metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]]))",
+    "explanation": "本章说混淆矩阵「每一行表示数据的真实类别，每一列表示模型预测的类别」，这句话决定了下面两个公式谁除以谁：\n\n**recall 除以行**。第 0 类真实有 50 条（45+2+3），其中 45 条预测对了，所以 recall = 45/50 = 0.9。recall 衡量的是「标准答案里的这一类，有多少被认出来」。\n\n**precision 除以列**。第 0 列加起来是 45+1+6 = 52 —— 也就是模型一共说了 52 次「这是网络故障」—— 其中只有 45 次是对的，所以 precision = 45/52 = 0.8654。precision 衡量的是「模型说成这一类的，有多少确实对」。\n\n把这两个弄反是最常见的错误，而本章那个例子正好能暴露它：第 0 类和第 2 类的行和列并不相等（第 0 类行和 50、列和 52；第 2 类行和 50、列和 47），所以写反了数值立刻不一样。判据把这两条分别钉死。\n\n整体准确率是对角线之和除以总数：134 / 150 ≈ 0.8933。这个数本身看不出「哪两类容易混」—— 这正是本章要引入混淆矩阵逐类分析的原因。\n\n**分母为 0 记 0.0**。`[[0, 0], [0, 5]]` 里第 0 类既没有出现在真实标签中，也从不被预测出来，它的行和列都是 0。这里不能抛 ZeroDivisionError —— 那正是「这一类没有样本」而不是「模型算错了」。\n\n**完全没有交叠时 precision 也是 0**。`[[0, 1], [1, 0]]` 这种全错的矩阵里，两类的 precision 都是 0（对角线是 0），recall 也都是 0，f1 自然也是 0。容易写错的地方是以为「模型至少预测了某一类，所以 precision 不该是 0」。\n\n关于 f1：判据里先算并 round 再算 f1，实现顺序要一致。不过要说清楚，实测这组输入上用未 round 的值算出来的 f1 再 round，结果和先 round 一样 —— 差别小到 4 位小数看不出来。所以这不是本章的重点，别在这里纠结。\n\n本章还说了这个矩阵的用处：6 条软件故障被错判成网络故障，说明这两个类别容易混淆，可以据此补充训练数据。所以逐类指标比单一 accuracy 更有指导意义。\n\n主判据对 2 到 4 阶矩阵生成 27 种「一个正确 + 若干错分」的形状逐格重算所有数值 —— 这是专门防「把答案背下来」的。边界诚实说明：这 27 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch15-ex02",
+    "chapter": "chapter-15",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "按实体级口径算信息抽取的指标",
+    "prompt": "命名实体识别任务里，标准答案有一组实体 `gold`，模型输出一组实体 `pred`。写函数 `entity_scores(gold, pred)` 返回一个字典，包含 `tp`、`fp`、`fn` 三个计数和 `precision`、`recall`、`f1` 三个数值（保留 4 位小数）：\n\n两个集合里都存在的实体算 TP；只在 `pred` 里的算 FP；只在 `gold` 里的算 FN。precision = TP / (TP + FP)，recall = TP / (TP + FN)，分母为 0 时记 0.0；f1 = `2 × precision × recall / (precision + recall)`，两者都为 0 时记 0.0。",
+    "starter": "def entity_scores(gold, pred):\n    # 返回 tp/fp/fn 与 precision/recall/f1\n    return {}\n\nprint(entity_scores({'张伟', '北京'}, {'张伟', '上海'}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'张伟', '北京'}, {'张伟', '上海'})\nassert (s['tp'], s['fp'], s['fn']) == (1, 1, 1), s",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'张伟', '北京'}, {'张伟', '上海'})\nassert s['precision'] == 0.5 and s['recall'] == 0.5 and s['f1'] == 0.5, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, {'a', 'b'})\nassert (s['tp'], s['fp'], s['fn']) == (2, 0, 0), s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, {'a', 'b'})\nassert s['precision'] == 1.0 and s['recall'] == 1.0 and s['f1'] == 1.0, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a'}, {'b'})\nassert (s['tp'], s['fp'], s['fn']) == (0, 1, 1) and s['f1'] == 0.0, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores(set(), {'a', 'b'})\nassert (s['tp'], s['fp'], s['fn']) == (0, 2, 0), '标准答案为空时全是 FP'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, set())\nassert (s['tp'], s['fp'], s['fn']) == (0, 0, 2), '模型没输出时全是 FN'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores(set(), set())\nassert (s['tp'], s['fp'], s['fn']) == (0, 0, 0)\nassert s['precision'] == 0.0 and s['recall'] == 0.0 and s['f1'] == 0.0, '两边都空时三个数值都是 0.0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b', 'c'}, {'a', 'b', 'd', 'e'})\nassert (s['tp'], s['fp'], s['fn']) == (2, 2, 1), s\nassert abs(s['precision'] - 0.5) < 1e-12 and abs(s['recall'] - round(2 / 3, 4)) < 1e-12, s",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "import itertools\n_entities = ['a', 'b', 'c', 'd']\nfor _mask_g in range(16):\n    for _mask_p in range(16):\n        _g = {_entities[_i] for _i in range(4) if _mask_g >> _i & 1}\n        _p = {_entities[_i] for _i in range(4) if _mask_p >> _i & 1}\n        _s = entity_scores(_g, _p)\n        _tp, _fp, _fn = len(_g & _p), len(_p - _g), len(_g - _p)\n        assert (_s['tp'], _s['fp'], _s['fn']) == (_tp, _fp, _fn), (_g, _p, _s)\n        _pr = round(_tp / (_tp + _fp), 4) if (_tp + _fp) else 0.0\n        _rc = round(_tp / (_tp + _fn), 4) if (_tp + _fn) else 0.0\n        _f = round(2 * _pr * _rc / (_pr + _rc), 4) if (_pr + _rc) else 0.0\n        assert abs(_s['precision'] - _pr) < 1e-12, (_g, _p, _s, _pr)\n        assert abs(_s['recall'] - _rc) < 1e-12, (_g, _p, _s, _rc)\n        assert abs(_s['f1'] - _f) < 1e-12, (_g, _p, _s, _f)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否分清了实体级口径与字段级准确率"
+    },
+    "reference": "def entity_scores(gold, pred):\n    tp = len(gold & pred)\n    fp = len(pred - gold)\n    fn = len(gold - pred)\n    precision = round(tp / (tp + fp), 4) if (tp + fp) else 0.0\n    recall = round(tp / (tp + fn), 4) if (tp + fn) else 0.0\n    if precision + recall:\n        f1 = round(2 * precision * recall / (precision + recall), 4)\n    else:\n        f1 = 0.0\n    return {'tp': tp, 'fp': fp, 'fn': fn,\n            'precision': precision, 'recall': recall, 'f1': f1}\n\nprint(entity_scores({'张伟', '北京'}, {'张伟', '上海'}))",
+    "explanation": "本章把 TP、FP、FN 定义得很清楚：模型正确识别出的实体是 TP，模型识别出了实体但结果错误是 FP，标准答案有实体而模型没识别出来是 FN。用集合写就是 `tp = gold & pred`、`fp = pred - gold`、`fn = gold - pred`。\n\n**这是实体级，不是字段级**。本章专门说了字段准确率有缺陷：「无法确定模型漏抽了哪些实体」，所以对包含多个实体的任务要用实体级指标。两者的分母不同：字段准确率的分母是需要抽取的字段总数量，而这里的 recall 分母是标准答案里的实体总数。\n\n**三种空集情况都要处理**，而且结果各不相同：标准答案为空时全是 FP（模型凭空认出了东西）；模型输出为空时全是 FN（全都漏了）；两边都空时三个数值都是 0.0。写成「非零才计算」或者直接抛异常的实现会在这三种情况上判不过，判据把它们分别列了出来。\n\n**f1 用 round 之后的 precision 和 recall**。判据里先 round 再算 f1，实现顺序要一致。\n\n判据主循环枚举四个实体上的全部 16 × 16 = 256 种 gold/pred 组合（包括各种空集和部分重叠），逐组用集合运算重算三个计数和三个数值。这是专门防「把答案背下来」的：查表覆盖不了 256 种组合里的任意一种。边界诚实说明：这 256 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch15-ex03",
+    "chapter": "chapter-15",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "为微调后的模型选评测方式",
+    "prompt": "你微调了一个问答模型，要判断它有没有变好。下面哪些做法与本章一致？（多选）\n\nA. 分类任务算准确率、精确率、召回率和 F1，想知道哪两类容易混淆就再看混淆矩阵\nB. 只看总体准确率就够了，不用管逐类的表现\nC. 信息抽取任务用实体级 Precision、Recall 和 F1，因为字段准确率看不出漏抽了哪些实体\nD. 生成任务的回答没有唯一标准答案，要从正确性、完整性、相关性、格式遵循和幻觉多个维度评价\nE. 回答语言流畅、格式完整就算生成效果不错，不需要单独检查事实",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B 与 A 直接矛盾：准确率只是一个数，看不出模型把哪两类搞混了。E 错在本章专门说了「即使回答语言流畅、格式完整，如果其中包含错误的事实或结论，也不能认为模型取得了较好的生成效果」。",
+    "explanation": "本章按任务类型给了三套指标，选用哪一套取决于任务形态，而不是哪个更省事。\n\nA 对应分类任务那一节。本章说 Accuracy、Precision、Recall 和 F1 可以用一个数值表示整体效果，「但如果想知道模型容易把哪些类别判断错」就要用混淆矩阵进一步分析 —— 那张 3×3 的例子正是用来说明「软件故障被错判为网络故障相对较多，模型对这两个类别的区分能力还有提升空间」。\n\nC 对应本章点出的字段准确率的缺陷：它算得出「公司名的准确率是多少」，但「无法确定模型漏抽了哪些实体」。这句话直接推出结论：包含多个实体的任务要补上实体级指标。\n\nD 对应生成任务那一节的开头：模型输出通常不存在唯一的标准答案，所以要从多个维度评价。E 是本章反复强调不要犯的错 —— 正确性是最基本的要求，语言流畅和格式完整替代不了事实正确。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

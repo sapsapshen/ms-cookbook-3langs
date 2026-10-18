@@ -3,4 +3,8 @@ authlib>=1.3,<2
 httpx>=0.27,<1
 itsdangerous>=2.2,<3
 uvicorn>=0.30,<1
+# Deliberate exception: no upper bound. tzdata is CalVer and has no major
+# version, so a cap like <2027 would break CI the moment that year arrives --
+# exactly the release that carries new timezone data, which is this package's
+# entire reason to exist.
 tzdata>=2024.1

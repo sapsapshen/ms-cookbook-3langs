@@ -55,7 +55,7 @@
       "criteria": "是否理解 serve 是常驻服务、必须先起服务再 run 模型"
     },
     "reference": "def ollama_cmds(model):\n    return ['ollama serve', f'ollama run {model}']\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)",
-    "explanation": "Ollama 的模型加载分两步：`ollama serve` 启动常驻服务，`ollama run <模型名>` 再把模型跑起来。本章还提到这个顺序的原因 —— 服务是常驻的，而 Jupyter 的单个内核一次只能执行一个单元，所以 `ollama serve` 这条要在终端里执行，不能和 `ollama run` 放进同一个代码单元格。\n\n本章从魔搭起服务的写法是 `ollama run modelscope.cn/unsloth/Qwen3-4B-GGUF`，模型名带仓库前缀，所以第二条命令里的模型名要**原样**放进去，不能自己截断。判据里专门用了这个带前缀的名字跑第三条。\n\n第一条命令里不能带模型名：`ollama serve qwen3.5:2b` 是错的，服务和模型是两次独立的调用。主判据把三个模型名 × 两条命令共 6 组全跑一遍，逐条核对「服务命令干净、模型命令带名字」—— 这是专门防「把这一条答案写死」的：写死返回值覆盖不了别的模型名。边界诚实说明：这 6 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+    "explanation": "Ollama 的模型加载分两步：`ollama serve` 启动常驻服务，`ollama run <模型名>` 再把模型跑起来。本章还提到这个顺序的原因 —— 服务是常驻的，而 Jupyter 的单个内核一次只能执行一个单元，所以 `ollama serve` 这条要在终端里执行，不能和 `ollama run` 放进同一个代码单元格。\n\n本章从魔搭起服务的写法是 `ollama run modelscope.cn/unsloth/Qwen3-4B-GGUF`，模型名带仓库前缀，所以第二条命令里的模型名要**原样**放进去，不能自己截断。判据里专门用了这个带前缀的名字跑第三条。\n\n第一条命令里不能带模型名：`ollama serve qwen3.5:2b` 是错的，服务和模型是两次独立的调用。主判据把三个模型名各跑一遍，逐条核对「服务命令干净、模型命令带名字」—— 这是专门防「把这一条答案写死」的：写死返回值覆盖不了别的模型名。边界诚实说明：这三个模型名也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
   },
   {
     "id": "ch09-ex02",

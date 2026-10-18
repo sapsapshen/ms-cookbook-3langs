@@ -379,6 +379,19 @@ def test_the_address_is_hashed_not_stored(site, monkeypatch):
     assert 'testclient' not in row['visitor_hash']
 
 
+def test_a_readers_identity_is_hashed_not_stored(site, monkeypatch):
+    """The signed-in bucket is hashed the same way, so the ledger is not a list
+    of who reads what even though the unit is now an account."""
+    working_model(monkeypatch)
+    client = reader(site, 'alice')
+    client.post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
+    with site[0].state.db() as db:
+        row = db.execute('SELECT visitor_hash FROM exercise_grade_calls').fetchone()
+    assert len(row['visitor_hash']) == 64
+    assert 'alice' not in row['visitor_hash']
+    assert 'user:' not in row['visitor_hash']
+
+
 def test_a_refused_call_costs_nothing_at_the_model(site, monkeypatch):
     """The check runs before the upstream request, which is the whole point: a
     ceiling that still spends money is not a ceiling."""
@@ -866,5 +879,82 @@ def test_a_model_reply_that_quotes_the_answer_does_not_reach_the_log(site, monke
     assert grading_reply(echoed, site, monkeypatch).status_code == 503
     assert 'Exercise grading returned an unparsable verdict' in captured_log(caplog)
     assert MARKER not in captured_log(caplog)
+
+
+# --- Review round 4: the grading ceiling is a ceiling on a script, not on a
+# classroom behind one NAT -------------------------------------------------
+
+def test_two_readers_behind_one_address_do_not_share_the_quota(site, monkeypatch):
+    """The bug this section exists for: `distinct visitor_hash = 1` for a
+    classroom. One reader working through the exercises used to lock out
+    everyone else behind the same NAT, which is the failure the ceiling is
+    meant to prevent rather than cause."""
+    calls = []
+    working_model(monkeypatch, calls)
+    alice, bob = reader(site, 'alice'), reader(site, 'bob')
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    # Every client here comes from the same address -- TestClient's default
+    # 'testclient' -- so a shared bucket would show up immediately.
+    for _ in range(GRADE_CALL_LIMIT):
+        assert alice.post(GRADE, json=body).status_code == 200
+    assert [bob.post(GRADE, json=body).status_code for _ in range(GRADE_CALL_LIMIT)] == [200] * GRADE_CALL_LIMIT
+    with site[0].state.db() as db:
+        distinct = db.execute('SELECT count(DISTINCT visitor_hash) c FROM exercise_grade_calls').fetchone()['c']
+    assert distinct == 2
+    assert len(calls) == 2 * GRADE_CALL_LIMIT
+
+
+def test_one_reader_past_the_quota_is_still_refused(site, monkeypatch):
+    """Separate buckets must not mean separate limits: one reader is still one
+    reader, and their own thirty is still the ceiling."""
+    calls = []
+    working_model(monkeypatch, calls)
+    client = reader(site, 'alice')
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT):
+        assert client.post(GRADE, json=body).status_code == 200
+    refused = client.post(GRADE, json=body)
+    assert refused.status_code == 503
+    assert refused.json()['fallback'] is True
+    assert len(calls) == GRADE_CALL_LIMIT
+
+
+def test_a_guest_past_the_quota_is_still_refused(site, monkeypatch):
+    """A guest has no identity to fall back on, so the address stays their unit
+    and the ceiling applies to them exactly as before."""
+    calls = []
+    working_model(monkeypatch, calls)
+    guest = TestClient(site[0])
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT):
+        assert guest.post(GRADE, json=body).status_code == 200
+    assert guest.post(GRADE, json=body).status_code == 503
+    assert len(calls) == GRADE_CALL_LIMIT
+
+
+def test_a_guest_and_a_reader_behind_one_address_are_separate(site, monkeypatch):
+    """One address, two identities: the guest keeps the address bucket and the
+    reader gets their own, so exhausting the guest's allowance does not spend
+    the reader's."""
+    calls = []
+    working_model(monkeypatch, calls)
+    guest, alice = TestClient(site[0]), reader(site, 'alice')
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT):
+        assert guest.post(GRADE, json=body).status_code == 200
+    assert guest.post(GRADE, json=body).status_code == 503
+    assert alice.post(GRADE, json=body).status_code == 200
+    assert len(calls) == GRADE_CALL_LIMIT + 1
+
+
+def test_the_signing_in_state_does_not_change_the_guest_rule(site, monkeypatch):
+    """A reader is not given a fresh allowance by dropping the cookie: the
+    guest bucket is a different bucket, and it is already spent."""
+    working_model(monkeypatch)
+    guest, alice = TestClient(site[0]), reader(site, 'alice')
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    for _ in range(GRADE_CALL_LIMIT + 1):
+        guest.post(GRADE, json=body)
+    assert alice.post(GRADE, json=body).status_code == 200
 
 

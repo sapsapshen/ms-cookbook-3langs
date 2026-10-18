@@ -743,18 +743,35 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         # the window opens in under a minute and the exercise is not lost.
         return JSONResponse(status_code=503, content={'detail':'评分请求太频繁，请稍后再试', 'fallback':True}, headers={'x-sils-fallback':'1'})
 
-    def visitor_hash_of(request):
-        """The same keyed hash the analytics endpoints use, over the same field.
+    def grading_quota_hash(request):
+        """The bucket a call is charged to: the reader, or the address for a guest.
 
-        The raw address is never stored: this hash is only ever compared with
-        itself, so a leaked copy of the table is not a list of visitors. A
-        deployment behind a proxy sees the proxy's address, which under-counts
-        distinct callers rather than over-counting them -- the safe direction for
-        a ceiling on someone else's bill."""
-        address=request.client.host if request.client else 'unknown'
-        return hmac.new(session_secret.encode(),address.encode(),hashlib.sha256).hexdigest()
+        An address is a bad unit for a ceiling that is meant to stop a script.
+        One classroom, one company or one mobile carrier puts every reader
+        behind it in a single NAT, and they then share one allowance: one reader
+        working through the exercises could lock out the whole room, which is
+        the failure the ceiling is supposed to prevent rather than cause. Signed
+        in, a reader has an identity that survives the NAT, so it is the unit --
+        the same one every other rate-limited endpoint here already uses
+        (entries, wishes and progress are all metered on user_id).
 
-    def record_grading_call(visitor_hash, now, outcome):
+        A guest has no identity and no session to vouch for one, so the address
+        stays their unit. That under-counts distinct guests behind a proxy
+        rather than over-counting them, which is the safe direction for a
+        ceiling on someone else's bill.
+
+        This is the keyed hash the analytics endpoints use, over a different
+        field. The raw address is never stored and neither is the raw user id:
+        the digest is only ever compared with itself, so a leaked copy of the
+        table is not a list of readers. The field is namespaced ('user:' /
+        'address:') so that a reader whose user_id happened to equal some other
+        caller's address cannot be charged to that caller's bucket.
+        """
+        signed_in=user(request)
+        material='user:'+signed_in['id'] if signed_in else 'address:'+(request.client.host if request.client else 'unknown')
+        return hmac.new(session_secret.encode(),material.encode(),hashlib.sha256).hexdigest()
+
+    def record_grading_call(quota_hash, now, outcome):
         """One row per call, successes and refusals alike.
 
         The answer text and the criteria are deliberately absent: this is a cost
@@ -762,18 +779,23 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         'graded' / 'unavailable' / 'refused', and that is what tells an operator
         whether a rising bill is traffic or breakage. The row is pruned in the
         same transaction that writes it, so the table cannot grow without bound
-        and no second sweep is needed."""
+        and no second sweep is needed.
+
+        `quota_hash` is whatever grading_quota_hash charged the call to -- a
+        reader's id or a guest's address, hashed. The column keeps its original
+        visitor_hash name: the schema is unchanged, only what is fed into the
+        digest moved."""
         with db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             conn.execute('DELETE FROM exercise_grade_calls WHERE created<?',(now-GRADE_CALL_WINDOW,))
-            conn.execute('INSERT INTO exercise_grade_calls VALUES (?,?,?,?)',(secrets.token_hex(16),visitor_hash,now,outcome))
+            conn.execute('INSERT INTO exercise_grade_calls VALUES (?,?,?,?)',(secrets.token_hex(16),quota_hash,now,outcome))
 
-    def grading_allowed(visitor_hash, now):
+    def grading_allowed(quota_hash, now):
         # Refusals are recorded but not counted. Counting them would mean a
         # caller who keeps knocking keeps their own window open forever and can
         # never be let back in.
         with db() as conn:
-            count=conn.execute('SELECT count(*) FROM exercise_grade_calls WHERE visitor_hash=? AND created>? AND outcome!=\'refused\'',(visitor_hash,now-GRADE_CALL_WINDOW)).fetchone()[0]
+            count=conn.execute('SELECT count(*) FROM exercise_grade_calls WHERE visitor_hash=? AND created>? AND outcome!=\'refused\'',(quota_hash,now-GRADE_CALL_WINDOW)).fetchone()[0]
         return count < GRADE_CALL_LIMIT
 
     @app.get('/api/exercises/progress')
@@ -875,13 +897,13 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         # request is made. Both orderings matter: a caller cannot probe the
         # endpoint with invented ids for free, and a refused call costs nothing at
         # the model -- a limit that still spends money is not a limit.
-        now=int(time.time()); visitor_hash=visitor_hash_of(request)
-        if not grading_allowed(visitor_hash, now):
-            record_grading_call(visitor_hash, now, 'refused')
+        now=int(time.time()); quota_hash=grading_quota_hash(request)
+        if not grading_allowed(quota_hash, now):
+            record_grading_call(quota_hash, now, 'refused')
             return grading_throttled()
         key=os.getenv('EXERCISE_LLM_KEY'); base=os.getenv('EXERCISE_LLM_BASE_URL')
         if not key or not base:
-            record_grading_call(visitor_hash, now, 'unavailable')
+            record_grading_call(quota_hash, now, 'unavailable')
             return grading_unavailable('LLM 评分未启用')
         model=os.getenv('EXERCISE_LLM_MODEL','gpt-4o-mini')
         prompt=('你是评分助手。按给定标准给答案打分，只输出 JSON。\n'
@@ -895,7 +917,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             content=response.json()['choices'][0]['message']['content']
         except Exception:
             LOGGER.exception('Exercise grading unavailable')
-            record_grading_call(visitor_hash, now, 'unavailable')
+            record_grading_call(quota_hash, now, 'unavailable')
             return grading_unavailable('LLM 评分暂时不可用')
         try:
             verdict=json.loads(content)
@@ -924,11 +946,11 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             feedback=feedback[:500] if isinstance(feedback,str) else ''
         except (ValueError, TypeError, AttributeError):
             LOGGER.exception('Exercise grading returned an unparsable verdict')
-            record_grading_call(visitor_hash, now, 'unavailable')
+            record_grading_call(quota_hash, now, 'unavailable')
             return grading_unavailable('评分结果无法解析')
         # Only a call that produced a usable verdict is logged as 'graded': this
         # is the number that should track the bill.
-        record_grading_call(visitor_hash, now, 'graded')
+        record_grading_call(quota_hash, now, 'graded')
         return {'score':score,'feedback':feedback}
 
     @app.get('/')

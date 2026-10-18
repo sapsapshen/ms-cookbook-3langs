@@ -347,9 +347,15 @@ async function main() {
     const h = boot({
       sandbox: passing,
       fetch: (url, init) => {
-        if (String(url).endsWith('/api/exercises/progress')) {
+        // The endpoint serves both verbs now, so only a POST is a sync. A GET
+        // is the pull half and counting it here would make this assert about
+        // something other than what it names.
+        if (String(url).endsWith('/api/exercises/progress') && init && init.method === 'POST') {
           posts.push(JSON.parse(init.body));
           return Promise.resolve({ok: true, json: () => Promise.resolve({})});
+        }
+        if (String(url).endsWith('/api/exercises/progress')) {
+          return Promise.resolve({ok: true, json: () => Promise.resolve({items: []})});
         }
         return Promise.resolve({ok: true, json: () => Promise.resolve({user: {id: 7}, csrf: 'tok'})});
       },
@@ -521,6 +527,335 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
     release();
     await pending;
     assert.notEqual(status.textContent, 'exercise.loading', 'the loading hint was never cleared');
+  });
+
+  /* ---- cross-device sync: the pull half --------------------------------- */
+  /* The panel could always PUSH. Without these, a reader who worked on one
+     device saw none of it on another, which is the whole promise the design
+     makes in §7.2. The merge rules themselves belong to the store and are
+     proven by test-exercise-store.cjs; what is locked HERE is that the panel
+     actually calls it, on the right trigger, with the right shape of payload. */
+
+  /* A fetch double that answers the whole session + progress surface, so a
+     test states only the part it cares about. `items` is a function because
+     several tests change what the server holds between calls. */
+  function syncFetch(overrides) {
+    const settings = overrides || {};
+    const session = settings.session === undefined
+      ? {user: {id: 7, name: 'ada'}, csrf: 'tok', loginEnabled: true}
+      : settings.session;
+    return (url, init) => {
+      const path = String(url);
+      if (path.endsWith('/api/session')) {
+        if (settings.sessionThrows) return Promise.reject(new Error('offline'));
+        return Promise.resolve({ok: true, json: () => Promise.resolve(session)});
+      }
+      if (path.endsWith('/api/exercises/progress')) {
+        if (init && init.method === 'POST') {
+          const payload = JSON.parse(init.body);
+          (settings.posts || (settings.posts = [])).push(payload);
+          if (settings.postThrows) return Promise.reject(new Error('offline'));
+          return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({saved: payload.items.length})});
+        }
+        if (settings.getThrows) return Promise.reject(new Error('offline'));
+        if (settings.getStatus && settings.getStatus !== 200) {
+          return Promise.resolve({ok: false, status: settings.getStatus, json: () => Promise.resolve({})});
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({items: typeof settings.items === 'function' ? settings.items() : (settings.items || [])}),
+        });
+      }
+      return Promise.resolve({ok: true, json: () => Promise.resolve({})});
+    };
+  }
+
+  const pulls = h => h.calls.fetch.filter(c => c.url.endsWith('/api/exercises/progress') && !(c.init && c.init.method === 'POST'));
+  const posts = h => h.calls.fetch.filter(c => c.url.endsWith('/api/exercises/progress') && c.init && c.init.method === 'POST');
+  /* The harness default sandbox returns no outcomes, so every check fails
+     closed. Any test that asserts a PASS after clicking Run needs this. */
+  const passingSandbox = () => ({
+    run: () => Promise.resolve({ok: true, outcomes: [{ok: true, detail: ''}], ms: 1}),
+    destroy() {},
+  });
+
+  await check('拉取后：服务端返回的记录被合并进本地存储', async () => {
+    // Three cases in one pull: a row this device has never seen, a row that
+    // beats a weaker local one, and a row that loses to a stronger local one.
+    const h = boot({
+      fetch: syncFetch({items: [
+        {chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 1, score: 1, code: 'print("from phone")', updated: 1750000000},
+        {chapter: 'chapter-7', exercise: 'ch07-ex02', passed: 1, score: 0.8, updated: 1750000000},
+      ]}),
+    });
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    const store = h.store();
+    assert.equal(pulls(h).length, 1, 'the pull did not happen exactly once');
+    assert.equal(store.read('chapter-7', 'ch07-ex01').passed, true);
+    assert.equal(store.read('chapter-7', 'ch07-ex01').score, 1);
+    assert.equal(store.read('chapter-7', 'ch07-ex01').code, 'print("from phone")',
+      'the code earned on the other device did not arrive');
+    // The badge is the reader's only evidence the sync worked, so a merged pass
+    // that leaves the panel saying "not done" is a broken feature even though
+    // the data merged correctly.
+    assert.equal(cardFor(h, 'ch07-ex01').querySelector('.exercise-state').dataset.state, 'passed');
+    assert.equal(h.panel().querySelector('.exercise-count').textContent, 'exercise.headerCount');
+  });
+
+  await check('拉取不会覆盖本地进度：本地已通过 + 服务端未通过 → 仍是已通过', async () => {
+    // The single most damaging thing this feature could do. merge() latches
+    // `passed`, so the panel needs no defence of its own -- but it needs a test
+    // that would go red if anyone replaced merge() with a last-write-wins copy.
+    //
+    // The pass is EARNED through the panel, not written into the store behind
+    // its back: a badge painted before the write would be stale for reasons
+    // that have nothing to do with the merge, and the assertion below would
+    // then be measuring the setup instead of the behaviour.
+    const h = boot({
+      fetch: syncFetch({items: [
+        // An older row that reports the same exercise as failed, with no code.
+        {chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 0, score: 0, code: '', updated: 1000},
+      ]}),
+      sandbox: passingSandbox(),
+    });
+    const body = await expand(h, 'ch07-ex01');
+    body.querySelector('.exercise-editor').value = 'print("mine")';
+    await buttonsIn(body, 'run')[0].fire('click');
+    await flush();
+    assert.equal(h.store().read('chapter-7', 'ch07-ex01').passed, true, 'the setup did not earn a pass');
+    assert.equal(cardFor(h, 'ch07-ex01').querySelector('.exercise-state').dataset.state, 'passed');
+
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    const merged = h.store().read('chapter-7', 'ch07-ex01');
+    assert.equal(merged.passed, true, 'a server failure revoked a pass the reader had earned');
+    assert.equal(merged.score, 1);
+    assert.equal(cardFor(h, 'ch07-ex01').querySelector('.exercise-state').dataset.state, 'passed',
+      'the badge regressed even though the record did not');
+  });
+
+  await check('拉取不会清空本地 code（学员写的代码优先保留）', async () => {
+    const h = boot({fetch: syncFetch({})});
+    h.store().write('chapter-7', 'ch07-ex01', {passed: true, score: 1, code: 'print("my own work")'});
+    // A row stamped EARLIER carries an empty code -- the shape a server row
+    // has when another device recorded the verdict but not the text.
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    const merged = h.store().read('chapter-7', 'ch07-ex01');
+    assert.equal(merged.code, 'print("my own work")',
+      'the learner\'s own code was cleared by the merge');
+    const body = await expand(h, 'ch07-ex01');
+    assert.equal(body.querySelector('.exercise-editor').value, 'print("my own work")',
+      'the editor came up empty even though the record still held the code');
+  });
+
+  await check('拉取回来的是秒级时间戳，与本地同一单位（不会被误判成更新）', async () => {
+    // `updated` is the arbitration key, so a unit mismatch does not corrupt --
+    // it inverts every comparison. The store folds millisecond stamps; this
+    // pins the wire shape that folding depends on.
+    let items = [];
+    const h = boot({fetch: syncFetch({items: () => items})});
+    h.store().write('chapter-7', 'ch07-ex01', {passed: true, score: 1, code: 'mine'});
+    const local = h.store().read('chapter-7', 'ch07-ex01').updated;
+    assert.ok(local < 1e11, `the local stamp is not in seconds: ${local}`);
+    // A row from 60 SECONDS ago must lose. Served in milliseconds it would win
+    // forever, which is exactly the inversion this asserts against.
+    items = [{chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 0, score: 0, code: '', updated: local - 60}];
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(h.store().read('chapter-7', 'ch07-ex01').passed, true,
+      'a server row from 60 SECONDS ago outranked the local one');
+    assert.equal(h.store().read('chapter-7', 'ch07-ex01').code, 'mine');
+    // And the mirror: a row genuinely 60 seconds NEWER does win its fields.
+    items = [{chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 1, score: 1, code: 'newer', updated: local + 60}];
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(h.store().read('chapter-7', 'ch07-ex01').code, 'newer',
+      'a genuinely newer server row was refused');
+  });
+
+  await check('游客态零请求：/api/session 说没登录，进章节也不发任何 progress 请求', async () => {
+    // A guest has no CSRF token and no row on the server, so a pull could only
+    // come back empty and a push would be refused. One /api/session probe is
+    // the whole cost; asserting on it keeps this from regressing into
+    // "cheap enough to always ask".
+    const h = boot({fetch: syncFetch({session: {user: null, csrf: '', loginEnabled: true}}), sandbox: passingSandbox()});
+    await flush();
+    assert.equal(pulls(h).length, 0, 'a signed-out reader pulled progress');
+    assert.equal(posts(h).length, 0, 'a signed-out reader pushed progress');
+    assert.equal(h.calls.fetch.filter(c => c.url.endsWith('/api/session')).length, 1,
+      'the session was probed more than once');
+    // And still true after a verdict, on the same page view.
+    const body = await expand(h, 'ch07-ex01');
+    await buttonsIn(body, 'run')[0].fire('click');
+    await flush();
+    assert.equal(pulls(h).length + posts(h).length, 0, 'a signed-out reader touched the progress endpoint');
+    assert.equal(h.store().read('chapter-7', 'ch07-ex01').passed, true, 'local progress was lost');
+  });
+
+  await check('登录功能未启用时不请求 progress（部署上没有账号可同步）', async () => {
+    const h = boot({fetch: syncFetch({session: {user: null, csrf: '', loginEnabled: false}})});
+    await flush();
+    assert.equal(pulls(h).length + posts(h).length, 0,
+      'a deployment with login disabled must not sync');
+  });
+
+  await check('拉取失败静默：网络错误、401、非 2xx 都不影响阅读', async () => {
+    for (const failure of [
+      {getThrows: true},
+      {getStatus: 401},
+      {getStatus: 500},
+      {sessionThrows: true},
+    ]) {
+      const h = boot({fetch: syncFetch(failure)});
+      // Must resolve rather than reject: a caller that awaited this without a
+      // try/catch would turn a sync outage into an unhandled rejection.
+      const result = await h.window.ExerciseUI.pullProgress();
+      await flush();
+      assert.equal(result, null, `${JSON.stringify(failure)} returned ${result} instead of null`);
+      assert.ok(h.panel(), `${JSON.stringify(failure)} tore the panel down`);
+      assert.ok(cardFor(h, 'ch07-ex01'), `${JSON.stringify(failure)} removed the cards`);
+      assert.ok(h.root.children.indexOf(h.panel()) === h.root.children.indexOf(h.pager) + 1,
+        `${JSON.stringify(failure)} moved the panel`);
+    }
+    // The last-resort guard. Every network failure above is already handled at
+    // its own step, so the only way to reach the outer catch is a collaborator
+    // throwing -- a store whose merge breaks, a DOM that went away underneath
+    // us. That is exactly the case where a bare throw would become an
+    // unhandled rejection on a page the reader is in the middle of.
+    const broken = boot({fetch: syncFetch({items: [{chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 1, updated: 1750000000}]})});
+    broken.store().merge = () => { throw new Error('corrupt store'); };
+    // Captured rather than awaited bare: an escaping rejection would abort the
+    // whole suite and report as a crash, not as the single assertion it is.
+    let result = 'no answer';
+    try { result = await broken.window.ExerciseUI.pullProgress(); }
+    catch (error) { result = `threw ${error && error.message}`; }
+    await flush();
+    assert.equal(result, null, `a throwing merge escaped to the caller: ${result}`);
+    assert.ok(broken.panel() && cardFor(broken, 'ch07-ex01'), 'a throwing merge took the panel down');
+  });
+
+  await check('回写用分片：60 行分成多个请求，每个都不超过单批上限', async () => {
+    // The server's per-minute quota counts REQUESTS, and its ExerciseProgress
+    // cap bounds one body. A 60-row snapshot sent as a single request is
+    // exactly the shape that used to be refused, so the push-back has to slice.
+    const recorded = [];
+    // Older than every local write, so merge() reports it as a row the local
+    // side owns and the panel therefore owes the server.
+    const items = [{chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 0, score: 0, updated: 1000}];
+    const h = boot({fetch: (url, init) => {
+      if (String(url).endsWith('/api/session')) {
+        return Promise.resolve({ok: true, json: () => Promise.resolve({user: {id: 7}, csrf: 'tok', loginEnabled: true})});
+      }
+      if (String(url).endsWith('/api/exercises/progress') && init && init.method === 'POST') {
+        recorded.push(JSON.parse(init.body));
+        return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({})});
+      }
+      return Promise.resolve({ok: true, json: () => Promise.resolve({items})});
+    }});
+    for (let index = 1; index <= 60; index += 1) {
+      h.store().write('chapter-7', `ch07-ex${String(index).padStart(2, '0')}`, {passed: true, score: 1});
+    }
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.ok(recorded.length > 1, `60 rows went up in ${recorded.length} request(s), not sliced`);
+    for (const payload of recorded) {
+      assert.ok(payload.items.length <= 25, `a batch carried ${payload.items.length} rows`);
+    }
+    const flat = recorded.flatMap(payload => payload.items.map(row => row.exercise));
+    assert.equal(flat.length, 60, 'a row was dropped or duplicated by the slicing');
+    assert.equal(new Set(flat).size, 60);
+    assert.equal(posts(h).length, recorded.length,
+      'the request count does not match the recorded batches');
+    // The push-back must carry the MERGED values, not the pre-merge local row
+    // that would re-regress the server.
+    const first = recorded.flatMap(payload => payload.items).find(row => row.exercise === 'ch07-ex01');
+    assert.equal(first.passed, 1, 'the push-back carried a regressing pass instead of the merged one');
+    assert.equal(first.score, 1);
+  });
+
+  await check('触发时机一：进入章节时拉取一次（首页进入章节也算）', async () => {
+    const h = boot({hash: '#home', fetch: syncFetch({})});
+    await flush();
+    assert.equal(h.panel(), null, 'the home view must not mount a panel');
+    assert.equal(pulls(h).length, 0, 'the home view pulled progress');
+    h.window.location.hash = '#chapter-7';
+    for (const handler of h.listeners.get('hashchange') || []) handler();
+    await flush();
+    assert.equal(pulls(h).length, 1, 'entering a chapter did not pull exactly once');
+    // A same-chapter anchor jump must NOT re-pull: the reader is not
+    // re-entering, and the panel was deliberately not rebuilt there.
+    h.window.location.hash = '#chapter-7#c7-s2';
+    for (const handler of h.listeners.get('hashchange') || []) handler();
+    await flush();
+    assert.equal(pulls(h).length, 1, 'an anchor jump inside the chapter re-pulled');
+  });
+
+  await check('触发时机二：session 变化时拉取一次（复用 purplebook:session 通道）', async () => {
+    const h = boot({hash: '#home', fetch: syncFetch({})});
+    await flush();
+    assert.equal((h.listeners.get('purplebook:session') || []).length, 1,
+      'the panel did not subscribe to the repo\'s own session channel');
+    const signIn = {user: {id: 7, name: 'ada'}, csrf: 'tok', loginEnabled: true};
+    for (const handler of h.listeners.get('purplebook:session') || []) handler({detail: signIn});
+    await flush();
+    assert.equal(pulls(h).length, 1, 'signing in did not pull');
+    // The event fires on every account repaint, not only on a real change --
+    // a second dispatch for the SAME reader must not spend another round trip.
+    for (const handler of h.listeners.get('purplebook:session') || []) handler({detail: signIn});
+    await flush();
+    assert.equal(pulls(h).length, 1, 'a repeat session event for the same reader re-pulled');
+    // Switching accounts is a different reader and must pull.
+    for (const handler of h.listeners.get('purplebook:session') || []) handler({detail: {user: {id: 9}, csrf: 'tok2', loginEnabled: true}});
+    await flush();
+    assert.equal(pulls(h).length, 2, 'a different reader did not get their own pull');
+    // Signing out must not pull -- and must not throw away local progress.
+    for (const handler of h.listeners.get('purplebook:session') || []) handler({detail: {user: null, csrf: '', loginEnabled: true}});
+    await flush();
+    assert.equal(pulls(h).length, 2, 'signing out pulled');
+    assert.ok(h.store(), 'signing out tore down the store');
+  });
+
+  await check('拉取后有新的通过记录时给一条轻量提示，其余情况保持安静', async () => {
+    const quiet = boot({fetch: syncFetch({items: [
+      // An imported code draft and a self-assessment are real merges, but they
+      // are not surprising: nothing the reader sees here contradicts itself.
+      {chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 0, score: 0, code: 'draft', updated: 1750000000},
+    ]})});
+    await quiet.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(quiet.panel().querySelector('.exercise-synced'), null,
+      'a silent merge announced itself');
+    assert.equal(quiet.store().read('chapter-7', 'ch07-ex01').code, 'draft',
+      'the imported draft did not land');
+
+    const loud = boot({fetch: syncFetch({items: [
+      {chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 1, score: 1, updated: 1750000000},
+    ]})});
+    await loud.window.ExerciseUI.pullProgress();
+    await flush();
+    const note = loud.panel().querySelector('.exercise-synced');
+    assert.ok(note, 'a badge flipped to "passed" with no explanation');
+    assert.equal(note.textContent, 'exercise.synced');
+    assert.equal(note.getAttribute('role'), 'status', 'the note is not announced to a screen reader');
+    // Twice over does not stack: a second pull must not double the line.
+    await loud.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(loud.panel().querySelectorAll('.exercise-synced').length, 1);
+  });
+
+  await check('拉取不重建面板：读者展开的题在同步后仍保持展开', async () => {
+    const h = boot({fetch: syncFetch({items: [
+      {chapter: 'chapter-7', exercise: 'ch07-ex01', passed: 1, score: 1, updated: 1750000000},
+    ]})});
+    const body = await expand(h, 'ch07-ex01');
+    assert.equal(body.hidden, false);
+    await h.window.ExerciseUI.pullProgress();
+    await flush();
+    const after = cardFor(h, 'ch07-ex01').querySelector('.exercise-body');
+    assert.equal(after, body, 'the pull rebuilt the panel and collapsed the open exercise');
+    assert.equal(after.hidden, false);
   });
 
   console.log(`\n${failures ? 'FAIL' : 'PASS'}: ${passed} passed, ${failures} failed`);

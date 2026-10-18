@@ -21,7 +21,15 @@
    3. A SELF-ASSESSMENT IS NEVER A PASS. `reflect` exercises have no graded
       checks, so the grader returns mode 'self-assessed' with passed=false and
       the panel shows that state as its own badge. Recording "I got it right"
-      changes what the reader claimed, not what they earned. */
+      changes what the reader claimed, not what they earned.
+
+   4. THE PULL HALF OF SYNC EXISTS SO A READER'S WORK FOLLOWS THEM. syncProgress
+      pushes one row after every verdict, which alone means a reader who worked
+      on one device sees nothing of it on another. pullProgress() reads the
+      server's rows back and hands them to store.merge(), which owns every
+      conflict rule -- passed latches, score ratchets, `updated` arbitrates
+      code/selfAssessed. Nothing here decides a conflict itself, and a pull can
+      never lower what the reader already earned. */
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
@@ -119,6 +127,46 @@
     } catch { return null; }
   }
 
+  const PROGRESS_PATH = '/api/exercises/progress';
+  /* Rows per write-back request. The server caps a batch at 1000 items, but
+     that ceiling is per body, not per reader: a row may carry up to 20000
+     characters of the learner's own code, so a whole snapshot can be megabytes
+     and one oversized body is a failed sync rather than a slow one. 25 rows
+     keeps a request well under a megabyte, and the request count stays small
+     enough that a full snapshot fits inside the server's per-minute write
+     quota. */
+  const PUSH_CHUNK = 25;
+
+  /* The session as far as this module knows it, or null when it has not looked
+     yet. assets/discussion.js dispatches `purplebook:session` after every
+     session refresh and assets/wishes.js listens for the same event, so a
+     login or logout anywhere in the reading header reaches the panel through
+     the repo's existing channel instead of a second poll of its own. */
+  let session = null;
+  let sessionProbe = null;
+
+  /* Concurrent triggers (a chapter entry and a session change in the same
+     tick) share one probe instead of racing two, and a failed probe leaves the
+     session unknown so the next trigger tries again rather than caching an
+     offline answer for the rest of the page view. */
+  async function readSession() {
+    if (session) return session;
+    if (!sessionProbe) {
+      sessionProbe = (async () => {
+        try {
+          const response = await fetch('/api/session', { credentials: 'same-origin' });
+          if (response && response.ok) {
+            const data = await response.json();
+            if (data && typeof data === 'object') session = data;
+          }
+        } catch { /* offline or denied: stay unknown, try again on the next trigger */ }
+        sessionProbe = null;
+        return session;
+      })();
+    }
+    return sessionProbe;
+  }
+
   function progressRow(record) {
     if (!record) return null;
     return {
@@ -137,15 +185,136 @@
     const row = progressRow(record);
     if (!row) return;
     try {
-      const session = await (await fetch('/api/session', { credentials: 'same-origin' })).json();
-      if (!session || !session.user) return;
-      await fetch('/api/exercises/progress', {
+      const current = await readSession();
+      if (!current || !current.user) return;
+      await fetch(PROGRESS_PATH, {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': current.csrf },
         body: JSON.stringify({ items: [row] }),
       });
     } catch { /* reading must never depend on sync */ }
+  }
+
+  /* A pass that arrived from another device has to become VISIBLE, or the
+     reader is left looking at a "not done" badge for work they have already
+     done. Every other merge outcome is silent: repainting a badge the reader
+     never asked about would be noise, but a badge that contradicts the server
+     is a bug they would have to notice themselves.
+
+     Only the CURRENT chapter is repainted -- the panel has no card for any
+     other chapter, and the ones it does have read straight from the store the
+     next time they are built. */
+  function repaintFromMerge(records) {
+    if (!panel) return;
+    let adoptedPasses = 0;
+    for (const entry of Array.isArray(records) ? records : []) {
+      if (!entry || entry.chapterId !== chapterId) continue;
+      if (entry.record && entry.record.passed) adoptedPasses += 1;
+      updateCardState(entry.exerciseId);
+    }
+    refreshHeader();
+    if (adoptedPasses > 0) noteSynced();
+  }
+
+  /* One line, once, in the panel's own summary row. A reader who sees a badge
+     flip to "passed" with no explanation reasonably wonders whether the site
+     is wrong; a short note answers that for the only case where the change is
+     genuinely surprising. A merge that only imported self-assessments or code
+     stays silent -- there is nothing to explain about work this device already
+     had. */
+  function noteSynced() {
+    const summary = panel && panel.querySelector('.exercise-summary');
+    if (!summary || summary.querySelector('.exercise-synced')) return;
+    const note = el('p', t('exercise.synced'), 'exercise-synced');
+    note.setAttribute('role', 'status');
+    summary.append(note);
+  }
+
+  /* Ship the merged snapshot back up, in slices. The rows sent are
+     store.chunks() of the ALREADY MERGED store, so the server receives the
+     latched pass and the ratcheted score rather than the local row that would
+     have regressed it -- which is exactly the payload merge()'s own comment
+     promises the caller.
+
+     A refused request (429) or a dropped connection stops the run rather than
+     retrying: the quota that refused this batch would refuse the next one
+     too, and burning the reader's remaining writes on it is how a partial
+     sync turns into a deadlock. Whatever did not go up is already in
+     localStorage, so the next trigger carries it. */
+  async function pushBack(current) {
+    for (const batch of store.chunks(PUSH_CHUNK)) {
+      if (!batch.length) continue;
+      try {
+        const response = await fetch(PROGRESS_PATH, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': current.csrf },
+          body: JSON.stringify({ items: batch }),
+        });
+        if (!response || !response.ok) return;
+      } catch { return; }
+    }
+  }
+
+  /* The half of sync that makes progress follow the reader between devices.
+     Pulling is not optional decoration: the design promises that signed-in
+     progress reaches the server so another device can continue, and without
+     this the server copy is write-only -- visible to nobody.
+
+     Every failure path is silent. A dead network, a 401, an expired session or
+     a malformed payload ends the function with the reader's local progress
+     exactly as it was, because a sync problem is never allowed to reach the
+     reading view (rule 2). */
+  let pulling = false;
+  async function pullProgress() {
+    if (!store || pulling) return null;
+    pulling = true;
+    try {
+      const current = await readSession();
+      // Nobody to sync with: no session, a reader who has not signed in, or a
+      // deployment with no login at all. The endpoint would answer an empty
+      // list and refuse every write, so the whole exchange is skipped rather
+      // than spent on a round trip that cannot carry anything.
+      if (!current || !current.user || current.loginEnabled === false) return null;
+      let rows = [];
+      try {
+        const response = await fetch(PROGRESS_PATH, { credentials: 'same-origin' });
+        if (!response || !response.ok) return null;
+        const payload = await response.json();
+        if (payload && Array.isArray(payload.items)) rows = payload.items;
+      } catch { return null; }
+      // merge() is the only thing that decides a conflict: `passed` latches,
+      // `score` ratchets, and `updated` -- in seconds on both sides of the
+      // wire, which normalize() also folds a legacy millisecond stamp down to
+      // -- arbitrates code and selfAssessed. This function never compares
+      // anything itself, so it cannot introduce a merge rule the store and the
+      // server's own MAX() upsert would disagree with.
+      const result = store.merge(rows);
+      repaintFromMerge(result.records);
+      // `changed` is a COUNT, not a list: merge() already wrote the merged
+      // values into the buckets it touched, so the payload is the whole
+      // snapshot rather than a hand-picked subset.
+      if (result.changed > 0) await pushBack(current);
+      return result;
+    } catch { return null; }
+    finally { pulling = false; }
+  }
+
+  /* Fires on the repo's own session channel. Signing in is the moment another
+     device's progress becomes reachable, so that is when to pull; signing out
+     leaves the local copy untouched, because the reader's own work is not the
+     server's to take away. A repeat refresh for the SAME reader does not pull
+     again -- assets/discussion.js dispatches this event on every repaint of
+     the account area, not only on a real change. */
+  function onSessionChange(event) {
+    const detail = event && event.detail && typeof event.detail === 'object' ? event.detail : null;
+    const previousUser = session && session.user;
+    session = detail;
+    const user = detail && detail.user;
+    if (!user) return;
+    if (previousUser && previousUser.id === user.id) return;
+    pullProgress();
   }
 
   /* Renders the grader's own items rather than the raw sandbox outcomes,
@@ -464,6 +633,12 @@
     // yet, and the first navigation into a chapter is what mounts it.
     if (!current || (mounted && current === chapterId)) return;
     render(current);
+    // Entering a chapter is a pull point because it is the moment the reader
+    // is about to look at the panel: whatever another device earned should
+    // already be in the badges, not arrive seconds later while they read. The
+    // pull is fire-and-forget and silent, so a chapter opens exactly as fast
+    // as it did before.
+    pullProgress();
   }
 
   /* Idempotent: the wiring runs once per page no matter how often init() is
@@ -474,6 +649,10 @@
     if (!data || !data.chapters || !Grader || !store) return;
     listenersBound = true;
     window.addEventListener('hashchange', onRoute);
+    // Same channel assets/wishes.js listens on, so a sign-in or sign-out done
+    // in the reading header pulls the reader's other-device progress without
+    // this module polling for a session change of its own.
+    window.addEventListener('purplebook:session', onSessionChange);
     if (window.MSI18N && window.MSI18N.on) {
       unsubscribeLang = window.MSI18N.on(() => {
         const current = chapterFromHash();
@@ -483,13 +662,18 @@
         if (mounted && current) render(current);
       });
     }
-    render(chapterFromHash());
+    const first = chapterFromHash();
+    render(first);
+    // A reader who lands directly on a chapter gets the same pull a
+    // navigation would have given them.
+    if (first) pullProgress();
   }
 
   function teardown() {
     if (unsubscribeLang) { unsubscribeLang(); unsubscribeLang = null; }
     if (listenersBound) {
       window.removeEventListener('hashchange', onRoute);
+      window.removeEventListener('purplebook:session', onSessionChange);
       listenersBound = false;
     }
     if (sandbox) { sandbox.destroy(); sandbox = null; }
@@ -497,8 +681,13 @@
     mounted = false;
     chapterId = '';
     activeStatus = null;
+    // The cached session goes with the panel: a teardown/re-init cycle must
+    // re-read who is signed in rather than trust an answer fetched for a
+    // document that is no longer here.
+    session = null;
+    sessionProbe = null;
   }
 
-  window.ExerciseUI = { init, render, teardown, chapterId: () => chapterId, refreshHeader };
+  window.ExerciseUI = { init, render, teardown, chapterId: () => chapterId, refreshHeader, pullProgress };
   init();
 })();

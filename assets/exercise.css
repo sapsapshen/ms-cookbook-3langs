@@ -17,6 +17,10 @@
 }
 .exercise-summary h2 { font-size: 1.05rem; font-weight: 500; margin: 0; }
 .exercise-count { font-size: .82rem; color: var(--color-text-secondary, #666); }
+/* Only rendered when a pull brought in a pass from another device, and only
+   once per panel. `flex-basis: 100%` drops it onto its own line under the
+   heading rather than squeezing the count off the row. */
+.exercise-synced { flex-basis: 100%; font-size: .8rem; color: var(--color-text-secondary, #666); margin: 0; }
 .exercise-card {
   border: 1px solid var(--color-border-tertiary, rgba(0,0,0,.15));
   border-radius: 12px;

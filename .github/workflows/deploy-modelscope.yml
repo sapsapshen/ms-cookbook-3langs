@@ -22,6 +22,7 @@ on:
       - 'scripts/build-exercises.py'
       - 'scripts/test_exercises.py'
       - 'scripts/check_exercise_references.py'
+      - 'scripts/check_regex_parity.py'
       - 'README*.md'
       - 'LICENSE'
       - 'scripts/deploy-modelscope.mjs'
@@ -65,6 +66,9 @@ jobs:
           python3 scripts/test_exercises.py
           python3 scripts/build-exercises.py --check
           python3 scripts/check_exercise_references.py
+          # Needs `node` (step "Set up Node.js", same job) to compare each
+          # stdout_matches pattern under JS RegExp as well as Python re.
+          python3 scripts/check_regex_parity.py
       - name: Sync and deploy the website
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}

@@ -86,6 +86,21 @@
         "kind": "assert_python",
         "code": "t, v = split(7, 0.5)\nassert v == 3 and t + v == 7, (t, v)",
         "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(3, 0.9) == (1, 2)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(999, 0.0625) == (937, 62)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _r in (0.1, 0.25, 0.5, 0.9):\n    for _t in range(1, 25):\n        _tr, _vs = split(_t, _r)\n        assert _vs == int(_t * _r) and _tr == _t - _vs and _tr + _vs == _t, (_t, _r, _tr, _vs)",
+        "weight": 6
       }
     ],
     "llm_rubric": {
@@ -93,7 +108,7 @@
       "criteria": "是否处理了整除导致的余数，而不是四舍五入"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size 用 int() 向下取整，train_size 用减法而不是再次取整 —— 这样能保证两者之和恰好等于 total，不丢样本。要当心四舍五入：split(7, 0.5) 里 7 × 0.5 = 3.5，向下取整是 3，所以答案是 (4, 3)；round(3.5) 会得到 4，答案变成 (3, 4) —— 样本没丢，但验证集多了一条。两侧各自取整更糟，会得到 (3, 3)，直接丢掉一条。判分里 (4, 3) 与「验证集正好 3 条」是分开判的：即使日后其中一条被调整，四舍五入的实现仍然过不了。两侧各自取整同样过不了 —— 它丢的是训练集那一条。"
+    "explanation": "val_size 用 int() 向下取整，train_size 用减法而不是再次取整 —— 这样能保证两者之和恰好等于 total，不丢样本。要当心四舍五入：split(7, 0.5) 里 7 × 0.5 = 3.5，向下取整是 3，所以答案是 (4, 3)；round(3.5) 会得到 4，答案变成 (3, 4) —— 样本没丢，但验证集多了一条。两侧各自取整更糟，split(3, 0.9) 会得到 (0, 2)，直接丢掉一条；split(999, 0.0625) 会得到 (936, 62)，同样少一条。判分里 (4, 3) 与「验证集正好 3 条」是分开判的：即使日后其中一条被调整，四舍五入的实现仍然过不了。最后还有一条判据把总量 1 到 24 × 占比 0.1/0.25/0.5/0.9 共 96 组输入全跑一遍，要求验证集恰好等于 int(总量 × 占比)、训练集等于总量减去它、两者相加等于总量 —— 这条是专门防「把答案背下来」的：查表或写死返回值覆盖不了 96 组输入。边界诚实说明：这 96 组输入是公开语料的一部分，仍可以照抄，所以它提高的是抄答案的成本，不是杜绝。"
   },
   {
     "id": "ch13-ex03",

@@ -86,6 +86,21 @@
         "kind": "assert_python",
         "code": "t, v = split(7, 0.5)\nassert v == 3 and t + v == 7, (t, v)",
         "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(3, 0.9) == (1, 2)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split(999, 0.0625) == (937, 62)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _r in (0.1, 0.25, 0.5, 0.9):\n    for _t in range(1, 25):\n        _tr, _vs = split(_t, _r)\n        assert _vs == int(_t * _r) and _tr == _t - _vs and _tr + _vs == _t, (_t, _r, _tr, _vs)",
+        "weight": 6
       }
     ],
     "llm_rubric": {
@@ -93,7 +108,7 @@
       "criteria": "Did the learner handle the remainder from floor division instead of rounding?"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than a second floor -- so the two always sum to exactly total without dropping samples. Watch out for rounding: in split(7, 0.5) you have 7 x 0.5 = 3.5, which floors to 3, so the answer is (4, 3); round(3.5) gives 4 and the answer becomes (3, 4) -- no sample is lost, but the validation set gained one. Flooring both sides is worse still: you get (3, 3) and drop a sample. Grading checks the tuple (4, 3) and the statement \"the validation set is exactly 3\" separately, so even if one of them is ever reweighted a round()-based implementation still cannot pass. Flooring both sides fails the same way -- what it drops is a training sample."
+    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than a second floor -- so the two always sum to exactly total without dropping samples. Watch out for rounding: in split(7, 0.5) you have 7 x 0.5 = 3.5, which floors to 3, so the answer is (4, 3); round(3.5) gives 4 and the answer becomes (3, 4) -- no sample is lost, but the validation set gained one. Flooring both sides is worse still: split(3, 0.9) then gives (0, 2) and split(999, 0.0625) gives (936, 62) -- one sample short in each case. Grading checks the tuple (4, 3) and the statement \"the validation set is exactly 3\" separately, so even if one of them is ever reweighted a round()-based implementation still cannot pass. A final check runs 96 input points -- every total from 1 to 24 against the ratios 0.1, 0.25, 0.5 and 0.9 -- and requires the validation size to equal int(total * ratio), the training size to be total minus that, and the two to sum to total. That check exists to stop answer-lookup: a table or a hardcoded return cannot cover 96 inputs. Honest boundary: those 96 inputs ship in the public corpus, so they can still be copied -- this raises the cost of copying, it does not prevent it."
   },
   {
     "id": "ch13-ex03",

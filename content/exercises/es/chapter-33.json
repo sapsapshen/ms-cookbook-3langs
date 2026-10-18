@@ -55,7 +55,7 @@
       {
         "kind": "assert_python",
         "code": "m = metrics(14,3,3)\nassert m['accuracy'] == 0.7, m",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
@@ -65,7 +65,7 @@
       {
         "kind": "assert_python",
         "code": "m = metrics(14,3,3)\nassert m['acceptable'] == 0.85, m",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
@@ -74,8 +74,23 @@
       },
       {
         "kind": "assert_python",
-        "code": "z = metrics(0, 0, 0)\nassert z == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, z",
+        "code": "m = metrics(7,2,1)\nassert (m['accuracy'], m['harm_rate'], m['acceptable']) == (0.7, 0.1, 0.9), m",
         "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(1,2,6)\nassert (m['accuracy'], m['harm_rate'], m['acceptable']) == (0.111, 0.667, 0.333), m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(0,0,0)\nassert m == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, m",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 13):\n    for _k in range(0, _n + 1):\n        _c, _mi, _w = _k, _n - _k, _n - _k // 2\n        _t = _c + _mi + _w\n        _want = {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0} if _t == 0 else {'accuracy': round(_c / _t, 3), 'harm_rate': round(_w / _t, 3), 'acceptable': round((_c + _mi) / _t, 3)}\n        assert metrics(_c, _mi, _w) == _want, (_c, _mi, _w)",
+        "weight": 6
       }
     ],
     "llm_rubric": {
@@ -83,7 +98,7 @@
       "criteria": "¿Protejo el caso de un total igual a cero?"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "La protección contra cero importa: pasar cero muestras debe devolver ceros, no romperse, así que `metrics(0, 0, 0)` tiene que devolver tres 0.0 en lugar de lanzar ZeroDivisionError. Ese caso se comprueba a propósito. Cada proporción se redondea a 3 decimales como pide el enunciado. La corrección compara valores exactos y, en este conjunto concreto de 20 muestras, 14/20 ya es igual a 0,7 en coma flotante binaria, así que redondear o no redondear pasa igual las tres aserciones; hace falta otro tamaño de muestra para ver qué hace el redondeo: 1/3 es 0.3333333333333333 sin él y 0,333 con él."
+    "explanation": "La protección contra cero importa: pasar cero muestras debe devolver ceros, no romperse, así que metrics(0, 0, 0) tiene que devolver tres 0.0 en lugar de lanzar ZeroDivisionError. Ese caso se comprueba a propósito. Cada proporción se redondea a 3 decimales como pide el enunciado. La corrección compara valores exactos: en el conjunto de 20 muestras metrics(14, 3, 3), 14/20 ya es igual a 0,7 en coma flotante binaria, así que redondear o no redondear pasa igual; pero metrics(7, 2, 1) y metrics(1, 2, 6) obligan a que la diferencia aparezca: esta última divide entre 9, donde el cociente sin redondear es 0,1111111111111111 y solo al redondear sale 0,111. Una última comprobación no mira ninguna entrada suelta: recorre 91 combinaciones generadas de (correctas, menores, incorrectas), recalcula las tres proporciones de cada una y las compara con el diccionario devuelto. Esa comprobación existe para impedir la consulta de una tabla: unas ramas fijas o una tabla no cubren 91 entradas. Límite honesto: esas 91 entradas también forman parte del corpus público, así que esto aumenta el coste de copiar, no lo impide."
   },
   {
     "id": "ch33-ex03",

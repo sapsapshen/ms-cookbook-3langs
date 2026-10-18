@@ -55,7 +55,7 @@
       {
         "kind": "assert_python",
         "code": "m = metrics(14,3,3)\nassert m['accuracy'] == 0.7, m",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
@@ -65,7 +65,7 @@
       {
         "kind": "assert_python",
         "code": "m = metrics(14,3,3)\nassert m['acceptable'] == 0.85, m",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
@@ -74,8 +74,23 @@
       },
       {
         "kind": "assert_python",
-        "code": "z = metrics(0, 0, 0)\nassert z == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, z",
+        "code": "m = metrics(7,2,1)\nassert (m['accuracy'], m['harm_rate'], m['acceptable']) == (0.7, 0.1, 0.9), m",
         "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(1,2,6)\nassert (m['accuracy'], m['harm_rate'], m['acceptable']) == (0.111, 0.667, 0.333), m",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics(0,0,0)\nassert m == {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}, m",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 13):\n    for _k in range(0, _n + 1):\n        _c, _mi, _w = _k, _n - _k, _n - _k // 2\n        _t = _c + _mi + _w\n        _want = {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0} if _t == 0 else {'accuracy': round(_c / _t, 3), 'harm_rate': round(_w / _t, 3), 'acceptable': round((_c + _mi) / _t, 3)}\n        assert metrics(_c, _mi, _w) == _want, (_c, _mi, _w)",
+        "weight": 6
       }
     ],
     "llm_rubric": {
@@ -83,7 +98,7 @@
       "criteria": "Did the learner guard against a zero total?"
     },
     "reference": "def metrics(correct, minor, wrong):\n    total = correct + minor + wrong\n    if total == 0:\n        return {'accuracy': 0.0, 'harm_rate': 0.0, 'acceptable': 0.0}\n    return {\n        'accuracy': round(correct / total, 3),\n        'harm_rate': round(wrong / total, 3),\n        'acceptable': round((correct + minor) / total, 3),\n    }",
-    "explanation": "The zero guard matters: passing zero samples should return zeros, not crash, so `metrics(0, 0, 0)` has to come back as three 0.0 values instead of raising ZeroDivisionError. That case is asserted on purpose. Each ratio is rounded to 3 decimals as the prompt asks. Grading compares exact values, and on this particular set of 20 samples 14/20 already equals 0.7 in binary floating point, so rounding and not rounding both pass those three assertions; you need a different sample size to see what round does -- 1/3 is 0.3333333333333333 without it and 0.333 with it."
+    "explanation": "The zero guard matters: passing zero samples should return zeros, not crash, so metrics(0, 0, 0) has to come back as three 0.0 values instead of raising ZeroDivisionError. That case is asserted on purpose. Each ratio is rounded to 3 decimals as the prompt asks. Grading compares exact values: on the 20-sample set metrics(14, 3, 3), 14/20 already equals 0.7 in binary floating point, so rounding and not rounding both pass those; but metrics(7, 2, 1) and metrics(1, 2, 6) force the difference out -- the latter divides by 9, where the raw quotient is 0.1111111111111111 and only rounding gives 0.111. A final check does not look at any single input: it walks 91 generated (correct, minor, wrong) combinations, recomputes all three ratios for each and compares them against the returned dict. That check exists to stop answer-lookup: hardcoded branches or a table cannot cover 91 inputs. Honest boundary: those 91 inputs ship in the public corpus too, so this raises the cost of copying, it does not prevent it."
   },
   {
     "id": "ch33-ex03",

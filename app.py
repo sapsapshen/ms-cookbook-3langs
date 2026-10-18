@@ -60,9 +60,15 @@ SELF_ASSESSMENT_STATES = ('', 'pass', 'partial', 'fail')
 # Grading is the one public endpoint that costs money per call, so it carries its
 # own ceiling. Without one, configuring EXERCISE_LLM_KEY turns the site into an
 # unauthenticated, unmetered proxy for someone else's key. The window and the
-# ceiling follow the analytics endpoints' shape: a per-visitor count over a
-# minute. The limit is generous enough that a learner re-reading and re-submitting
+# ceiling follow the other endpoints' shape: a per-reader count over a minute.
+# The limit is generous enough that a learner re-reading and re-submitting
 # an exercise is never caught by it -- it exists to stop a script, not a person.
+#
+# GRADE_CALL_LIMIT counts ATTEMPTS in the window, refusals included, and only an
+# attempt that passes reaches the model. The two numbers are not the same and are
+# not meant to be: the quota bounds what the endpoint will *try*, and the
+# upstream count bounds what it *spends*. A refused call is free and still costs
+# the caller a slot, which is what makes the ceiling hold under concurrency.
 GRADE_CALL_LIMIT = 30
 GRADE_CALL_WINDOW = 60
 
@@ -771,32 +777,76 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         material='user:'+signed_in['id'] if signed_in else 'address:'+(request.client.host if request.client else 'unknown')
         return hmac.new(session_secret.encode(),material.encode(),hashlib.sha256).hexdigest()
 
-    def record_grading_call(quota_hash, now, outcome):
-        """One row per call, successes and refusals alike.
+    def claim_grading_call(quota_hash, now):
+        """Decide the call's fate and record it in one transaction.
 
-        The answer text and the criteria are deliberately absent: this is a cost
-        and abuse ledger, not a copy of what learners submitted. `outcome` is
-        'graded' / 'unavailable' / 'refused', and that is what tells an operator
-        whether a rising bill is traffic or breakage. The row is pruned in the
-        same transaction that writes it, so the table cannot grow without bound
-        and no second sweep is needed.
+        These were two transactions -- check, then write -- with the model call
+        in the gap. That gap is the whole problem: the count a caller was
+        measured against was already stale by the time the write happened, so
+        concurrent callers all saw the same number and all passed. Measured with
+        the old code: a burst of 40 against a limit of 30 produced 40 upstream
+        calls, and a burst of 80 produced 80. A serial client still saw exactly
+        30, which is why every existing test was green.
+
+        BEGIN IMMEDIATE takes the write lock before the count, so the callers
+        that pile up behind it are measured one at a time against a count that
+        already includes their predecessors. Same shape as exercise_progress_writes.
+
+        The row is written as 'refused' for a caller over the limit and as
+        'claimed' for one under it, and every row counts toward the window --
+        refusals included. That is deliberate, and it is what makes the limit a
+        limit under concurrency: a refused caller that were not recorded could
+        simply retry immediately and be measured against the same thirty-odd
+        rows forever. A caller who keeps knocking holds their own window open,
+        which is the ordinary meaning of a rate limit and is what a script gets.
+
+        The upstream call is what this protects, and a refused caller never
+        reaches it -- that check happens before the request, which is the only
+        arrangement in which a ceiling is a ceiling rather than a delay.
 
         `quota_hash` is whatever grading_quota_hash charged the call to -- a
         reader's id or a guest's address, hashed. The column keeps its original
         visitor_hash name: the schema is unchanged, only what is fed into the
-        digest moved."""
+        digest moved.
+
+        Returns (allowed, call_id); the caller settles the outcome afterwards.
+        """
         with db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             conn.execute('DELETE FROM exercise_grade_calls WHERE created<?',(now-GRADE_CALL_WINDOW,))
-            conn.execute('INSERT INTO exercise_grade_calls VALUES (?,?,?,?)',(secrets.token_hex(16),quota_hash,now,outcome))
+            count=conn.execute('SELECT count(*) FROM exercise_grade_calls WHERE visitor_hash=? AND created>?',(quota_hash,now-GRADE_CALL_WINDOW)).fetchone()[0]
+            allowed=count<GRADE_CALL_LIMIT
+            call_id=secrets.token_hex(16)
+            conn.execute('INSERT INTO exercise_grade_calls VALUES (?,?,?,?)',(call_id,quota_hash,now,'claimed' if allowed else 'refused'))
+        return allowed,call_id
 
-    def grading_allowed(quota_hash, now):
-        # Refusals are recorded but not counted. Counting them would mean a
-        # caller who keeps knocking keeps their own window open forever and can
-        # never be let back in.
-        with db() as conn:
-            count=conn.execute('SELECT count(*) FROM exercise_grade_calls WHERE visitor_hash=? AND created>? AND outcome!=\'refused\'',(quota_hash,now-GRADE_CALL_WINDOW)).fetchone()[0]
-        return count < GRADE_CALL_LIMIT
+    def settle_grading_call(call_id, outcome):
+        """Turn a claim into what actually happened to it.
+
+        The answer text and the criteria are deliberately absent: this is a cost
+        and abuse ledger, not a copy of what learners submitted. `outcome` is
+        'graded' / 'unavailable' / 'refused', and that is what tells an operator
+        whether a rising bill is traffic or breakage. Only a call that produced
+        a usable verdict is 'graded', so that count tracks the bill.
+
+        A call left 'claimed' means the process died between the claim and the
+        verdict, or the settle itself failed. It is not silently credited to
+        either column: the row is in the window, so it still consumed quota, and
+        an operator counting 'graded' rows still gets the number the bill will
+        show -- one row short, which is the safe direction to be short in.
+
+        A failure here is swallowed on purpose. By this point the learner either
+        has their score or is already degrading to the reference answer, and
+        neither outcome may be turned into a 500 by a bookkeeping write. The
+        exception is logged instead: a ledger that silently stops recording is
+        worse than one that says so.
+        """
+        try:
+            with db() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                conn.execute('UPDATE exercise_grade_calls SET outcome=? WHERE id=?',(outcome,call_id))
+        except sqlite3.OperationalError:
+            LOGGER.exception('Could not settle a grading call in the ledger')
 
     @app.get('/api/exercises/progress')
     def list_exercise_progress(request: Request):
@@ -893,17 +943,31 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     @app.post('/api/exercises/grade')
     def grade_exercise(payload: ExerciseGrade, request: Request):
         if payload.exercise not in exercise_ids: raise HTTPException(422,'练习不存在或尚未开放')
-        # The ceiling is checked after the id is validated and before the upstream
-        # request is made. Both orderings matter: a caller cannot probe the
-        # endpoint with invented ids for free, and a refused call costs nothing at
-        # the model -- a limit that still spends money is not a limit.
+        # The ceiling is claimed after the id is validated and before the
+        # upstream request is made. Both orderings matter: a caller cannot
+        # probe the endpoint with invented ids for free, and a refused call
+        # costs nothing at the model -- a limit that still spends money is not a
+        # limit. Claim and record are one transaction, so the answer is already
+        # in the ledger when this returns; only the outcome is settled later.
         now=int(time.time()); quota_hash=grading_quota_hash(request)
-        if not grading_allowed(quota_hash, now):
-            record_grading_call(quota_hash, now, 'refused')
+        try:
+            allowed,call_id=claim_grading_call(quota_hash, now)
+        except sqlite3.OperationalError:
+            # A caller that cannot be counted must not be graded: an unrecorded
+            # call is an unmetered call, which is the one thing this ledger
+            # exists to prevent. This arrives as SQLITE_READONLY rather than
+            # SQLITE_BUSY -- a WAL recovery race, not lock contention -- so the
+            # connection's timeout=15 does not apply and the write fails
+            # immediately. Degrading is the same answer as any other grading
+            # failure; a 500 here would be the endpoint's one unforgivable
+            # outcome, because it costs the learner their reference answer.
+            LOGGER.exception('Exercise grading ledger unavailable; degrading')
+            return grading_unavailable('评分服务暂时不可用')
+        if not allowed:
             return grading_throttled()
         key=os.getenv('EXERCISE_LLM_KEY'); base=os.getenv('EXERCISE_LLM_BASE_URL')
         if not key or not base:
-            record_grading_call(quota_hash, now, 'unavailable')
+            settle_grading_call(call_id, 'unavailable')
             return grading_unavailable('LLM 评分未启用')
         model=os.getenv('EXERCISE_LLM_MODEL','gpt-4o-mini')
         prompt=('你是评分助手。按给定标准给答案打分，只输出 JSON。\n'
@@ -917,7 +981,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             content=response.json()['choices'][0]['message']['content']
         except Exception:
             LOGGER.exception('Exercise grading unavailable')
-            record_grading_call(quota_hash, now, 'unavailable')
+            settle_grading_call(call_id, 'unavailable')
             return grading_unavailable('LLM 评分暂时不可用')
         try:
             verdict=json.loads(content)
@@ -946,11 +1010,11 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             feedback=feedback[:500] if isinstance(feedback,str) else ''
         except (ValueError, TypeError, AttributeError):
             LOGGER.exception('Exercise grading returned an unparsable verdict')
-            record_grading_call(quota_hash, now, 'unavailable')
+            settle_grading_call(call_id, 'unavailable')
             return grading_unavailable('评分结果无法解析')
         # Only a call that produced a usable verdict is logged as 'graded': this
         # is the number that should track the bill.
-        record_grading_call(quota_hash, now, 'graded')
+        settle_grading_call(call_id, 'graded')
         return {'score':score,'feedback':feedback}
 
     @app.get('/')

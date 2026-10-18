@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import sqlite3
+import threading
 import time
 import pytest
 from fastapi.testclient import TestClient
@@ -49,6 +50,8 @@ def reader(site, uid='alice'):
 
 
 PROGRESS = '/api/exercises/progress'
+
+REAL_CONNECT = sqlite3.connect
 
 
 def test_guest_reads_empty_progress(site):
@@ -330,17 +333,35 @@ def test_the_refusal_does_not_stop_the_learner(site, monkeypatch):
     assert response.headers['x-sils-fallback'] == '1'
 
 
-def test_a_refused_call_is_not_metered_against_the_caller(site, monkeypatch):
-    """Otherwise a caller who keeps knocking would keep their own window open
-    forever and could never be let back in."""
+def test_a_refused_call_is_recorded_against_the_caller(site, monkeypatch):
+    """A refusal now consumes the quota, which is what makes the ceiling hold.
+
+    The old rule recorded a refusal without counting it, so a caller could
+    retry immediately and be measured against the same rows forever. Under
+    concurrency that is not a courtesy, it is a hole: nothing stops the retries
+    from all passing the check in the gap before any of them writes.
+
+    The trade is real and worth naming: a caller who keeps knocking holds their
+    own window open. That is what a rate limit is -- the window slides, and a
+    caller who stops knocking is served again within the minute.
+
+    Serial callers cannot tell the old rule from the new one: thirty graded
+    calls fill the window either way. The difference shows up only under
+    concurrency, which is why the burst tests below exist and why this one is
+    about the ledger's shape rather than about a refusal being served.
+    """
     working_model(monkeypatch)
     guest = TestClient(site[0])
     body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
     for _ in range(GRADE_CALL_LIMIT + 10):
         guest.post(GRADE, json=body)
     with site[0].state.db() as db:
-        counted = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE outcome!='refused'").fetchone()['c']
-    assert counted == GRADE_CALL_LIMIT
+        counted = db.execute('SELECT count(*) c FROM exercise_grade_calls').fetchone()['c']
+        spent = db.execute("SELECT count(*) c FROM exercise_grade_calls WHERE outcome='graded'").fetchone()['c']
+    # Every attempt is in the window, and only the ones that passed reached the
+    # model: the quota counts attempts, the bill counts upstream calls.
+    assert counted == GRADE_CALL_LIMIT + 10
+    assert spent == GRADE_CALL_LIMIT
 
 
 def test_a_refusal_is_still_recorded_for_audit(site, monkeypatch):
@@ -956,5 +977,178 @@ def test_the_signing_in_state_does_not_change_the_guest_rule(site, monkeypatch):
     for _ in range(GRADE_CALL_LIMIT + 1):
         guest.post(GRADE, json=body)
     assert alice.post(GRADE, json=body).status_code == 200
+
+
+# --- Review round 4: the quota has to hold when the callers arrive together
+# -------------------------------------------------------------------------
+
+BURST = 40
+
+
+def concurrent_burst(site, monkeypatch, burst=BURST):
+    """Fire `burst` grading calls that all leave at the same instant.
+
+    The barrier is the point. Without it the threads arrive spread out and each
+    one sees the previous one's ledger row, which is why a serial client always
+    saw exactly the limit and why every existing test was green against code
+    that a script could beat by 2.7x.
+    """
+    calls = []
+    working_model(monkeypatch, calls)
+    body = {'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'}
+    statuses = []
+    barrier = threading.Barrier(burst)
+    lock = threading.Lock()
+
+    def hit():
+        # One client per thread: TestClient shares a portal per instance, and
+        # the point of the test is to have genuinely independent callers.
+        client = TestClient(site[0])
+        barrier.wait()
+        code = client.post(GRADE, json=body).status_code
+        with lock:
+            statuses.append(code)
+
+    threads = [threading.Thread(target=hit) for _ in range(burst)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    return calls, statuses
+
+
+def test_a_concurrent_burst_cannot_exceed_the_quota(site, monkeypatch):
+    """The number that matters: how many calls actually reached the model.
+
+    Check-then-write was two transactions with the model call between them, so
+    every caller in a burst measured itself against a count that none of them
+    had yet updated. Measured against that code, a burst of 40 produced 40
+    upstream calls for a limit of 30, and a burst of 80 produced 80 -- the
+    ceiling that exists to stop a script from draining someone else's key was
+    worth less than half of what it claimed.
+    """
+    calls, statuses = concurrent_burst(site, monkeypatch)
+    assert len(statuses) == BURST
+    assert len(calls) <= GRADE_CALL_LIMIT, 'upstream calls exceeded the quota: %d' % len(calls)
+    assert statuses.count(200) == len(calls), 'only the calls that reached the model may answer 200'
+    assert statuses.count(503) == BURST - len(calls)
+
+
+def test_a_burst_still_serves_the_first_callers(site, monkeypatch):
+    """Atomicity must not become a queue that refuses everyone: the limit is a
+    ceiling, not a switch."""
+    calls, statuses = concurrent_burst(site, monkeypatch)
+    assert statuses.count(200) == GRADE_CALL_LIMIT
+
+
+def test_every_burst_call_is_recorded_exactly_once(site, monkeypatch):
+    """Both halves of the merge: the attempt is in the ledger whatever the
+    outcome, and no caller is recorded twice."""
+    concurrent_burst(site, monkeypatch)
+    with site[0].state.db() as db:
+        rows = db.execute('SELECT count(*) c FROM exercise_grade_calls').fetchone()['c']
+        duplicates = db.execute('SELECT count(*) c FROM (SELECT id FROM exercise_grade_calls GROUP BY id HAVING count(*)>1)').fetchone()['c']
+    assert rows == BURST
+    assert duplicates == 0
+
+
+class _Connection:
+    """What app.db() needs from a connection, so a test can break one part.
+
+    The proxy opens the same file the app uses -- the path is taken from the
+    call arguments -- so the schema is really there and only the one statement
+    under test fails.
+    """
+
+    def __init__(self, path, *args, **kwargs):
+        self.row_factory = None
+        # Captured before any monkeypatching: app.sqlite3 IS this module's
+        # sqlite3, so patching connect to return a proxy would otherwise make
+        # the proxy's own connect call recurse into itself.
+        self._inner = REAL_CONNECT(path, *args, **kwargs)
+
+    def execute(self, statement, *rest):
+        return self._inner.execute(statement, *rest)
+
+    def executemany(self, statement, *rest):
+        return self._inner.executemany(statement, *rest)
+
+    def executescript(self, statement):
+        return self._inner.executescript(statement)
+
+    def close(self):
+        self._inner.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._inner.__exit__(*exc)
+
+    def _write(self, statement):
+        raise NotImplementedError
+
+
+class RefusesWrites(_Connection):
+    """Every transaction fails the way a saturated WAL does."""
+
+    def execute(self, statement, *rest):
+        if statement.lstrip().upper().startswith(('BEGIN', 'INSERT', 'UPDATE', 'DELETE')):
+            self._write(statement)
+        return self._inner.execute(statement, *rest)
+
+    def _write(self, statement):
+        raise sqlite3.OperationalError('attempt to write a readonly database')
+
+
+class FailsSettle(_Connection):
+    """The claim succeeds; the later UPDATE that settles it does not."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.writes = 0
+
+    def execute(self, statement, *rest):
+        if statement.lstrip().upper().startswith(('BEGIN', 'INSERT', 'UPDATE', 'DELETE')):
+            self.writes += 1
+            if statement.lstrip().upper().startswith('UPDATE'):
+                self._write(statement)
+        return self._inner.execute(statement, *rest)
+
+    def _write(self, statement):
+        raise sqlite3.OperationalError('attempt to write a readonly database')
+
+
+def test_a_call_the_ledger_cannot_record_is_not_graded(site, monkeypatch):
+    """A caller that cannot be counted must not reach the model.
+
+    Under load SQLite refuses a write with SQLITE_READONLY rather than
+    SQLITE_BUSY -- a WAL recovery race, not lock contention -- so the
+    connection's timeout does not apply and the write fails at once. Measured
+    here, it surfaced as a 500 on the one endpoint whose contract is that it
+    never fails a learner. An unrecorded call is an unmetered call, which is
+    what this ledger exists to prevent, so it degrades instead.
+    """
+    calls = []
+    working_model(monkeypatch, calls)
+    monkeypatch.setattr('app.sqlite3.connect', lambda *a, **k: RefusesWrites(*a, **k))
+    response = TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
+    assert response.status_code == 503
+    assert response.json()['fallback'] is True
+    assert calls == [], 'a call the ledger cannot record must not reach the model'
+
+
+def test_a_call_the_ledger_cannot_settle_still_answers(site, monkeypatch, caplog):
+    """The mirror image: once the model has answered, the learner gets the
+    score even if the bookkeeping write fails. The row stays 'claimed', which
+    still consumed the quota -- the safe direction to be short in."""
+    caplog.set_level(logging.INFO, logger='app')
+    calls = []
+    working_model(monkeypatch, calls)
+    monkeypatch.setattr('app.sqlite3.connect', lambda *a, **k: FailsSettle(*a, **k))
+    response = TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
+    assert response.status_code == 200
+    assert response.json() == {'score': 0.5, 'feedback': 'ok'}
+    assert 'Could not settle a grading call in the ledger' in captured_log(caplog)
 
 

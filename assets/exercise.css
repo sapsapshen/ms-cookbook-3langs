@@ -177,6 +177,14 @@
   color: inherit;
 }
 .exercise-map-cell:hover { background: var(--selected); }
+/* A cell is a real <a href>, so a keyboard reader lands on it, and until this
+   rule existed the only thing that changed was the pointer's background:
+   `:focus-visible` (assets/reading.css:83) draws the outline, and this adds the
+   same fill `:hover` gives so focus and hover read as the same state instead of
+   two. It deliberately does NOT touch `outline`/`outline-offset`: the global rule
+   owns those, and restating them here at a higher specificity would be the one
+   way to break focus for every reader. */
+.exercise-map-cell:focus-visible { background: var(--selected); border-color: var(--brand); }
 .exercise-map-dots { letter-spacing: .12em; font-size: .9rem; }
 
 @media (max-width: 40rem) {

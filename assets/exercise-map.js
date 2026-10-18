@@ -106,7 +106,15 @@
         });
       rows.push({
         partIndex,
-        partTitle: part.title || `Part ${partIndex + 1}`,
+        // `shortTitle || title` -- byte for byte the fallback assets/paper.js
+        // resolves a part name with (paper.js:43). Reaching for `title` alone
+        // would give one book two names: the sidebar and the contents page say
+        // 「让模型工作起来」 while the map said the whole
+        // 「第三篇　跑得起：让第一个开源模型工作起来」. All three locales carry
+        // `partName.01`-`partName.08` today, so this line is only reached by a
+        // language that has not been given them -- which is precisely the case
+        // that has to be right.
+        partTitle: part.shortTitle || part.title || `Part ${partIndex + 1}`,
         total: entries.reduce((sum, entry) => sum + entry.total, 0),
         passed: entries.reduce((sum, entry) => sum + entry.passed, 0),
         self: entries.reduce((sum, entry) => sum + entry.self, 0),

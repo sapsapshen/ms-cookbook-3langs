@@ -302,7 +302,10 @@ console.log('ExerciseMap.aggregate · the shipped corpus');
 check('follows BOOK_DATA.parts order and the book chapter order', () => {
   const rows = aggregate(EXERCISE_DATA, fakeStore({}), BOOK_DATA.parts, bookChapters);
   assert.ok(rows.length > 0);
-  const partIndexes = rows.map(row => BOOK_DATA.parts.findIndex(part => part.title === row.partTitle));
+  // Matched against the SAME expression the map uses, so this stays a real
+  // ordering assertion: comparing against `part.title` would leave findIndex
+  // returning -1 for every row, and [-1,-1,-1] is trivially sorted.
+  const partIndexes = rows.map(row => BOOK_DATA.parts.findIndex(part => (part.shortTitle || part.title) === row.partTitle));
   assert.deepEqual(partIndexes, [...partIndexes].sort((a, b) => a - b));
   for (const row of rows) {
     const numbers = row.chapters.map(chapter => chapter.number);
@@ -535,6 +538,88 @@ check('the map is not wired into the page before the corpus it reads', () => {
   // corpus and the store it reads. Until then render() finds no data and no
   // store and paints nothing, which is the state asserted above.
   assert.ok(!INDEX.includes('assets/exercise-map.js'));
+});
+
+console.log('ExerciseMap · part names agree with paper.js');
+
+/* The bug these lock. Every locale carries partName.01-partName.08 today, so
+   the fallback never fires and the map looked fine -- while disagreeing with
+   the rest of the site on the one input that reaches it. assets/paper.js:43
+   falls back to `shortTitle || title`; the map reached for `title` alone, so a
+   language missing one part name would have shown
+   「第三篇　跑得起：让第一个开源模型工作起来」 next to a sidebar reading
+   「让模型工作起来」. One book, two names. */
+const NO_PART_NAMES = {
+  // A language whose dictionary has chapter names but no part names -- the
+  // exact state of a locale Task 11 has not filled in yet.
+  MSI18N: {t: (key) => key, has: key => !key.startsWith('partName.')},
+};
+
+check('a language missing partName.NN falls back to the same string paper.js would use', () => {
+  const {store} = realStore();
+  const window = Object.assign({EXERCISE_DATA, BOOK_DATA, ExerciseStore: {create: () => store}}, NO_PART_NAMES);
+  withPage({window}, ({host}) => {
+    render(host);
+    const headings = host.querySelectorAll('.exercise-map-part h3');
+    assert.ok(headings.length > 0, 'no part heading was rendered');
+    // paper.js:43 -- `(data.parts[index].shortTitle || data.parts[index].title)`.
+    const expected = BOOK_DATA.parts.map(part => part.shortTitle || part.title);
+    for (const heading of headings) {
+      const printed = heading.children[0].textContent;
+      assert.ok(expected.includes(printed), `map printed a part name paper.js never produces: ${printed}`);
+      // And it must NOT be the long form, which is the whole point.
+      assert.ok(!BOOK_DATA.parts.some(part => part.title === printed),
+        `map fell back to the full part title: ${printed}`);
+    }
+  });
+});
+
+check('aggregate() resolves the same part name paper.js resolves', () => {
+  // The same rule one layer down, on the shipped book data: shortTitle wins,
+  // title is only there for a part that has none.
+  const rows = aggregate(EXERCISE_DATA, fakeStore({}), BOOK_DATA.parts, bookChapters);
+  for (const row of rows) {
+    const part = BOOK_DATA.parts[row.partIndex];
+    assert.ok(part, `part ${row.partIndex} is not in the book`);
+    assert.equal(row.partTitle, part.shortTitle || part.title);
+  }
+});
+
+check('a part with no shortTitle still names itself, and an unknown part is not dropped', () => {
+  const parts = [{title: '第一篇　认识开源模型', shortTitle: '认识开源模型'}];
+  const rows = aggregate(DATA, fakeStore({}), parts, BOOK);
+  assert.equal(rows[0].partTitle, '认识开源模型');
+  // No shortTitle at all: paper.js falls back to title, so the map does too --
+  // not to `Part 1`, which is a name the rest of the site never shows.
+  const bare = aggregate(DATA, fakeStore({}), [{title: '第一篇　认识开源模型'}], BOOK);
+  assert.equal(bare[0].partTitle, '第一篇　认识开源模型');
+  // Neither field: still a row.
+  assert.equal(aggregate(DATA, fakeStore({}), [{}], BOOK)[0].partTitle, 'Part 1');
+});
+
+check('the fallback lives in the map and paper.js still uses the same expression', () => {
+  // Both sides are asserted, not just the map's: if paper.js drops `shortTitle`
+  // the site halves again, and the fix belongs at both ends, not one.
+  assert.match(MAP, /part\.shortTitle \|\| part\.title \|\| `Part /);
+  assert.match(PAPER, /data\.parts\[index\]\.shortTitle \|\| data\.parts\[index\]\.title/);
+});
+
+console.log('ExerciseMap · focus styling');
+
+const EXERCISE_CSS = readFileSync(resolve(ROOT, 'assets/exercise.css'), 'utf8');
+
+check('a map cell declares its own :focus-visible, without taking over the outline', () => {
+  // The cell is a real <a href>, so it is in the tab order. assets/reading.css:83
+  // draws the ring; this rule is what balances it against `:hover` instead of
+  // leaving focus as the one pointer-free state with no fill of its own.
+  assert.match(EXERCISE_CSS, /\.exercise-map-cell:focus-visible\s*\{[^}]*\}/);
+  // The load-bearing half. Restating outline/outline-offset here at a higher
+  // specificity would be the one way to break keyboard focus site-wide, so the
+  // rule has to stay out of the global rule's properties.
+  const rule = /\.exercise-map-cell:focus-visible\s*\{([^}]*)\}/.exec(EXERCISE_CSS)[1];
+  assert.ok(!/\boutline\b/.test(rule), `the cell rule overrides the global outline: ${rule}`);
+  // Balanced with :hover, not a second accent competing with it.
+  assert.match(rule, /background:\s*var\(--selected\)/);
 });
 
 if (failures) {

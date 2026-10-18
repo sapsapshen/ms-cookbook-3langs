@@ -1,1 +1,108 @@
-[]
+[
+  {
+    "id": "ch30-ex01",
+    "chapter": "chapter-30",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "实现 Pi 的 Node 版本门禁判断",
+    "prompt": "Pi 要求 Node.js **大于等于 22.19.0**，不满足时要先说明升级方案。\n\n写函数 `node_ok(version)`：`version` 是形如 `\"v22.19.0\"` 的版本字符串（可能没有 `v` 前缀，也可能只给到次版本号，例如 `\"v22.19\"`）。满足要求返回 `True`，否则返回 `False`。\n\n传入无法解析的字符串（例如 `\"unknown\"`、`\"\"`、`None`）时抛出 `ValueError`。",
+    "starter": "MIN_VERSION = (22, 19, 0)\n\n\ndef node_ok(version):\n    # 返回 True / False；无法解析时抛 ValueError\n    raise ValueError('not implemented')\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v22.19.0') is True, '恰好等于下限应当满足'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v22.18.9') is False, '次版本比 19 小一格就不满足'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v23.0.0') is True and node_ok('v24.5.1') is True, '主版本更高就满足'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v20.11.0') is False and node_ok('v9.99.99') is False, '主版本更低就不满足，哪怕次版本很大'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('22.19.0') is True and node_ok('v22.19') is True and node_ok('v22.19.5') is True, '可以没有 v 前缀，也可以只给到次版本'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    node_ok('unknown')\n    assert False, '无法解析的版本号应该抛 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('', None, 'unknown', 'v', 'vx.y.z', 'v22.x'):\n    try:\n        node_ok(_bad)\n        assert False, '无法解析的版本号应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _ma in range(18, 27):\n    for _mi in range(0, 24):\n        for _pa in (0, 1, 5):\n            _v = 'v%d.%d.%d' % (_ma, _mi, _pa)\n            _want = (_ma, _mi, _pa) >= (22, 19, 0)\n            assert node_ok(_v) is _want, (_v, node_ok(_v), _want)",
+        "weight": 40
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解版本比较是按主版本、次版本、补丁号逐级比较的元组比较"
+    },
+    "reference": "MIN_VERSION = (22, 19, 0)\n\n\ndef node_ok(version):\n    if not isinstance(version, str):\n        raise ValueError('version must be a string')\n    parts = version.strip().lstrip('vV').split('.')\n    if not 1 <= len(parts) <= 3:\n        raise ValueError('unparsable version: %r' % (version,))\n    nums = []\n    for part in parts:\n        if not part.isdigit():\n            raise ValueError('unparsable version: %r' % (version,))\n        nums.append(int(part))\n    while len(nums) < 3:\n        nums.append(0)\n    return tuple(nums) >= MIN_VERSION",
+    "explanation": "版本比较不能按字符串比：`\"v9.99.99\"` 按字典序大于 `\"v22.19.0\"`，但 9 小于 22，所以主版本更低，必须判不满足。正确做法是拆成整数元组再逐级比较 —— Python 的元组比较天然先比主版本、主版本相同才比次版本，正好对应语义化版本的规则。\n\n**下限是含等的**。本章写的是 `>= 22.19.0`，所以 `v22.19.0` 本身必须通过，而 `v22.18.9` 只差一个小版本就要拦下来。写成严格大于会把恰好卡在下限的版本误判成不满足，判据里专门盯住了这两个点。\n\n**只给到次版本也算合法输入**。`v22.19` 缺补丁号，按惯例补 0，也就是 22.19.0，正好等于下限所以通过。缺一节就抛异常的实现会在这里判不过。\n\n主判据把主版本 18–26 × 次版本 0–23 × 补丁号 0/1/5 共 648 组版本号全跑一遍，每组都独立算出期望结果再比对 —— 这是专门防「把答案背下来」的：查表覆盖不了 648 组，写死返回 `True` 或 `False` 也过不了。\n\n判分边界诚实说明：非法输入这一条由两条判据一起守着（8/122 与 16/122，合计 20% 刚过 P1 门槛），是本题最薄的一环 —— 它只守住「抛不抛 `ValueError`」，不区分你是因为识别不了而抛，还是碰巧抛了。"
+  },
+  {
+    "id": "ch30-ex02",
+    "chapter": "chapter-30",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断 Pi 的默认行为与安全边界",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. Pi 默认交给模型的核心工具只有 read、write、edit 和 bash 四个\nB. Pi 默认会在删文件或跑命令前弹一个确认框，所以可以放心地在个人电脑上直接用\nC. 用 `--tools read,grep,find,ls` 可以把可用工具锁在只读范围内\nD. 把 Pi 放进 Docker 后，挂载进去的工作目录依然能写回宿主机\nE. Pi 会自动扫描 `~/.claude/skills` 和 `~/.codex/skills` 里已有的 Skills",
+    "explanation": "A、C、D、E 都出自本章。\n\nA 是本章讲 Pi 定位那节：「Pi 默认交给模型的核心工具只有四个：`read`、`write`、`edit` 和 `bash`」，后面才说新版 CLI 可以按需开放 `grep`、`find`、`ls`。本章对这一点的评价是「看起来东西不多，但 Agent 底层无非就是读、写、改、执行」。\n\nC 与 D 都在本章点名的那个坑里。本章说 Pi 默认**不会**像一些桌面 Agent 那样弹确认框，而是「直接继承了启动进程的文件、网络、凭据和系统权限」，所以给了一条「锁成只读」的命令；提到 Docker 隔离时又专门提醒「挂载进去的工作目录依然能写回宿主机」，把本机的 `~/.pi/agent` 挂进去则会把认证和会话文件一起暴露给容器。\n\nE 出自「把你现成的 Codex、Claude Skills 接进来」那一节 —— Pi 会自动扫描 `~/.pi/agent/skills/`、`~/.agents/skills/`、`.pi/skills/`、`.agents/skills/`，也可以在 `~/.pi/agent/settings.json` 里手工加上 `~/.claude/skills` 与 `~/.codex/skills`，然后 `/reload`。本章说这个设计和现在的 Agent Skills 标准是对齐的。\n\nB 与本章明确说法相反，方向也搞反了：本章那句是「No permission popups」，指的是**没有**保护。它紧接着说「对熟悉终端的人，这代表 YOLO 模式」，但接着就提醒小白「一句写得不够严谨的 Prompt，真有可能让 Agent 干坏事」。所以「可以放心直接用」是把一条风险提示读成了安全保证。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
+    "reference": "B 与本章相反：本章明说 Pi 默认没有权限弹窗（No permission popups），会直接继承启动进程的文件、网络、凭据和系统权限，所以小白要先用空白目录、读代码时用 `--tools` 锁只读，也不要让模型读 `auth.json` 和 `.env`。",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 3
+      }
+    ]
+  },
+  {
+    "id": "ch30-ex03",
+    "chapter": "chapter-30",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "给一个团队设计 Pi 的安全落地路径",
+    "prompt": "你要把 Pi 引入一个能访问公司私有代码的团队。请按本章的说法，写出：你会怎么隔离环境、第一次验证会用什么任务、以及你在什么信号下认为「Pi 不适合这个场景」。",
+    "explanation": "这道题对应本章那句「自由度越高，安全这块更需要自己把好关」，以及它给小白列的那几条注意事项。\n\n第一问（隔离）的关键是分清本章给的几个层次，因为强度不一样：本章说「真要让它长时间自动跑，放进 Docker、OpenShell 或其他沙箱」，而「最容好用的是把整个 Pi 放进 Docker」；但同时提醒「挂载进去的工作目录依然能写回宿主机」，把 `~/.pi/agent` 挂进去还会把认证和会话文件暴露给容器。所以「放进 Docker 了所以安全了」是不完整的 —— 挂载策略才是决定隔离是否成立的那一半。\n\n第二问（第一次验证）本章给了明确路径：先用空白目录，读代码时用 `--tools read,grep,find,ls` 锁成只读，再用一个最小任务验证「它真的能干活」。本题把它限定成「能访问私有代码的团队」，所以只读验证和凭据隔离要一起写出来 —— 本章专门提醒不要让模型读 `~/.pi/agent/auth.json`、`.env` 和其他凭据文件。\n\n第三问是这道题最有价值的部分。本章对「谁适合 Pi」其实给了一条很硬的判据：它说如果你只想下载一个产品、登录，然后在安全护栏里稳定使用，「Pi 不一定是最省心的选择」，因为它「有意省掉了一些『装好就该有』的功能，很多东西需要自己配」。这句话可以直接翻译成不适用的信号 —— 需要开箱即用的权限审批和任务列表、而团队没有人有余力自己配扩展的时候，Pi 的自由度就从优势变成了负担。\n\n最后一条是从本章讲的 Skills 与 Extension 生态推出来的：既然「你缺什么能力，就让 Pi 给自己写一个 Extension」，那么遇到搞不定的情况，先判断缺的是哪一类能力，而不是立刻换工具。\n\n这题跑不了真实的 Agent 执行，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的落地清单。",
+    "reference": "隔离环境：分三层写。第一层是工作目录 —— 本章说小白第一次用「一定要先用空白目录，不要上来就打开桌面、文档或整个 Home 目录」，团队场景同理，先给一个专用的测试目录而不是代码库根目录。第二层是工具范围 —— 读代码时用 `--tools read,grep,find,ls` 把可用工具锁成只读，本章明确说这是「锁成只读」的做法。第三层才是进程隔离 —— 本章说「真要让它长时间自动跑，放进 Docker、OpenShell 或其他沙箱」，并说最容好用的是把整个 Pi 放进 Docker。这里要连挂载策略一起写：工作目录挂进去依然能写回宿主机，所以只读验证阶段用只读挂载；如果还要能改代码，就把改动收在一个专用的工作副本里。另外凭据要单独隔开 —— 本章提醒不要让模型读取 `~/.pi/agent/auth.json`、`.env` 和其他凭据文件，也不要把本机的 `~/.pi/agent` 挂进容器，否则认证和会话文件会一起暴露。第三方 Package 和 Extension 先审源码再安装。\n\n第一次验证：沿用本章的顺序 —— 先只读，再写入。用 `--tools read,grep,find,ls` 加一句「阅读当前目录，告诉我项目是做什么的、入口文件在哪里、应该运行什么检查。不要修改任何文件。」，先确认模型能连上、能读到工作区、工具限制确实生效。然后换一个专用测试目录做最小写入验证，本章给的模板是：先确认当前工作目录并列出已有文件，再创建一个文件，最后重新检查目录并说明实际发生了哪些变化 —— 这个任务会同时碰到目录读取、文件写入、约束遵守和结果复查四件事。\n\n判断不适用的信号：① 团队要的是「装好就能用」，但本章明说 Pi「有意省掉了一些装好就该有的功能，很多东西需要自己配」，没人有余力配扩展时自由度就变成负担；② 需要在每次危险操作前有人工审批 —— 本章说 Pi 默认没有权限弹窗（No permission popups），这属于要自己写 Extension 补的能力；③ 需要开箱即用的 MCP 与子 Agent，而这两样都要装扩展才有；④ 跑几小时的任务一中断就要从头重来，那是状态持久化没配好；⑤ 任务路径高度不确定又需要严格约束时，缺少权限门会让一次写得不够严谨的 Prompt 造成实际损失。\n\n最后一条判断：遇到搞不定的情况先看缺的是哪一类能力。本章的建议是「你缺什么能力，就让 Pi 给自己写一个 Extension」，所以先补机制而不是先换工具。",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否区分了空白目录/工具锁只读/容器隔离三层强度、是否提到挂载仍可写回宿主机与凭据文件不可暴露、第一次验证是否沿用只读优先再写入的顺序、以及不适用的信号是否具体到可判定的边界而不是笼统说效果不好"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

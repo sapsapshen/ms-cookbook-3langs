@@ -1,1 +1,95 @@
-[]
+[
+  {
+    "id": "ch35-ex01",
+    "chapter": "chapter-35",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "把多个模型的分项得分汇成一张榜单",
+    "prompt": "共建评测的结果通常是「每个模型在若干道题上的得分」。写两个函数把���些分项汇成一张榜单。\n\n`rank(models)`：\n\n- `models` 是字典，键是模型名，值是该模型各道题的得分列表（0 到 100 的数字）；\n- 得分列表为空时，平均分记作 `0.0`；否则平均分是所有得分之和除以题目数，**四舍五入保留 1 位小数**；\n- 返回列表，每项 `{'name': 模型名, 'avg': 平均分}`，按平均分**从高到低**排序，平均分相同的按模型名**字典序**排。\n\n`best_model(models)`：返回榜单第一项的模型名；`models` 为空（或所有模型都没有得分且同分）时返回 `None`。",
+    "starter": "def rank(models):\n    # 返回排好序的榜单\n    raise NotImplementedError\n\n\ndef best_model(models):\n    # 返回第一名模型名，没有则返回 None\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "_r = rank({'a': [80, 90, 70], 'b': []})\nassert _r == [{'name': 'a', 'avg': 80.0}, {'name': 'b', 'avg': 0.0}], _r",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({}) == [], rank({})",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert best_model({'a': [80, 90], 'b': [20]}) == 'a', best_model({'a': [80, 90], 'b': [20]})",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert best_model({}) is None, '空榜单没有第一名'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({'x': [1, 2]})[0]['avg'] == 1.5, '1.5 只需要补一个 0，不该被四舍五入成 2.0'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({'x': [1, 1, 2]})[0]['avg'] == 1.3, '4/3 = 1.333... 要四舍五入成 1.3'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "_v = rank({'x': [2, 2]})[0]['avg']\nassert _v == 2.0 and isinstance(_v, float), (_v, type(_v))",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_t = rank({'x': [60, 70], 'y': [90, 80], 'z': [10, 10]})\nassert [i['name'] for i in _t] == ['y', 'x', 'z'], _t\nassert best_model({'x': [60, 70], 'y': [90, 80], 'z': [10, 10]}) == 'y'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "_t = rank({'bb': [50], 'aa': [50], 'cc': [50]})\nassert [i['name'] for i in _t] == ['aa', 'bb', 'cc'], '同分时必须按模型名字典序'\nassert best_model({'bb': [50], 'aa': [50], 'cc': [50]}) == 'aa', '同分时第一名也要确定'",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 5):\n    for _i in range(0, _n + 1):\n        _one = [10 * _j for _j in range(_i + 1)]\n        for _w in (0, 1, 2):\n            _in = {'k': _one, 'j': [50 + _w]}\n            _out = rank(_in)\n            _want = sorted(\n                [{'name': 'k', 'avg': round(sum(_one) / len(_one), 1) if _one else 0.0},\n                 {'name': 'j', 'avg': float(50 + _w)}],\n                key=lambda i: (-i['avg'], i['name']))\n            assert _out == _want, (_one, _w, _out, _want)\n            assert best_model(_in) == _want[0]['name'], (_one, _w, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否处理了空列表的除零、并列时的确定顺序，以及平均值四舍五入的边界"
+    },
+    "reference": "def rank(models):\n    rows = []\n    for name, scores in models.items():\n        avg = round(sum(scores) / len(scores), 1) if scores else 0.0\n        rows.append({'name': name, 'avg': avg})\n    rows.sort(key=lambda row: (-row['avg'], row['name']))\n    return rows\n\n\ndef best_model(models):\n    rows = rank(models)\n    return rows[0]['name'] if rows else None",
+    "explanation": "这道题对应本章那句「看看孰强孰弱」—— 分项得分本身说明不了强弱，要先聚合成一个可比较的数，再排序。四个地方最容易出错。\n\n**空列表不能直接除**。`sum([]) / len([])` 是 `ZeroDivisionError`，所以要显式给 0.0。判据里专门放了一个只有一条空得分的模型，就是为了盯这一条。\n\n**并列时要给出确定的顺序**。只按分数排序的话，两个 50.0 谁在前取决于字典插入顺序，同一份数据换个写法榜单就变了。键写成 `(-avg, name)` 就同时表达了「分数高的在前」和「同分按名字典序」，也顺带保证了第一名唯一。\n\n**四舍五入有边界**。`[1, 2]` 的平均是 1.5，一位小数下不需要改动；而 `[1, 1, 2]` 的平均是 4/3 = 1.333...，必须变成 1.3。这两组分开守着，所以不四舍五入的实现会判不过。\n\n**第一名也是要被判的**。`best_model` 不是「取 `rank` 结果的第 0 项」这么显然 —— 榜单为空时它必须返回 `None` 而不是抛 `IndexError`，而同分时它必须给出字典序最小的那个。这两点各有判据。\n\n主判据把「得分个数 0 到 4」与「另一模型的分 50/51/52」组合成 60 组，逐组独立算出期望榜单再比对，这是专门防查表的：覆盖不了这些组合。\n\n判分边界诚实说明：同分排序这条由 16/130 与 30/130 两条判据一起守着，合计 35% 超过 P1 门槛；但「空榜单时 `best` 返回 `None`」只有 8/130 这一条守着，是本题最薄弱的一环 —— 一个在空榜单上会抛 `IndexError` 的实现，靠的是同一条判据里先过了非空的那半边，所以这一条要求需要你自己确认。"
+  },
+  {
+    "id": "ch35-ex02",
+    "chapter": "chapter-35",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断一次模型横评什么时候可信",
+    "prompt": "下面哪些说法符合可信横评的做法？（多选）\n\nA. 只看总分排名就能判断哪个模型更强，不需要公布原始输出\nB. 模型版本、提示词和采样参数必须固定，否则结果不可比\nC. 某个模型在榜单上第一，就说明它在所有场景里都最强\nD. 把每道题的原始输出和判分依据一起公布，别人才可能复核\nE. 横评只需要在一两个简单问题上做，题目越多越容易说明问题",
+    "explanation": "答案只有 B、D。\n\nB 是整道题的核心。本章的定位是「一起测试现在主流的模型，看看孰强孰弱」，要比较就得让被比较的对象在同样的条件下跑 —— 模型版本、提示词、采样参数里任何一项变了，测的就是另一件事了，排名也就失去意义。\n\nD 紧跟着 B。本章说的是共建，结论要能被别人重复一遍才成立。只发一个名次而不附原始输出和判分依据，读者既不知道判分怎么给的，也无法在自己的机器上复现同一结果，这样得到的排名无法被检验。\n\nA 与 D 正好是一对：A 说「只发排名就够」，D 说「要公布原始输出」，本题的标准是后者。\n\nC 属于过度推广。本章要回答的是「孰强孰弱」，而这个结论只在横评覆盖到的那批问题上成立；把榜单第一读成「所有场景里都最强」，是把一个有边界的测量结果当成了普遍断言。\n\nE 与「看看孰强孰弱」直接相悖：一两个简单问题上的领先说明不了整体强弱。题目少恰恰意味着覆盖面窄，最容易翻车的地方通常正好没被测到。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
+    "reference": "A 与 D 相反：只公布排名而不公布原始输出与判分依据，别人无法复核，共建的结论就不可信。C 过度推广：本章问的是「孰强孰弱」，结论只在横评覆盖的那批问题上成立。E 与「看看孰强孰弱」相悖：一两个简单问题的领先说明不了整体强弱，题目少意味着覆盖面窄。",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "D"
+        ],
+        "weight": 3
+      }
+    ]
+  }
+]

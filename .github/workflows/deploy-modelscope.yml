@@ -19,6 +19,9 @@ on:
       - 'scripts/test_chapter_markdown.py'
       - 'scripts/build-content.mjs'
       - 'scripts/check-site.mjs'
+      - 'scripts/build-exercises.py'
+      - 'scripts/test_exercises.py'
+      - 'scripts/check_exercise_references.py'
       - 'README*.md'
       - 'LICENSE'
       - 'scripts/deploy-modelscope.mjs'
@@ -57,6 +60,11 @@ jobs:
           node scripts/build-content.mjs --check
           python3 scripts/build-i18n.py --check
           node scripts/check-site.mjs
+      - name: Verify exercise data
+        run: |
+          python3 scripts/test_exercises.py
+          python3 scripts/build-exercises.py --check
+          python3 scripts/check_exercise_references.py
       - name: Sync and deploy the website
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}

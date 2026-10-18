@@ -78,11 +78,26 @@ async function ensureRuntime() {
 
 /* Removes the JavaScript bridge from the running interpreter.
 
-   Python lets any code assign sys.meta_path, clear it, or remove entries, so a
-   plain finder is not a boundary — `sys.meta_path.clear()` walks straight past
-   it. Two defences: the meta_path is a list subclass that puts the guard back
-   before every import and refuses removal, and the seal is re-applied before
-   every run, so a learner who disarms it cannot disarm the NEXT one either.
+   WHY THE FINDER IS REMOVED, NOT GUARDED
+   =======================================
+   An earlier version kept Pyodide's own JS finder in sys.meta_path and refused
+   to let it be removed. That does not hold. `sys.meta_path = [...]` reassigns
+   an attribute of the `sys` module, so it reaches NO list mutator at all: a
+   guard list subclass can only intercept clear() / remove() / pop() /
+   __setitem__ / __delitem__ on ITSELF. A learner who replaces the whole list
+   drops the guard without touching a single guarded method. Verified against
+   the vendored Pyodide 0.26.4:
+
+       META: ['type', 'type', 'type', 'JsFinder']
+       sys.meta_path = list(sys.meta_path)[1:]   # drop the guard, keep the finder
+       import js   ->  works, and js.eval("6*7") runs arbitrary JavaScript
+
+   The guard list was never a boundary; it was one. So the finder that serves
+   `js` is taken out of the baseline instead. Every list a learner can reach is
+   now built from finders that cannot resolve the bridge, and `import js` has
+   nothing left to find. The guard class stays as defence in depth -- it still
+   catches clear() and friends -- and the seal is re-applied before every run,
+   so a learner who disarms one run cannot disarm the NEXT one either.
 
    The guard lives in its OWN globals dict, never in the namespace learner code
    runs in. An earlier draft installed it into globals() behind a `_sils_`
@@ -98,10 +113,80 @@ import sys as _sils_sys
 import json as _sils_json
 
 _sils_BLOCKED = frozenset(('js', 'pyodide_js'))
-# The interpreter's own import finders, captured once. Every rebuild restores
-# from this list, so a learner cannot make the import system unusable by
-# clearing it -- they can only ever end up back here.
-_sils_ORIGINAL = tuple(getattr(_sils_sys, 'meta_path', ()))
+
+def _sils_serves_bridge(_sils_finder):
+    """True when this meta_path entry can resolve one of the sealed modules.
+
+    ASKED OF THE FINDER rather than read off its class name. Pyodide could
+    rename the class, wrap it, or hand the bridge to a different finder, and a
+    name-based filter would then quietly stop matching while still reporting
+    a sealed import path. The probe is literally the call the import system
+    makes, so it keeps working when the name does not.
+
+    The class-name check is the fallback for a finder that cannot answer the
+    probe. Erring towards "drop it" is the safe direction: the guard class is
+    inserted on top of whatever survives, and the standard-library finders all
+    answer the probe cleanly, so the fallback never has to fire for them.
+    """
+    for _sils_name in _sils_BLOCKED:
+        try:
+            if _sils_finder.find_spec(_sils_name, None) is not None:
+                return True
+        except BaseException:
+            if type(_sils_finder).__name__ == 'JsFinder':
+                return True
+    return False
+
+def _sils_empty_bridge(_sils_finder):
+    """Strip the bridge out of a finder rather than merely leaving the list.
+
+    Taking the finder out of sys.meta_path is necessary but NOT sufficient, and
+    the reason is worth writing down because it is easy to get wrong:
+
+        import sys, pyodide._state as st
+        sys.meta_path.append(st.jsfinder)   # the live finder, still holding js
+        import js                            # -> works again
+
+    Pyodide keeps a module-level singleton at pyodide._state.jsfinder with
+    'js' and 'pyodide_js' in its 'jsproxies' table. It is an ordinary Python
+    attribute, reachable from learner code, so removing the finder from the
+    list only hides it. Its own unregister_js_module() drops the entries, and
+    once the table is empty that same finder resolves nothing -- which is why
+    the re-append above stops working.
+
+    So the seal does BOTH: empty the table, and keep the finder out of the
+    baseline. Emptying alone leaves a live object reachable by attribute; the
+    baseline filter alone leaves it reachable through pyodide._state.
+
+    Best effort by design: a future Pyodide may rename the method, and failing
+    to empty the table must not stop the rest of the seal from being applied.
+    """
+    for _sils_name in tuple(_sils_BLOCKED):
+        try:
+            _sils_finder.unregister_js_module(_sils_name)
+        except BaseException:
+            pass
+    try:
+        _sils_finder.invalidate_caches()
+    except BaseException:
+        pass
+
+# The interpreter's own import finders, captured once with the bridge finder
+# ALREADY GONE -- this tuple is the baseline every rebuild restores from, so
+# what is missing here is missing for good. A learner can assign
+# sys.meta_path to anything they like; whatever they build it out of, there is
+# no longer an entry in it that can resolve 'js'.
+#
+# Membership is decided by what a finder COULD do, so the probe runs before
+# the table is emptied. Judging afterwards would empty the table, make the
+# probe answer "no", and quietly readmit the finder that had the bridge.
+_sils_KEPT = []
+for _sils_f in tuple(getattr(_sils_sys, 'meta_path', ())):
+    if _sils_serves_bridge(_sils_f):
+        _sils_empty_bridge(_sils_f)
+    else:
+        _sils_KEPT.append(_sils_f)
+_sils_ORIGINAL = tuple(_sils_KEPT)
 
 class _sils_SealedImport:
     """Refuses to resolve the JS bridge: \`import js\` raises ImportError."""
@@ -188,7 +273,17 @@ def _sils_seal():
     sys.meta_path = []; a seal that re-wrapped THAT would end up guarding an
     empty list, and from then on every pure-Python stdlib import would fail
     for the rest of the session with no way for the learner to tell why.
+
+    It also re-empties anything on the current meta_path that can still serve
+    the bridge. Learner code runs BETWEEN runs, so a run that managed to get a
+    bridge finder back onto the list would otherwise have handed the NEXT run a
+    finder the baseline filter already decided to drop -- and re-emptying here
+    is what makes "the baseline has no js finder" true at every moment the
+    learner's own import statement can observe, not just after a boot.
     """
+    for _sils_f in tuple(getattr(_sils_sys, 'meta_path', ())):
+        if not isinstance(_sils_f, _sils_SealedImport):
+            _sils_empty_bridge(_sils_f)
     _sils_sys.meta_path = _sils_SealedMetaPath(_sils_ORIGINAL)
     for name in [n for n in list(_sils_sys.modules) if n.split('.')[0] in _sils_BLOCKED]:
         del _sils_sys.modules[name]

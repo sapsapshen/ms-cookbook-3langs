@@ -11,7 +11,7 @@
     "checks": [
       {
         "kind": "stdout_matches",
-        "pattern": "我是.{1,20}，我想学.{1,30}",
+        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学[\\s\\S]{1,30}",
         "weight": 2
       },
       {
@@ -26,12 +26,12 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and name in __sils_stdout, '打印出来的句子里必须出现 name 的值 —— 用变量，不要手写字面量'",
+        "code": "assert isinstance(name, str) and ''.join(name.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 name 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
         "weight": 3
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and role in __sils_stdout, '打印出来的句子里必须出现 role 的值 —— 用变量，不要手写字面量'",
+        "code": "assert isinstance(role, str) and ''.join(role.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 role 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
         "weight": 3
       }
     ],

@@ -41,12 +41,12 @@
       },
       {
         "kind": "stdout_matches",
-        "pattern": "swift\\s+sft(?=[\\s\\S]*--model[\\s=]+Qwen/Qwen2\\.5-0\\.5B)(?=[\\s\\S]*--dataset[\\s=]+\\[?'?alpaca-gpt4-data\\.json)(?=[\\s\\S]*--output[\\s=]+output/v0-5b-lora)(?=[\\s\\S]*--train-type[\\s=]+lora)(?=[\\s\\S]*--max-length[\\s=]+2048)",
+        "pattern": "swift\\s+sft(?=[\\s\\S]*--model[\\s=]+['\"]?Qwen/Qwen2\\.5-0\\.5B)(?=[\\s\\S]*--dataset[\\s=]+['\"\\[\\]]*alpaca-gpt4-data\\.json)(?=[\\s\\S]*--output[\\s=]+['\"]?output/v0-5b-lora)(?=[\\s\\S]*--train-type[\\s=]+['\"]?lora)(?=[\\s\\S]*--max-length[\\s=]+['\"]?2048)",
         "weight": 3
       },
       {
         "kind": "stdout_matches",
-        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "pattern": "swift\\s+sft[\\s\\S]*--train-type[\\s=]+['\"]?lora",
         "weight": 3
       }
     ],
@@ -70,7 +70,7 @@
       {
         "kind": "assert_python",
         "code": "assert split(1000, 0.1) == (900, 100)",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
@@ -79,7 +79,12 @@
       },
       {
         "kind": "assert_python",
-        "code": "t, v = split(7, 0.5)\nassert t + v == 7 and v == 3, (t, v)",
+        "code": "t, v = split(7, 0.5)\nassert (t, v) == (4, 3), (t, v)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "t, v = split(7, 0.5)\nassert v == 3 and t + v == 7, (t, v)",
         "weight": 3
       }
     ],
@@ -88,7 +93,7 @@
       "criteria": "¿Trató el resto de la división entera en lugar de redondear?"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size usa int() para truncar y train_size se obtiene por resta en lugar de una segunda división, así la suma es exactamente total sin perder muestras. Cuidado con el redondeo: en split(7, 0.5) tienes 7 x 0,5 = 3,5, que al truncar da 3, así que la respuesta es (4, 3); round(3.5) da 4 y la respuesta pasa a ser (3, 4): no se pierde ninguna muestra, pero el conjunto de validación ganó una. Truncar ambos lados es peor: obtenes (3, 3) y pierdes una muestra."
+    "explanation": "val_size usa int() para truncar y train_size se obtiene por resta en lugar de una segunda división, así la suma es exactamente total sin perder muestras. Cuidado con el redondeo: en split(7, 0.5) tienes 7 x 0,5 = 3,5, que al truncar da 3, así que la respuesta es (4, 3); round(3.5) da 4 y la respuesta pasa a ser (3, 4): no se pierde ninguna muestra, pero el conjunto de validación ganó una. Truncar ambos lados es peor: obtenes (3, 3) y pierdes una muestra. La corrección evalúa por separado la tupla (4, 3) y la afirmación «el conjunto de validación tiene exactamente 3 elementos», así que aunque una de las dos cambie de peso más adelante, una implementación con round() seguirá sin pasar. Truncar ambos lados falla igual: lo que pierde es una muestra de entrenamiento."
   },
   {
     "id": "ch13-ex03",

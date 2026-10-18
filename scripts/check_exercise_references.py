@@ -24,6 +24,44 @@ Assertion B (normative prose — "must not be skipped", "the key point is") is
 deliberately NOT a hard assertion; `normative_claims` explains why and keeps it
 as an advisory list instead.
 
+Simulating the sandbox is only half of the job, and this file simulates HALF of
+the half. Task 6's Pyodide worker publishes SEVEN `__sils_*` globals; this
+harness publishes ONE. The gaps are deliberate (the harness grades a reference
+it already controls), but they change what a passing result PROVES, so they are
+spelled out here rather than left for Task 6 to discover:
+
+  1. stderr is merged into the stdout buffer. The worker wraps the exec in
+     `contextlib.redirect_stdout(_out), contextlib.redirect_stderr(_out)` with
+     ONE buffer, and `evaluateHostChecks` is handed that single `stdout`. So
+     `stdout_matches` / `stdout_contains` / `stdout_equals` really mean
+     "stdout + stderr". This harness reproduces the merge, which means
+     `print(cmd, file=sys.stderr)` SATISFIES `stdout_matches` here. That is not
+     a harness bug — it is the worker contract — but a corpus author who wants
+     "printed to stdout" must know it, because a learner who writes to stderr
+     still passes.
+  2. `__sils_error` and `__sils_ok` are NOT simulated. The worker catches
+     `BaseException`, stores the traceback in `__sils_error`, and flips
+     `__sils_ok` to False; the message handler then blanks EVERY sandbox
+     outcome to `null` (`{ok: false, detail: 'code did not run'}`). This
+     harness lets the exception escape to `solve()` instead and reports it as a
+     non-standalone reference. Same verdict, different route.
+  3. `__sils_assert_ok` and `__sils_assert_detail` (the worker's per-assert
+     result slot, which produces the UI's failure message) are NOT simulated —
+     `outcome()` below reduces an assertion to a bare True/False.
+  4. `__sils_found` and `__sils_value` (the worker's variable-read slot behind
+     `var_equals` / `var_in_range`) are NOT simulated — `outcome()` reads
+     `namespace` directly. One real consequence: the worker distinguishes
+     "never assigned" (`found === false`) from "assigned a wrong value", while
+     here both are just a falsy comparison.
+  5. `__sils_src` does not exist anywhere — not in the worker, not here. A check
+     that needs the learner's SOURCE cannot be written yet; see the note at the
+     end of the Task 3 report.
+
+Task 6 MUST keep the worker aligned with this harness on points 1 and 2, since
+that is the semantics this file already proves the corpus against: stderr
+merged into the same buffer, and a crashed program scoring zero on the sandbox
+checks rather than being graded on partial output.
+
 Usage:
     python scripts/check_exercise_references.py
     pytest scripts/check_exercise_references.py
@@ -84,6 +122,14 @@ def _run(program):
     `assert_python` check can read what the learner printed. This harness
     reproduces both halves: the redirection and the global, so a check written
     against the real sandbox behaves identically here.
+
+    The redirection is the SAME single buffer for stdout and stderr, exactly as
+    in the worker — see point 1 in the module docstring. That is why a
+    `print(..., file=sys.stderr)` satisfies `stdout_matches` here, and Task 6
+    must not "fix" the worker into two buffers without changing this too.
+
+    Unlike the worker this does not publish `__sils_error` / `__sils_ok`; the
+    exception escapes to `solve()`. See point 2 in the module docstring.
     """
     namespace, out = {}, io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
@@ -100,6 +146,11 @@ def solve(item):
     exists so the report can still show a score for a broken reference, but it
     is reported as a failure: a reference that needs the starter is not
     standalone, which the corpus rules forbid.
+
+    A raising reference reaches the caller as `problem`; the worker reaches the
+    same verdict a different way, by publishing `__sils_ok = False` and blanking
+    every sandbox outcome (point 2 in the module docstring). Both score zero on
+    the sandbox checks, so the two paths agree on the verdict.
     """
     reference = item['reference']
     try:
@@ -119,7 +170,15 @@ def solve(item):
 
 
 def outcome(check, stdout, namespace):
-    """One check result, or None when the kind needs a learner answer."""
+    """One check result, or None when the kind needs a learner answer.
+
+    `stdout` is the MERGED stdout+stderr buffer (see point 1 in the module
+    docstring), so every `stdout_*` kind below sees stderr too — the same input
+    the worker's `evaluateHostChecks` receives. This function does not simulate
+    the worker's `__sils_assert_ok` / `__sils_assert_detail` /
+    `__sils_found` / `__sils_value` slots (points 3 and 4): it reduces each
+    check to a bare boolean and reads the namespace directly.
+    """
     kind = check['kind']
     try:
         if kind == 'assert_python':

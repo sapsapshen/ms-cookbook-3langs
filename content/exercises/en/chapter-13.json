@@ -41,12 +41,12 @@
       },
       {
         "kind": "stdout_matches",
-        "pattern": "swift\\s+sft(?=[\\s\\S]*--model[\\s=]+Qwen/Qwen2\\.5-0\\.5B)(?=[\\s\\S]*--dataset[\\s=]+\\[?'?alpaca-gpt4-data\\.json)(?=[\\s\\S]*--output[\\s=]+output/v0-5b-lora)(?=[\\s\\S]*--train-type[\\s=]+lora)(?=[\\s\\S]*--max-length[\\s=]+2048)",
+        "pattern": "swift\\s+sft(?=[\\s\\S]*--model[\\s=]+['\"]?Qwen/Qwen2\\.5-0\\.5B)(?=[\\s\\S]*--dataset[\\s=]+['\"\\[\\]]*alpaca-gpt4-data\\.json)(?=[\\s\\S]*--output[\\s=]+['\"]?output/v0-5b-lora)(?=[\\s\\S]*--train-type[\\s=]+['\"]?lora)(?=[\\s\\S]*--max-length[\\s=]+['\"]?2048)",
         "weight": 3
       },
       {
         "kind": "stdout_matches",
-        "pattern": "swift\\s+sft.*--train-type\\s+lora",
+        "pattern": "swift\\s+sft[\\s\\S]*--train-type[\\s=]+['\"]?lora",
         "weight": 3
       }
     ],
@@ -70,7 +70,7 @@
       {
         "kind": "assert_python",
         "code": "assert split(1000, 0.1) == (900, 100)",
-        "weight": 3
+        "weight": 2
       },
       {
         "kind": "assert_python",
@@ -79,7 +79,12 @@
       },
       {
         "kind": "assert_python",
-        "code": "t, v = split(7, 0.5)\nassert t + v == 7 and v == 3, (t, v)",
+        "code": "t, v = split(7, 0.5)\nassert (t, v) == (4, 3), (t, v)",
+        "weight": 3
+      },
+      {
+        "kind": "assert_python",
+        "code": "t, v = split(7, 0.5)\nassert v == 3 and t + v == 7, (t, v)",
         "weight": 3
       }
     ],
@@ -88,7 +93,7 @@
       "criteria": "Did the learner handle the remainder from floor division instead of rounding?"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than a second floor -- so the two always sum to exactly total without dropping samples. Watch out for rounding: in split(7, 0.5) you have 7 x 0.5 = 3.5, which floors to 3, so the answer is (4, 3); round(3.5) gives 4 and the answer becomes (3, 4) -- no sample is lost, but the validation set gained one. Flooring both sides is worse still: you get (3, 3) and drop a sample."
+    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than a second floor -- so the two always sum to exactly total without dropping samples. Watch out for rounding: in split(7, 0.5) you have 7 x 0.5 = 3.5, which floors to 3, so the answer is (4, 3); round(3.5) gives 4 and the answer becomes (3, 4) -- no sample is lost, but the validation set gained one. Flooring both sides is worse still: you get (3, 3) and drop a sample. Grading checks the tuple (4, 3) and the statement \"the validation set is exactly 3\" separately, so even if one of them is ever reweighted a round()-based implementation still cannot pass. Flooring both sides fails the same way -- what it drops is a training sample."
   },
   {
     "id": "ch13-ex03",

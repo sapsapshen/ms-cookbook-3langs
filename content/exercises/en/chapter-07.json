@@ -11,7 +11,7 @@
     "checks": [
       {
         "kind": "stdout_matches",
-        "pattern": "我是.{1,20}，我想学.{1,30}",
+        "pattern": "我是[\\s\\S]{1,20}，\\s*我想学[\\s\\S]{1,30}",
         "weight": 2
       },
       {
@@ -26,12 +26,12 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and name in __sils_stdout, 'the printed line must contain the value of name -- interpolate the variable, do not hand-write the literal'",
+        "code": "assert isinstance(name, str) and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
         "weight": 3
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and role in __sils_stdout, 'the printed line must contain the value of role -- interpolate the variable, do not hand-write the literal'",
+        "code": "assert isinstance(role, str) and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
         "weight": 3
       }
     ],

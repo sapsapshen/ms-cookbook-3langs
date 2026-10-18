@@ -1,0 +1,11 @@
+{
+  "title": "ModelScope Cookbook 练习集",
+  "version": 1,
+  "languages": ["zh", "en", "es"],
+  "packages": [],
+  "chapters": [
+    { "chapter": "chapter-7", "idPrefix": "ch07" },
+    { "chapter": "chapter-13", "idPrefix": "ch13" },
+    { "chapter": "chapter-33", "idPrefix": "ch33" }
+  ]
+}

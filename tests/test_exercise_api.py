@@ -186,6 +186,94 @@ def test_grading_rejects_an_unknown_exercise(site):
     assert guest.post(GRADE, json={'exercise': 'ch99-ex99', 'answer': 'x', 'criteria': 'y'}).status_code == 422
 
 
+def grading_reply(content, site, monkeypatch, status_code=200):
+    """Point the endpoint at a model that answers with exactly `content`."""
+    monkeypatch.setenv('EXERCISE_LLM_KEY', 'test-key')
+    monkeypatch.setenv('EXERCISE_LLM_BASE_URL', 'http://127.0.0.1:9/v1')
+
+    class FakeResponse:
+        def __init__(self):
+            self.status_code = status_code
+
+        def json(self):
+            return {'choices': [{'message': {'content': content}}]}
+
+    monkeypatch.setattr('app.httpx.post', lambda url, **kwargs: FakeResponse())
+    return TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'my answer', 'criteria': 'be clear'})
+
+
+# Everything a model can be asked for "just JSON" and answer anyway. `verdict.get`
+# on any of these raises AttributeError, which is not a ValueError: before the
+# isinstance check each one escaped the handler and became a 500, so the learner
+# lost the reference answer over a formatting detail.
+NON_OBJECT_VERDICTS = ['null', '3', '"0.9"', 'true', '[{"score":0.9}]', 'not json']
+
+
+@pytest.mark.parametrize('content', NON_OBJECT_VERDICTS)
+def test_grading_never_500s_on_a_non_object_verdict(site, monkeypatch, content):
+    """The rule is absolute: grading never blocks learning, so every failure to
+    read a verdict degrades to the reference answer with fallback:true."""
+    response = grading_reply(content, site, monkeypatch)
+    assert response.status_code == 503, content
+    assert response.json()['fallback'] is True, content
+
+
+@pytest.mark.parametrize('content', ['3.5', '[]', '{"score":0.5,"feedback":"ok"} "trailing"'])
+def test_grading_degrades_on_a_verdict_it_cannot_read(site, monkeypatch, content):
+    response = grading_reply(content, site, monkeypatch)
+    assert response.status_code == 503, content
+    assert response.json()['fallback'] is True, content
+
+
+@pytest.mark.parametrize('feedback', ['42', '{"a":1}', '[1,2]', 'null'])
+def test_a_readable_score_survives_a_non_string_feedback(site, monkeypatch, feedback):
+    """Only the prose is unreadable, and prose is optional: the score is the
+    part the learner cannot produce without the site, so it is still delivered
+    and the missing comment is simply absent."""
+    response = grading_reply('{"score":0.5,"feedback":%s}' % feedback, site, monkeypatch)
+    assert response.status_code == 200, feedback
+    assert response.json() == {'score': 0.5, 'feedback': ''}
+
+
+def test_object_feedback_is_not_stringified_into_python_repr(site, monkeypatch):
+    """`str({'a': 1})` is "{'a': 1}" -- a Python repr, not prose, handed to the
+    learner as if the model had written it. A non-string feedback is dropped."""
+    response = grading_reply('{"score":0.5,"feedback":{"a":1}}', site, monkeypatch)
+    assert response.status_code == 200
+    assert response.json() == {'score': 0.5, 'feedback': ''}
+
+
+def test_a_nested_verdict_still_grades(site, monkeypatch):
+    """A well-formed object is untouched by the type guard."""
+    response = grading_reply('{"score":0.6,"feedback":"clear"}', site, monkeypatch)
+    assert response.status_code == 200
+    assert response.json() == {'score': 0.6, 'feedback': 'clear'}
+
+
+def test_a_non_2xx_upstream_is_still_a_fallback(site, monkeypatch):
+    response = grading_reply('{"score":1}', site, monkeypatch, status_code=500)
+    assert response.status_code == 503
+    assert response.json()['fallback'] is True
+
+
+def test_a_llm_error_body_without_choices_is_a_fallback(site, monkeypatch):
+    """`['choices']` raises KeyError/IndexError on a 200 that carries an error
+    object; those arrive before the verdict is ever parsed."""
+    monkeypatch.setenv('EXERCISE_LLM_KEY', 'test-key')
+    monkeypatch.setenv('EXERCISE_LLM_BASE_URL', 'http://127.0.0.1:9/v1')
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {'error': {'message': 'no capacity'}}
+
+    monkeypatch.setattr('app.httpx.post', lambda url, **kwargs: FakeResponse())
+    response = TestClient(site[0]).post(GRADE, json={'exercise': SAMPLE_ID, 'answer': 'a', 'criteria': 'c'})
+    assert response.status_code == 503
+    assert response.json()['fallback'] is True
+
+
 ANY_EXERCISE = [(chapter, exercise) for chapter in sorted(IDS) for exercise in IDS[chapter]]
 CHAPTER_IDS = IDS[SAMPLE_CHAPTER]
 

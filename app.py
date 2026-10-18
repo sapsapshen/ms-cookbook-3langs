@@ -97,6 +97,15 @@ def migrate_exercise_progress(conn):
     """
     columns = {row['name']: row['type'] for row in conn.execute('PRAGMA table_info(exercise_progress)')}
     if columns.get('self_assessed') == 'TEXT': return
+    # `executescript` is safe here because it runs this script's own
+    # BEGIN IMMEDIATE/COMMIT: sqlite3 commits any pending outer transaction
+    # before executing the script and runs the DDL outside `with conn`, so the
+    # enclosing transaction cannot be left half-open and the rebuild is atomic in
+    # its own right. The dependency to avoid is the reverse order -- writing a
+    # row through `conn.execute` first and *then* calling this would commit that
+    # row at the implicit commit and mix it into the rebuild, so a failure below
+    # would leave the row durable against the old table. Call this before any
+    # row-level work in the same `with db()` block, which is what create_app does.
     conn.executescript(f'''
     BEGIN IMMEDIATE;
     CREATE TABLE exercise_progress_migrated({EXERCISE_PROGRESS_COLUMNS});
@@ -769,9 +778,21 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             return grading_unavailable('LLM 评分暂时不可用')
         try:
             verdict=json.loads(content)
+            # The prompt asks for JSON and real models comply with the letter far
+            # less often than they comply with the spirit: a bare number, a bare
+            # array or a null all come back from "只输出 JSON". `.get` on those
+            # raises AttributeError, which is not a ValueError and used to escape
+            # every `except` here and surface as a 500 -- the learner lost the
+            # reference answer over a formatting detail. Type is checked first so
+            # every unparsable verdict takes the same degradation path.
+            if not isinstance(verdict,dict): raise ValueError('verdict is not a JSON object')
             score=max(0.0,min(1.0,float(verdict.get('score',0))))
-            feedback=str(verdict.get('feedback',''))[:500]
-        except (ValueError, TypeError):
+            # feedback is prose the learner reads. A model that answers with an
+            # object would otherwise hand them Python's repr, so only a real
+            # string is carried over.
+            feedback=verdict.get('feedback','')
+            feedback=feedback[:500] if isinstance(feedback,str) else ''
+        except (ValueError, TypeError, AttributeError):
             LOGGER.exception('Exercise grading returned an unparsable verdict')
             return grading_unavailable('评分结果无法解析')
         return {'score':score,'feedback':feedback}

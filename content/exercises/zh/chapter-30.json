@@ -65,8 +65,8 @@
     "minutes": 5,
     "objective": "判断 Pi 的默认行为与安全边界",
     "prompt": "下面哪些说法与本章一致？（多选）\n\nA. Pi 默认交给模型的核心工具只有 read、write、edit 和 bash 四个\nB. Pi 默认会在删文件或跑命令前弹一个确认框，所以可以放心地在个人电脑上直接用\nC. 用 `--tools read,grep,find,ls` 可以把可用工具锁在只读范围内\nD. 把 Pi 放进 Docker 后，挂载进去的工作目录依然能写回宿主机\nE. Pi 会自动扫描 `~/.claude/skills` 和 `~/.codex/skills` 里已有的 Skills",
-    "explanation": "A、C、D、E 都出自本章。\n\nA 是本章讲 Pi 定位那节：「Pi 默认交给模型的核心工具只有四个：`read`、`write`、`edit` 和 `bash`」，后面才说新版 CLI 可以按需开放 `grep`、`find`、`ls`。本章对这一点的评价是「看起来东西不多，但 Agent 底层无非就是读、写、改、执行」。\n\nC 与 D 都在本章点名的那个坑里。本章说 Pi 默认**不会**像一些桌面 Agent 那样弹确认框，而是「直接继承了启动进程的文件、网络、凭据和系统权限」，所以给了一条「锁成只读」的命令；提到 Docker 隔离时又专门提醒「挂载进去的工作目录依然能写回宿主机」，把本机的 `~/.pi/agent` 挂进去则会把认证和会话文件一起暴露给容器。\n\nE 出自「把你现成的 Codex、Claude Skills 接进来」那一节 —— Pi 会自动扫描 `~/.pi/agent/skills/`、`~/.agents/skills/`、`.pi/skills/`、`.agents/skills/`，也可以在 `~/.pi/agent/settings.json` 里手工加上 `~/.claude/skills` 与 `~/.codex/skills`，然后 `/reload`。本章说这个设计和现在的 Agent Skills 标准是对齐的。\n\nB 与本章明确说法相反，方向也搞反了：本章那句是「No permission popups」，指的是**没有**保护。它紧接着说「对熟悉终端的人，这代表 YOLO 模式」，但接着就提醒小白「一句写得不够严谨的 Prompt，真有可能让 Agent 干坏事」。所以「可以放心直接用」是把一条风险提示读成了安全保证。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
-    "reference": "B 与本章相反：本章明说 Pi 默认没有权限弹窗（No permission popups），会直接继承启动进程的文件、网络、凭据和系统权限，所以小白要先用空白目录、读代码时用 `--tools` 锁只读，也不要让模型读 `auth.json` 和 `.env`。",
+    "explanation": "答案是 A、C、D。\n\nA 是本章讲 Pi 定位那节：「Pi 默认交给模型的核心工具只有四个：`read`、`write`、`edit` 和 `bash`」，后面才说新版 CLI 可以按需开放 `grep`、`find`、`ls`。本章对这一点的评价是「看起来东西不多，但 Agent 底层无非就是读、写、改、执行」。\n\nC 与 D 都在本章点名的那个坑里。本章说 Pi 默认**不会**像一些桌面 Agent 那样弹确认框，而是「直接继承了启动进程的文件、网络、凭据和系统权限」，所以给了一条「锁成只读」的命令；提到 Docker 隔离时又专门提醒「挂载进去的工作目录依然能写回宿主机」，把本机的 `~/.pi/agent` 挂进去则会把认证和会话文件一起暴露给容器。\n\n**B 与本章明确说法相反，方向也搞反了**：本章那句是「No permission popups」，指的是**没有**保护。它紧接着说「对熟悉终端的人，这代表 YOLO 模式」，但接着就提醒小白「一句写得不够严谨的 Prompt，真有可能让 Agent 干坏事」。所以「可以放心直接用」是把一条风险提示读成了安全保证。\n\n**E 恰恰是本章要澄清的那个差别，不能算「与本章一致」**。本章列出的**自动扫描**位置只有四个：`~/.pi/agent/skills/`、`~/.agents/skills/`、`.pi/skills/`、`.agents/skills/`。而 `~/.claude/skills` 与 `~/.codex/skills` **不在其中** —— 本章说「如果你已经积累了一堆 Claude Skills 或 Codex Skills，可以编辑全局设置 `~/.pi/agent/settings.json`」，手动把它们加进 `\"skills\"` 数组，再执行 `/reload` 才会生效。所以「自动扫描 `~/.claude/skills` 和 `~/.codex/skills`」与原文相反：这两个路径恰恰需要手工配置一步。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
+    "reference": "B 与本章相反：本章明说 Pi 默认没有权限弹窗（No permission popups），会直接继承启动进程的文件、网络、凭据和系统权限，所以小白要先用空白目录、读代码时用 `--tools` 锁只读，也不要让模型读 `auth.json` 和 `.env`。\n\nE 与本章相反：自动扫描的只有 `~/.pi/agent/skills/`、`~/.agents/skills/`、`.pi/skills/`、`.agents/skills/` 这四个位置；`~/.claude/skills` 与 `~/.codex/skills` 要手工写进 `~/.pi/agent/settings.json` 的 `\"skills\"` 数组，再 `/reload`。",
     "llm_rubric": {
       "enabled": false,
       "criteria": ""
@@ -77,8 +77,7 @@
         "correct": [
           "A",
           "C",
-          "D",
-          "E"
+          "D"
         ],
         "weight": 3
       }

@@ -228,9 +228,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EX = ROOT / 'content' / 'exercises'
-VENDOR = ROOT / 'assets' / 'vendor' / 'pyodide'
 LANGUAGES = ['zh', 'en', 'es']
-PYODIDE_VERSION = '0.26.4'
 
 TYPES = {'code', 'predict', 'fill', 'build', 'reflect'}
 SANDBOX_TYPES = {'code', 'build'}
@@ -245,7 +243,6 @@ CHECK_SPEC = {
     'self_assessed': (),
 }
 CJK = re.compile(r'[一-鿿　-〿＀-￯]')
-VENDOR_FILES = ['pyodide.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json', 'VERSION']
 
 
 def book_chapters():
@@ -348,7 +345,6 @@ def run_checks():
             assert zh == other, f'{chapter_id}/{lang} id set diverges: {sorted(zh ^ other)}'
         seen |= zh
     assert len(seen) == len(base_ids[1]), 'exercise ids repeat across chapters'
-    assert VENDOR.exists() or True, 'vendor checked separately'
     return manifest, corpus
 
 
@@ -356,13 +352,6 @@ def test_corpus_valid():
     manifest, corpus = run_checks()
     total = sum(len(v) for (c, lang), v in corpus.items() if lang == 'zh')
     assert total >= 1
-
-
-def test_pyodide_vendor_complete():
-    for name in VENDOR_FILES:
-        assert (VENDOR / name).exists(), f'missing vendor file {name}'
-    assert (VENDOR / 'VERSION').read_text(encoding='utf-8').strip() == PYODIDE_VERSION
-    assert (VENDOR / 'pyodide.asm.wasm').stat().st_size > 1_000_000
 
 
 if __name__ == '__main__':
@@ -499,10 +488,38 @@ done
 
 Expected: `FAIL: content/exercises/zh/chapter-07.json must be a non-empty array`（退出码 1）。这是**正确**行为，证明校验器在工作。
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 7: 把 vendor 校验移入 CI 步骤**
+
+Task 6 才会真正下载 Pyodide，所以 `test_pyodide_vendor_complete` 不能进 `scripts/test_exercises.py`（否则 Task 1 的 `pytest tests -q` 会在 vendor 缺失时失败）。把它放到 Task 6 自己的验证命令里。
+
+在 `scripts/vendor-pyodide.mjs` 的成功输出之后，追加一段内联校验（脚本已有 `VERSION` 写入与 `wasm` 大小检查），并新增独立入口 `scripts/test_pyodide_vendor.py`：
+
+```python
+"""Vendor integrity check. Runs after scripts/vendor-pyodide.mjs has fetched."""
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+VENDOR = ROOT / 'assets' / 'vendor' / 'pyodide'
+PYODIDE_VERSION = '0.26.4'
+VENDOR_FILES = ['pyodide.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json', 'VERSION']
+
+
+def test_vendor_complete():
+    for name in VENDOR_FILES:
+        assert (VENDOR / name).exists(), f'missing vendor file {name}'
+    assert (VENDOR / 'VERSION').read_text(encoding='utf-8').strip() == PYODIDE_VERSION
+    assert (VENDOR / 'pyodide.asm.wasm').stat().st_size > 1_000_000
+
+
+if __name__ == '__main__':
+    test_vendor_complete()
+    print(f'PASS: Pyodide {PYODIDE_VERSION} vendor complete')
+```
+
+- [ ] **Step 8: 提交**
 
 ```bash
-git add scripts/build-exercises.py scripts/test_exercises.py content/exercises/manifest.json content/exercises
+git add scripts/build-exercises.py scripts/test_exercises.py scripts/test_pyodide_vendor.py content/exercises/manifest.json content/exercises
 git commit -m "feat: add exercise corpus build script and validator"
 ```
 
@@ -538,7 +555,6 @@ schema 冻结的唯一强制质量闸门。三章覆盖简单代码题、参数�
     "prompt": "定义两个变量：`name` 存你的名字，`role` 存你想学的方向。然后打印一句话，格式为 `我是{name}，我想学{role}`。",
     "starter": "name = \"\"\nrole = \"\"\n# 在下面打印那句话\n",
     "checks": [
-      { "kind": "var_equals", "name": "name", "value": "", "weight": 0 },
       { "kind": "stdout_matches", "pattern": "我是.{1,20}，我想学.{1,30}", "weight": 3 }
     ],
     "llm_rubric": { "enabled": false, "criteria": "是否真的用了两个变量而不是把内容写死在字符串里" },
@@ -721,7 +737,6 @@ schema 冻结的唯一强制质量闸门。三章覆盖简单代码题、参数�
     "prompt": "Define two variables: `name` holding your name, and `role` holding what you want to learn. Then print one sentence formatted as `我是{name}，我想学{role}`.",
     "starter": "name = \"\"\nrole = \"\"\n# print the sentence below\n",
     "checks": [
-      { "kind": "var_equals", "name": "name", "value": "", "weight": 0 },
       { "kind": "stdout_matches", "pattern": "我是.{1,20}，我想学.{1,30}", "weight": 3 }
     ],
     "llm_rubric": { "enabled": false, "criteria": "Did the learner really use two variables instead of hard-coding the string?" },
@@ -904,7 +919,6 @@ schema 冻结的唯一强制质量闸门。三章覆盖简单代码题、参数�
     "prompt": "Define dos variables: `name` con tu nombre y `role` con lo que quieres aprender. Luego imprime una frase con el formato `我是{name}，我想学{role}`.",
     "starter": "name = \"\"\nrole = \"\"\n# imprime la frase abajo\n",
     "checks": [
-      { "kind": "var_equals", "name": "name", "value": "", "weight": 0 },
       { "kind": "stdout_matches", "pattern": "我是.{1,20}，我想学.{1,30}", "weight": 3 }
     ],
     "llm_rubric": { "enabled": false, "criteria": "¿Se usaron realmente dos variables en lugar de escribir el texto dentro de la cadena?" },
@@ -1820,14 +1834,15 @@ if (wasm < 1_000_000) throw new Error(`pyodide.asm.wasm looks truncated (${wasm}
 console.log(`Pyodide ${VERSION} vendored into assets/vendor/pyodide/`);
 ```
 
-- [ ] **Step 2: 下载 Pyodide**
+- [ ] **Step 2: 下载并校验 Pyodide**
 
 ```bash
 cd D:/Coding/ms-cookbook
 node scripts/vendor-pyodide.mjs
+.venv/bin/python scripts/test_pyodide_vendor.py
 ```
 
-Expected: 四行 `fetched ...` + `Pyodide 0.26.4 vendored into assets/vendor/pyodide/`。
+Expected: 四行 `fetched ...` + `Pyodide 0.26.4 vendored into assets/vendor/pyodide/` + `PASS: Pyodide 0.26.4 vendor complete`。
 
 网络失败时：不要改 CDN、不要改版本。检查代理（`127.0.0.1:7897`）后重试。**Pyodide 版本是锁定的（G9）**，换版本会破坏 `importScripts` 路径。
 
@@ -3502,6 +3517,7 @@ git commit -m "feat: add exercise copy for zh, en and es"
       - 'scripts/build-exercises.py'
       - 'scripts/test_exercises.py'
       - 'scripts/vendor-pyodide.mjs'
+      - 'scripts/test_pyodide_vendor.py'
       - 'scripts/test-exercise-grader.cjs'
       - 'scripts/test-exercise-store.cjs'
       - 'scripts/test-exercise-map.cjs'
@@ -3518,6 +3534,7 @@ git commit -m "feat: add exercise copy for zh, en and es"
         run: |
           python3 scripts/build-exercises.py --check
           python3 scripts/test_exercises.py
+          python3 scripts/test_pyodide_vendor.py
       - name: Verify exercise modules
         run: |
           node scripts/test-exercise-grader.cjs

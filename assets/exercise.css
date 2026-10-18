@@ -138,6 +138,17 @@
 /* The optional LLM opinion on a reflection. Styled as an aside, not a verdict:
    it is advice, it never changes the badge, and the reader already has their
    own self-assessment recorded by the time it can arrive. */
+.exercise-llm-advice {
+  font-size: .85rem;
+  line-height: 1.6;
+  margin-top: .6rem;
+  padding: .7rem .85rem;
+  border-left: 2px solid var(--brand);
+  border-radius: 0 8px 8px 0;
+  background: var(--surface);
+  color: var(--text);
+}
+
 .exercise-map { padding: 2rem 0; }
 .exercise-map-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .exercise-map-head h2 { font-size: 1.05rem; font-weight: 500; margin: 0; color: var(--text); }

@@ -108,16 +108,39 @@
     });
   }
 
+  /* How long the panel will wait on /api/exercises/grade before giving up on it.
+     The endpoint's own server-side timeout plus a slow upstream can add up, and
+     the panel was awaiting this with Run and Reset disabled -- so a hung call
+     turned "the optional opinion never arrived" into "this exercise is stuck".
+     Eight seconds is longer than a real grading call needs and short enough
+     that the reader is not waiting on it. */
+  const LLM_TIMEOUT_MS = 8000;
+
+  /* fetch with a client-side deadline. AbortController is the clean way to do
+     this, but it is not available in every browser the panel still runs in, so
+     the race is what actually bounds the wait -- and a lost abort leaves the
+     request to finish on its own without the panel ever hearing about it. */
+  function fetchWithTimeout(url, init, ms) {
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => { if (controller) controller.abort(); }, ms);
+    const options = controller ? Object.assign({ signal: controller.signal }, init) : init;
+    // A promise that never settles stands in for the aborted request, so the
+    // race has a loser either way instead of waiting on a dead socket.
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('llm timeout')), ms));
+    return Promise.race([fetch(url, options), timeout])
+      .finally(() => clearTimeout(timer));
+  }
+
   async function tryLlmGrade(exercise, code) {
     if (!exercise.llm_rubric || exercise.llm_rubric.enabled !== true) return null;
     if (!exercise.llm_rubric.criteria) return null;
     try {
-      const response = await fetch('/api/exercises/grade', {
+      const response = await fetchWithTimeout('/api/exercises/grade', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ exercise: exercise.id, answer: code, criteria: exercise.llm_rubric.criteria }),
-      });
+      }, LLM_TIMEOUT_MS);
       // 503 is the documented "LLM not configured / unavailable" answer and 429
       // is the rate limit. Both degrade to the deterministic score the reader
       // already has; neither is worth an error message or a retry.
@@ -125,6 +148,45 @@
       const data = await response.json();
       return typeof data.score === 'number' ? data : null;
     } catch { return null; }
+  }
+
+  /* Whether `node` is still inside the panel this module owns. An answer that
+     arrives after the reader collapsed the card, switched language or moved to
+     another chapter has nowhere to go: the node it was going to be written into
+     is no longer in the document, and appending to it would be a leak rather
+     than an update. */
+  function isAttached(node) {
+    if (!node || !panel) return false;
+    for (let current = node; current; current = current.parentNode) {
+      if (current === panel) return true;
+    }
+    return false;
+  }
+
+  /* The reflection path's use of the rubric.
+
+     ch13-ex03 and ch33-ex03 ship with `llm_rubric.enabled === true` and a
+     written criteria, but `reflect` exercises have no graded checks -- so until
+     this existed, nothing in the shipped corpus could ever reach
+     /api/exercises/grade. Opening all nine exercises and clicking every button
+     produced `/api/exercises/grade hit? false`.
+
+     The opinion is ADVICE, never a verdict. It is not passed to
+     Grader.grade(), it is not written to the store, and it cannot change the
+     badge: a self-assessment is never a pass (rule 3) no matter what the model
+     says about the answer. Failure and timeout both degrade to no opinion at
+     all -- no error line, nothing to dismiss -- because the reader's own
+     self-assessment has already been recorded by the time this runs. */
+  async function consultLlmRubric(exercise, answer, host) {
+    if (!exercise.llm_rubric || exercise.llm_rubric.enabled !== true) return;
+    if (!exercise.llm_rubric.criteria) return;
+    const llm = await tryLlmGrade(exercise, answer);
+    if (!llm || !llm.feedback) return;
+    // The reader may have collapsed the card or moved to another chapter while
+    // the call was in flight; writing into a detached node would be a leak, not
+    // an update.
+    if (!isAttached(host)) return;
+    host.replaceChildren(el('p', llm.feedback, 'exercise-llm-advice'));
   }
 
   const PROGRESS_PATH = '/api/exercises/progress';
@@ -606,10 +668,17 @@ function buildChoiceExercise(exercise, host) {
         // can only ever add the reader's own claim.
         record(exercise, { code: area.value, selfAssessed: choice });
         status.textContent = t('exercise.selfRecorded');
+        // The optional rubric, asked for AFTER the self-assessment is already
+        // recorded. See consultLlmRubric for why its answer is advice only.
+        consultLlmRubric(exercise, area.value, advice);
       });
       actions.append(button);
     }
-    host.append(label, area, actions, status);
+    // `advice` is where an LLM opinion lands, if one ever comes back. It is
+    // outside the button row so the three self-assessment buttons keep their
+    // place and a late answer cannot shift them under the reader's cursor.
+    const advice = el('div', null, 'exercise-advice');
+    host.append(label, area, actions, status, advice);
     renderSolution(exercise, host);
   }
 

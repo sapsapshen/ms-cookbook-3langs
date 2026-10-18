@@ -152,7 +152,52 @@ console.log('exercise panel against the real corpus');
   assert.deepEqual(fallbacks, [], 'these predict exercises could not parse their options');
 });
 
-await check('三语切换后每一章都能渲染对应语言的题目', () => {
+await check('语料里配了 rubric 的 reflect 题真的会请求评分接口（LLM 路径不再是死代码）', async () => {
+  /* The shipped corpus enables llm_rubric on exactly two exercises, and both
+     are `reflect`. Before the reflection path consulted it, no exercise in the
+     corpus could reach /api/exercises/grade: expanding all nine and clicking
+     every button produced "grade hit? false". This walks the real corpus and
+     asserts that every rubric-enabled exercise now asks, and that nothing is
+     asked for a rubric that is switched off. */
+  const asked = [];
+  let enabled = 0;
+  for (const chapterId of Object.keys(DATA.chapters)) {
+    for (const language of DATA.languages) {
+      for (const item of DATA.chapters[chapterId].exercises[language]) {
+        if (!item.llm_rubric || item.llm_rubric.enabled !== true) continue;
+        enabled += 1;
+        const h = boot({
+          data: DATA, hash: `#${chapterId}`, lang: language,
+          fetch: url => String(url).includes('/api/exercises/grade')
+            ? Promise.resolve({ok: false, status: 503, json: () => Promise.resolve({})})
+            : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+        });
+        const body = await expand(h, item.id);
+        // Whichever self-assessment the reader reaches for, the rubric is asked
+        // once it is recorded.
+        await buttonsIn(body)[0].fire('click');
+        await flush();
+        const hits = h.calls.fetch.filter(call => call.url.includes('/api/exercises/grade'));
+        assert.equal(hits.length, 1, `${item.id}/${language}: expected one grading call, saw ${hits.length}`);
+        asked.push(`${item.id}/${language}`);
+        // And the answer cannot reach the verdict: a 503 here means there is no
+        // opinion at all, and the self-assessment still stands on its own.
+        const saved = h.store().read(chapterId, item.id);
+        assert.equal(saved.selfAssessed, 'pass', `${item.id}: the self-assessment was not recorded`);
+        assert.equal(saved.passed, false, `${item.id}: a self-assessment became a pass`);
+        const badge = h.panel().querySelector(`.exercise-card[data-exercise="${item.id}"] .exercise-state`);
+        assert.equal(badge.dataset.state, 'self',
+          `${item.id}: the badge did not show the self-assessment`);
+        assert.equal(body.querySelector('.exercise-llm-advice'), null,
+          `${item.id}: a failed grading call still produced an opinion`);
+      }
+    }
+  }
+  assert.ok(enabled > 0, 'the corpus ships no rubric-enabled exercise -- the check would be vacuous');
+  console.log(`       (rubric-enabled exercises exercised: ${asked.length} across ${DATA.languages.length} languages)`);
+});
+
+  await check('三语切换后每一章都能渲染对应语言的题目', () => {
   for (const language of DATA.languages) {
     for (const chapterId of Object.keys(DATA.chapters)) {
       const h = boot({data: DATA, hash: `#${chapterId}`, lang: language});

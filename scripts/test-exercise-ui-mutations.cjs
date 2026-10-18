@@ -119,6 +119,15 @@ const MUTATIONS = [
   ['字母不连续也放行（B 丢了读者毫无提示）',
     "&& found.every((option, index) => option.letter.charCodeAt(0) === 'A'.charCodeAt(0) + index);",
     "&& true;"],
+  ['reflect 不问 rubric（语料里两道 reflect 的 LLM 路径再次变成死代码）',
+    "        consultLlmRubric(exercise, area.value, advice);",
+    "        void advice;"],
+  ['rubric 的分数拿去判定通过（自评被模型的分数收买）',
+    "    const llm = await tryLlmGrade(exercise, answer);\n    if (!llm || !llm.feedback) return;",
+    "    const llm = await tryLlmGrade(exercise, answer);\n    if (llm && llm.score >= 0.8) { record(exercise, { passed: true, score: llm.score }); return; }\n    if (!llm || !llm.feedback) return;"],
+  ['llm 没有客户端超时（挂起的请求把判定和按钮一起卡住）',
+    "    return Promise.race([fetch(url, options), timeout])\n      .finally(() => clearTimeout(timer));",
+    "    void timeout; void timer;\n    return fetch(url, options);"],
 ];
 
 let survivors = 0;

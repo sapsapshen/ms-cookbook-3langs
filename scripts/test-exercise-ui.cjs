@@ -525,6 +525,152 @@ async function main() {
     assert.ok(body.textContent.includes('变量用得好'), 'llm feedback was not shown');
   });
 
+  await check('llm 请求有客户端超时：挂起的调用不把判定和按钮一起卡住', async () => {
+    // The sandbox path awaited tryLlmGrade BEFORE Grader.grade, with Run and
+    // Reset disabled for the duration. An unbounded fetch therefore meant a
+    // hung connection produced no verdict, no feedback and no way to retry.
+    // A connection that never answers stands in for that hang; the assertion
+    // is that the panel reaches a verdict anyway.
+    const h = boot({
+      data: exerciseData([exercise({llm_rubric: {enabled: true, criteria: 'be clear'}})]),
+      sandbox: {run: () => Promise.resolve({ok: true, outcomes: [{ok: true, detail: ''}], ms: 1}), destroy() {}},
+      fetch: url => String(url).includes('/grade')
+        ? new Promise(() => {})   // never settles
+        : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: ''})}),
+    });
+    const body = await expand(h, 'ch07-ex01');
+    await buttonsIn(body, 'run')[0].fire('click');
+    // Past the 8s deadline the race has already lost to the timeout.
+    await new Promise(resolve => setTimeout(resolve, 8300));
+    assert.equal(h.calls.grade.length, 1,
+      'a hung grading call blocked the deterministic verdict entirely');
+    assert.equal(h.calls.grade[0].options.llm, null, 'the hung call was treated as an LLM opinion');
+    assert.equal(cardFor(h, 'ch07-ex01').querySelector('.exercise-state').dataset.state, 'passed');
+    assert.equal(buttonsIn(body, 'run')[0].disabled, false, 'Run stayed disabled after the deadline');
+    assert.equal(buttonsIn(body).filter(b => b.textContent === 'exercise.reset')[0].disabled, false,
+      'Reset stayed disabled after the deadline');
+  });
+
+  /* ---- reflect exercises consult the optional rubric too ----------------- */
+  /* Every rubric-enabled exercise in the shipped corpus is a `reflect`, and the
+     reflection path never called tryLlmGrade -- so nothing in the corpus could
+     reach /api/exercises/grade at all. The opinion is ADVICE: it is shown, and
+     it is not allowed to decide anything. */
+
+  const reflectWithRubric = (overrides) => exercise(Object.assign({
+    id: 'ch13-ex03', type: 'reflect', checks: [{kind: 'self_assessed'}],
+    llm_rubric: {enabled: true, criteria: '是否说清了调整方向'},
+  }, overrides));
+
+  await check('reflect 自评会请求评分接口并把意见作为参考展示', async () => {
+    const h = boot({
+      data: exerciseData([reflectWithRubric()]),
+      fetch: url => String(url).includes('/grade')
+        ? Promise.resolve({ok: true, json: () => Promise.resolve({score: 0.42, feedback: '还可以补充数据划分'})})
+        : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+    });
+    const body = await expand(h, 'ch13-ex03');
+    body.querySelector('textarea').value = '我把 lr 调小了';
+    await buttonsIn(body, 'pass')[0].fire('click');
+    await flush();
+    const calls = h.calls.fetch.filter(call => call.url.includes('/api/exercises/grade'));
+    assert.equal(calls.length, 1, 'the reflection never consulted the rubric');
+    const sent = JSON.parse(calls[0].init.body);
+    assert.equal(sent.exercise, 'ch13-ex03');
+    assert.equal(sent.criteria, '是否说清了调整方向', 'the rubric criteria were not sent');
+    assert.equal(sent.answer, '我把 lr 调小了', "the reader's own answer was not sent");
+    const advice = body.querySelector('.exercise-llm-advice');
+    assert.ok(advice, 'the opinion was fetched but never shown');
+    assert.equal(advice.textContent, '还可以补充数据划分');
+  });
+
+  await check('reflect 的 llm 分数不参与判定：自评永远不算通过，模型说什么都一样', async () => {
+    // Two extremes: a model scoring the answer 1.0, and one scoring it 0.0.
+    // Neither may produce a pass, because the reader's own claim is the only
+    // thing a reflection records.
+    for (const score of [1, 0]) {
+      const h = boot({
+        data: exerciseData([reflectWithRubric()]),
+        fetch: url => String(url).includes('/grade')
+          ? Promise.resolve({ok: true, json: () => Promise.resolve({score, feedback: `模型给了 ${score}`})})
+          : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+      });
+      const body = await expand(h, 'ch13-ex03');
+      await buttonsIn(body, 'pass')[0].fire('click');
+      await flush();
+      assert.equal(h.store().read('chapter-7', 'ch13-ex03').passed, false,
+        `a self-assessment became a pass because the model scored it ${score}`);
+      assert.equal(h.store().read('chapter-7', 'ch13-ex03').score, 0,
+        'the LLM score was written into the reader\'s progress');
+      assert.equal(cardFor(h, 'ch13-ex03').querySelector('.exercise-state').dataset.state, 'self');
+      // The grader is not even on this path: there are no graded checks to
+      // give it, so routing the opinion through it would be the only way for
+      // the score to leak into the verdict.
+      assert.equal(h.calls.grade.length, 0, 'the reflection went through the grader');
+      assert.ok(body.querySelector('.exercise-llm-advice'), `the ${score} opinion was dropped`);
+    }
+  });
+
+  await check('reflect 的 rubric 失败/超时时静默降级：不显示意见，也不影响自评', async () => {
+    for (const failure of [
+      () => Promise.reject(new Error('network down')),
+      () => Promise.resolve({ok: false, status: 503, json: () => Promise.resolve({})}),
+      () => Promise.resolve({ok: false, status: 429, json: () => Promise.resolve({})}),
+      () => new Promise(() => {}),
+    ]) {
+      const h = boot({
+        data: exerciseData([reflectWithRubric()]),
+        fetch: url => String(url).includes('/grade')
+          ? failure()
+          : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+      });
+      const body = await expand(h, 'ch13-ex03');
+      await buttonsIn(body, 'partial')[0].fire('click');
+      await flush();
+      // 503, 429, a rejected call: no opinion, no error line, no retry.
+      assert.equal(body.querySelector('.exercise-llm-advice'), null,
+        'a failed rubric call produced an opinion anyway');
+      assert.equal(body.querySelector('.exercise-status').textContent, 'exercise.selfRecorded',
+        'the self-assessment message was replaced by a grading error');
+      // The reader's own work is intact regardless.
+      assert.equal(h.store().read('chapter-7', 'ch13-ex03').selfAssessed, 'partial');
+      assert.equal(cardFor(h, 'ch13-ex03').querySelector('.exercise-state').dataset.state, 'self');
+    }
+  });
+
+  await check('reflect 的 rubric 关闭时不请求评分接口', async () => {
+    const h = boot({
+      data: exerciseData([reflectWithRubric({llm_rubric: {enabled: false, criteria: '写了 criteria 也不算'}})]),
+      fetch: url => String(url).includes('/grade')
+        ? Promise.reject(new Error('must not be called'))
+        : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+    });
+    const body = await expand(h, 'ch13-ex03');
+    await buttonsIn(body, 'pass')[0].fire('click');
+    await flush();
+    assert.equal(h.calls.fetch.filter(call => call.url.includes('/api/exercises/grade')).length, 0,
+      'a disabled rubric reached the grading endpoint from the reflection path');
+  });
+
+  await check('卡片被收起后迟到的 rubric 意见不会写进已经卸载的节点', async () => {
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const h = boot({
+      data: exerciseData([reflectWithRubric()]),
+      fetch: url => String(url).includes('/grade')
+        ? gate.then(() => ({ok: true, json: () => Promise.resolve({score: 0.5, feedback: '迟到的意见'})}))
+        : Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: '', loginEnabled: true})}),
+    });
+    const body = await expand(h, 'ch13-ex03');
+    await buttonsIn(body, 'pass')[0].fire('click');
+    h.window.ExerciseUI.teardown();
+    release();
+    await flush();
+    // No throw, and nothing attached to a document that is gone.
+    assert.equal(body.querySelector('.exercise-llm-advice'), null,
+      'an opinion was written into a card that had been torn down');
+  });
+
   await check('未登录时跳过同步，本地进度照常保留', async () => {
     const passing = {run: () => Promise.resolve({ok: true, outcomes: [{ok: true, detail: ''}], ms: 1}), destroy() {}};
     const h = boot({fetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({user: null, csrf: ''})}), sandbox: passing});

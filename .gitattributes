@@ -1,3 +1,18 @@
+# Scripts and prose: keep them LF so the node/python sources hash the same on
+# every platform.
+#
+# ORDER MATTERS HERE. git applies the LAST matching line, so the vendored-tree
+# rules have to come AFTER the text rules: `*.js text eol=lf` would otherwise
+# re-assert `text` on pyodide.js and pyodide.asm.js after `binary` had cleared
+# it, and the file would be marked text while the comment above claimed it was
+# binary. `git check-attr -a assets/vendor/pyodide/pyodide.js` is the check
+# that this file still says what it means.
+*.js text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+
 # Vendored Pyodide is published byte-for-byte on jsdelivr. core.autocrlf=true
 # would rewrite pyodide.js / pyodide.asm.js / pyodide-lock.json on a Windows
 # checkout, which (a) breaks the sha256 verification in
@@ -5,11 +20,9 @@
 # upstream bytes. Mark them binary so they land exactly as downloaded.
 *.wasm binary
 assets/vendor/** binary
-
-# Scripts and prose: keep them LF so the node/python sources hash the same on
-# every platform.
-*.js text eol=lf
-*.cjs text eol=lf
-*.mjs text eol=lf
-*.py text eol=lf
-*.md text eol=lf
+# `-text` repeated rather than relying on the `binary` macro: a macro only sets
+# what it names, and `eol` is still lf from the *.js rule above, so a stale
+# attribute could pair with it. Spelling out the three attributes makes the
+# intent checkable with check-attr and immune to rule reordering.
+assets/vendor/**/*.js -text -diff -merge
+assets/vendor/**/*.json -text -diff -merge

@@ -148,10 +148,53 @@ const MUTATIONS = [
     "    if (false) return;"],
 ];
 
+/* Sampling. Each mutation costs a full UI-suite run (~8 s locally), so the
+ * whole set is 45 x 8 s -- measured at 375908 ms (6.3 min) on Windows. That is
+ * past a reasonable CI step, but "excluded because slow" is not the same as
+ * "cannot be checked": a mutation harness nobody runs is not evidence, and the
+ * 45 mutations are independent (each restores the file before the next), so a
+ * deterministic sample carries the same kind of proof at a fraction of the cost.
+ *
+ * SILS_MUTATION_STRIDE=N runs every Nth mutation. Stride 1 (the default) runs
+ * all 45 and is still what you want locally. CI uses a stride, so the job
+ * carries proof that a mutation DOES turn the suite red without paying for the
+ * whole set. The offset is fixed (always index 0, N, 2N...), so the sample is
+ * deterministic: the same CI run always exercises the same mutations instead of
+ * drifting run to run.
+ *
+ * This script rewrites assets/exercise-ui.js in place, so it must never share a
+ * step with anything else that reads that file -- a concurrent step would see a
+ * mutated panel and fail for the wrong reason. The workflow gives it its own
+ * step for exactly that reason. */
+function selectMutations(stride) {
+  const all = MUTATIONS.map(([name], index) => ({name, index}));
+  if (stride <= 1) return all;
+  return all.filter((_, position) => position % stride === 0);
+}
+
+const stride = Number(process.env.SILS_MUTATION_STRIDE) || 1;
+if (!Number.isInteger(stride) || stride < 1) {
+  console.error(`SILS_MUTATION_STRIDE must be a positive integer, got ${JSON.stringify(process.env.SILS_MUTATION_STRIDE)}`);
+  process.exit(2);
+}
+const selected = selectMutations(stride);
+
+/* SILS_MUTATION_LIST prints what a given stride WOULD run and exits without
+ * touching assets/exercise-ui.js. It exists so the stride can be asserted
+ * cheaply: proving "stride 5 picks 9 of 45" by running it would cost 73 s per
+ * stride. Sampling has to be a real subset, not a smaller number in the log,
+ * so the selection is inspectable without paying for the runs. */
+if (process.env.SILS_MUTATION_LIST) {
+  for (const {name, index} of selected) console.log(`  [${index}] ${name}`);
+  console.log(`\nstride ${stride}: would run ${selected.length} of ${MUTATIONS.length} mutations`);
+  process.exit(0);
+}
+
 let survivors = 0;
-for (const [name, from, to] of MUTATIONS) {
+for (const {index} of selected) {
+  const [name, from, to] = MUTATIONS[index];
   if (!original.includes(from)) {
-    console.log(`  SKIP  ${name}（锚点未命中，变异未生效）`);
+    console.log(`  SKIP  [${index}] ${name}（锚点未命中，变异未生效）`);
     survivors += 1;
     continue;
   }
@@ -174,8 +217,11 @@ for (const [name, from, to] of MUTATIONS) {
   }
   const killed = crashed || /FAIL:/.test(output);
   const failing = (output.match(/^ {2}FAIL/gm) || []).length;
-  console.log(`  ${killed ? 'killed' : 'SURVIVED'}  ${name}${killed ? ` (${failing} failing)` : ''}`);
+  console.log(`  ${killed ? 'killed' : 'SURVIVED'}  [${index}] ${name}${killed ? ` (${failing} failing)` : ''}`);
   if (!killed) survivors += 1;
 }
-console.log(`\n${survivors ? 'SURVIVORS' : 'all killed'}: ${MUTATIONS.length - survivors} killed, ${survivors} survived`);
+/* The counts come from the list, not from tallying the loop, so "ran N of 45"
+ * stays true even when a mutation was skipped for a missed anchor. */
+console.log(`\nstride ${stride}: ran ${selected.length} of ${MUTATIONS.length} mutations`);
+console.log(`${survivors ? 'SURVIVORS' : 'all killed'}: ${selected.length - survivors} killed, ${survivors} survived`);
 process.exit(survivors ? 1 : 0);

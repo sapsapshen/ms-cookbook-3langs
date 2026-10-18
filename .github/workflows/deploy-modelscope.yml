@@ -33,6 +33,7 @@ on:
       - 'scripts/test-exercise-ui.cjs'
       - 'scripts/test-exercise-ui-corpus.cjs'
       - 'scripts/test-exercise-ui-harness.cjs'
+      - 'scripts/test-exercise-ui-mutations.cjs'
       - 'scripts/test-exercise-map.cjs'
       - 'scripts/test-exercise-wiring.cjs'
       - 'scripts/test-exercise-locale.cjs'
@@ -113,6 +114,24 @@ jobs:
           # "the sandbox broke" instead of failing whichever script happened to
           # share the step, and it stays well inside the job's 20-minute cap.
           node scripts/test-exercise-sandbox-real.cjs
+      - name: Verify the UI suite can still fail (sampled mutations)
+        run: |
+          # The mutation harness is the only evidence that the UI suite would
+          # actually catch a regression: it rewrites assets/exercise-ui.js, runs
+          # the UI suite, and requires it to go RED. A suite that cannot fail is
+          # not a defence, and that is exactly the property no other check here
+          # can observe.
+          #
+          # All 45 mutations take ~6 min (measured 375908 ms), so CI takes a
+          # deterministic stride-5 sample: 9 mutations, ~73 s locally. The 45
+          # remain available locally with `node scripts/test-exercise-ui-mutations.cjs`
+          # (stride 1). The sample is still proof that mutations ARE killed --
+          # a harness that survived would fail this step.
+          #
+          # It gets a step to itself because it rewrites assets/exercise-ui.js
+          # in place: anything reading that file concurrently would see the
+          # mutation, not the shipped panel.
+          SILS_MUTATION_STRIDE=5 node scripts/test-exercise-ui-mutations.cjs
       - name: Verify the CI wiring itself
         run: node scripts/test-ci-coverage.cjs
       - name: Sync and deploy the website

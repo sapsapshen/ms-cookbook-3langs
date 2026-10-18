@@ -60,6 +60,7 @@ const REQUIRED = [
   'scripts/test-exercise-wiring.cjs',
   'scripts/test-exercise-locale.cjs',
   'scripts/test-i18n.cjs',
+  'scripts/test-exercise-ui-mutations.cjs',
 ];
 
 /* scripts/test-*.cjs files that are intentionally not standalone CI steps.
@@ -67,8 +68,6 @@ const REQUIRED = [
 const EXCLUDED = new Map([
   ['scripts/test-exercise-ui-harness.cjs',
    'a shared harness required by test-exercise-ui / -map / -ui-corpus; running it alone executes nothing'],
-  ['scripts/test-exercise-ui-mutations.cjs',
-   'a mutation harness: it rewrites assets/exercise-ui.js and re-runs the whole UI suite 45 times (~6 min locally), which is far past this job\'s budget'],
   ['scripts/test-book-search.cjs',
    'pre-existing suite, never wired into CI before this feature; out of scope here'],
   ['scripts/test-reader-routes.cjs',
@@ -161,7 +160,7 @@ function readWorkflow() {
   return readFileSync(WORKFLOW, 'utf8');
 }
 
-test('15 个校验脚本都在 workflow 的某个 run: 里执行', () => {
+test('16 个校验脚本都在 workflow 的某个 run: 里执行', () => {
   const runs = parseRunBlocks(readWorkflow());
   assert.ok(runs.length >= 5, `only ${runs.length} run: blocks parsed; the parser is not seeing the steps`);
   const executed = scriptsIn(runs.join('\n'));
@@ -169,7 +168,7 @@ test('15 个校验脚本都在 workflow 的某个 run: 里执行', () => {
     '这些脚本没有在 CI 里执行，改动它们不会得到任何反馈');
 });
 
-test('15 个校验脚本都在 paths: 白名单里，否则 workflow 根本不会被触发', () => {
+test('16 个校验脚本都在 paths: 白名单里，否则 workflow 根本不会被触发', () => {
   const paths = new Set(parsePaths(readWorkflow()));
   assert.ok(paths.size >= 20, `only ${paths.size} paths: entries parsed; the parser is not seeing the filter`);
   assert.deepEqual(missing(REQUIRED, paths), [],
@@ -260,10 +259,10 @@ test('反向验证：paths: 整体消失时必须报红，而不是因为"没解
   const text = readWorkflow().replace(/^(\s*)paths:\s*$/m, '$1disarmed:');
   assert.deepEqual(parsePaths(text), [], 'paths: 被改名后仍读出了条目，说明它在读别的东西');
   assert.deepEqual(missing(REQUIRED, new Set(parsePaths(text))), REQUIRED,
-    'paths: 整体消失后，15 个脚本必须全部报为漏项');
+    'paths: 整体消失后，16 个脚本必须全部报为漏项');
   // Same for run: blocks.
   assert.deepEqual(missing(REQUIRED, scriptsIn('')), REQUIRED,
-    '一个脚本都不执行时，漏项检测必须把 15 个全报出来');
+    '一个脚本都不执行时，漏项检测必须把 16 个全报出来');
 });
 /* Self-check for the floor above. The floor is a guard against a suite that
  * goes quiet, and a guard nobody has seen fire is indistinguishable from no
@@ -292,6 +291,60 @@ test('反向验证：把用例数下限调到不可能达到，本文件必须�
   // proved nothing beyond "some exit code is nonzero".
   const clean = spawnSync(process.execPath, [__filename], {encoding: 'utf8', env: base});
   assert.equal(clean.status, 0, `未改动时本文件必须是绿的：\n${clean.stdout}${clean.stderr}`);
+});
+
+/* The mutation harness used to be EXCLUDED for being slow (~6 min for all 45),
+ * which is not the same as unrunnable: a harness nobody runs is not evidence
+ * that the UI suite can fail, and the 45 mutations are independent, so a
+ * deterministic stride carries the same proof for a fraction of the cost. These
+ * two tests pin the part that is easy to fake -- a stride that reports a smaller
+ * number while still running everything would make the CI step 6 minutes long
+ * and look sampled in the log. */
+function listSelected(stride) {
+  const {execFileSync} = require('node:child_process');
+  return execFileSync(process.execPath, [resolve(__dirname, 'test-exercise-ui-mutations.cjs')], {
+    encoding: 'utf8',
+    env: {...process.env, SILS_MUTATION_LIST: '1', SILS_MUTATION_STRIDE: String(stride)},
+  });
+}
+
+test('变异套件的抽样档真的只挑出子集，不是跑完再改日志', () => {
+  const picked = str => [...listSelected(str).matchAll(/^ {2}\[(\d+)\]/gm)].map(m => Number(m[1]));
+  assert.equal(picked(1).length, 45, 'stride 1 必须选中全部 45 个变异');
+  assert.equal(picked(5).length, 9, 'stride 5 必须正好选中 9 个变异');
+  assert.equal(picked(15).length, 3, 'stride 15 必须正好选中 3 个变异');
+  // The selected indices must be a genuine stride through the list -- the
+  // cheapest way for a harness to appear sampled is to run all 45 and print 9.
+  assert.deepEqual(picked(5), [0, 5, 10, 15, 20, 25, 30, 35, 40],
+    'stride 5 选中的不是每第 5 个，抽样是假的');
+  assert.ok(picked(5).every(index => index < 45), 'stride 5 选中了越界的变异下标');
+  // And a stride must actually shrink the set, or it is a relabelled full run.
+  assert.ok(picked(5).length < picked(1).length && picked(15).length < picked(5).length,
+    'stride 没有缩小规模，抽样是假的');
+  // Stride 1 is what a developer gets locally, and it must stay the full set.
+  assert.match(listSelected(1), /would run 45 of 45 mutations/);
+  assert.match(listSelected(5), /would run 9 of 45 mutations/);
+});
+
+test('workflow 用的是抽样档，而且它独占一个 step', () => {
+  const runs = parseRunBlocks(readWorkflow());
+  const steps = runs.filter(block => block.includes('test-exercise-ui-mutations.cjs'));
+  assert.equal(steps.length, 1, '变异套件必须出现在恰好一个 run: 块里');
+  const step = steps[0];
+  assert.match(step, /SILS_MUTATION_STRIDE=\d+/,
+    'CI 里的变异套件没有设置抽样步长 —— 要么是全量 45 个（~6 分钟），要么是没跑');
+  const stride = Number(/SILS_MUTATION_STRIDE=(\d+)/.exec(step)[1]);
+  const selected = [...listSelected(stride).matchAll(/^ {2}\[(\d+)\]/gm)].length;
+  assert.ok(selected > 0 && selected < 45,
+    `CI 的步长 ${stride} 选出 ${selected} 个变异，既不是子集也不是空集`);
+  /* The harness rewrites assets/exercise-ui.js in place, so a step that shares a
+   * run block with another script that reads that file would observe a mutated
+   * panel and fail for the wrong reason. Sharing a block is only safe if the
+   * mutation script is the only one in it. */
+  const others = runs.filter(block => block.includes('test-exercise-ui-mutations.cjs')
+    && /node scripts\/test-exercise-ui\.cjs|node scripts\/test-exercise-map\.cjs/.test(block));
+  assert.deepEqual(others, [],
+    '变异套件和另一个读 exercise-ui.js 的套件共用了同一个 step，会互相污染');
 });
 
 // Must be the LAST registration: it reads `registered`, which is only final

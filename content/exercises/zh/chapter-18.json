@@ -1,1 +1,101 @@
-[]
+[
+  {
+    "id": "ch18-ex01",
+    "chapter": "chapter-18",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "按 VAD 逻辑判断一次语音输入的起止",
+    "prompt": "语音助手要判断用户什么时候开始说话、什么时候结束一轮输入。音频按 30ms 一帧送进来。写函数 `segment(frames, silence=None)`：`frames` 是一个布尔列表，`True` 表示该帧有语音活动。从第一帧 `True` 算「语音开始」，语音开始之前的静音不计入计数。语音开始之后，连续出现 `silence` 帧 `False` 就认为这一轮结束（`silence` 为 `None` 时取 1 秒，即 `int(1000 / 30)` 帧）。返回 `\"none\"` 表示没有出现过语音，或者出现了语音但静音帧数始终不够阈值。否则返回 `(start, end)`：`start` 是第一帧 `True` 的下标；`end` 是**第一个被计入那串连续静音的 False 帧**的下标。换句话说 `end - start` 等于进入结束状态时已经累积的语音帧数。",
+    "starter": "def segment(frames, silence=None):\n    # 返回 \"none\" 或 (start, end)\n    return \"none\"\n\nprint(segment([False, False, True, True] + [False] * 40))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert segment([]) == 'none' and segment([False, False, False]) == 'none', '没有语音返回 none'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert segment([True, False, False], silence=1) == (0, 1), '阈值 1 帧时第二帧就结束'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([False, False, True, True] + [False] * 40) == (2, 4), '开始前的静音不计入，end 指向第一帧静音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 40) == (0, 5), 'end 是最后一帧语音 +1 的位置'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 32) == 'none', '32 帧静音不够 34 帧阈值'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 33) == (0, 5), '第 34 帧静音刚好凑满阈值'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert segment([True, False, False, True] + [False] * 3, silence=3) == (0, 4), 'silence 变小结束更早'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert segment([False, True] + [False] * 40) == (1, 2), '前导静音不累加，静音计数从 start 之后才起'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True, False, False, True] + [False] * 40) == (0, 4), '中途的短静音会被语音打断，只认最后一段连续静音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] + [False] * 34 + [True] * 3 + [False] * 34) == (0, 1), '达到阈值就立刻结束，不会越过后面的语音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 34,
+        "code": "for _pre in (0, 1, 3, 7):\n    for _speech in (1, 2, 5, 34, 35, 70):\n        for _tail in (0, 1, 32, 33, 34, 40, 80):\n            _f = [False] * _pre + [True] * _speech + [False] * _tail\n            _out = segment(_f)\n            if _tail >= 33:\n                assert _out == (_pre, _pre + _speech), (_pre, _speech, _tail, _out)\n            else:\n                assert _out == 'none', (_pre, _speech, _tail, _out)\n            for _s in (1, 2, 34):\n                _out2 = segment(_f, silence=_s)\n                if _tail >= _s:\n                    assert _out2 == (_pre, _pre + _speech), (_pre, _speech, _tail, _s, _out2)\n                else:\n                    assert _out2 == 'none', (_pre, _speech, _tail, _s, _out2)"
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 end 指向结束的那帧静音而不是最后一帧语音"
+    },
+    "reference": "def segment(frames, silence=None):\n    threshold = int(1000 / 30) if silence is None else silence\n    start = None\n    quiet = 0\n    for i, active in enumerate(frames):\n        if active:\n            if start is None:\n                start = i\n            quiet = 0\n            continue\n        if start is None:\n            continue\n        quiet += 1\n        if quiet >= threshold:\n            return start, i - threshold + 1\n    return 'none'\n\nprint(segment([False, False, True, True] + [False] * 40))",
+    "explanation": "本章的 VAD 逻辑是逐 30ms 一帧判断，连续出现 N 帧静音就结束一轮输入。这个函数把它变成可执行的。\n\n**语音开始前的静音不计入计数**。这是最容易写错的地方：`[False, False, True, True] + [False] * 40` 的 start 是 2 而不是 0。如果开始前的静音也累加，一开口就可能因为「前面已经安静很久」被立刻判结束。判据专门测了前导静音为 0、1、3、7 帧的情况。\n\n**`end` 指向第一帧静音，不是最后一帧语音**。题面把它定义成「第一个被计入那串连续静音的 False 帧」—— 这样 `end - start` 就正好等于这一轮攒了多少帧语音，报告里可以直接用。`[True] * 5 + [False] * 40` 返回 `(0, 5)` 就是这个意思。实现上是「当前下标减去阈值再加一」。\n\n**阈值是 34 帧，但需要 33 帧尾部静音才能凑满**。1 秒 ÷ 30ms = 33.33，向下取整成 34；计数器在**每帧静音时**加一，所以第 34 帧静音到来时才达到 34 —— 也就是说 `[True] * 5 + [False] * 33` 就已经结束（返回 `(0, 5)`），而 `[False] * 32` 还不够（返回 `\"none\"`）。判据把这两档分开测了；写成 `> threshold` 或把阈值算成 35 的实现会在 32/33 那组翻车。\n\n**中途的短静音会被语音打断**。`[True, False, False, True] + [False] * 40` 里开头有一串两帧静音，但后面又出现语音，所以那串静音不构成结束条件，`end` 落在最后一次连续静音的开头（4）。实现上要在检测到语音时把静音计数**清零**，不是累加。\n\n**达到阈值就立刻返回**。`[True] + [False] * 34 + [True] * 3 + [False] * 34` 的答案是 `(0, 1)`，后面那 3 帧语音不会被「回头修正」。逐帧处理的 VAD 就是这个行为：已经判定这一轮结束了，后面的音频属于下一轮。\n\n**静音不够阈值就返回 `\"none\"`**。这不是「返回起点就完事」—— 本题没有等待后续帧的机会，所以这一轮算没结束。主判据把前导静音 4 档 × 语音帧数 6 档 × 尾部静音 6 档 × 显式阈值 3 档共 432 组输入逐组重算期望值，这是专门防「把答案背下来」的。边界诚实说明：这 504 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch18-ex02",
+    "chapter": "chapter-18",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "排出语音助手的处理链路",
+    "prompt": "一个语音助手要「听懂问题并回答」。下面哪些说法与本章一致？（多选）\n\nA. 拿到录音后先经过 ASR 转成文字，再交给 LLM 回答，最后由 TTS 把回答读出来\nB. 直接把音频喂给 LLM 就够了，中间不需要 ASR 和 TTS\nC. VAD 的作用是判断用户什么时候开始说话、什么时候结束一轮语音输入\nD. WebRTC VAD 的检测等级可以设为 0 到 3，数字越大对非语音声音过滤越严格\nE. 用户说完之后要立刻切断输入，不能等一段静音来确认说完",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B 错在本章把链路明确分成 ASR、LLM、TTS 三段，每段各司其职。E 错在 VAD 正是靠连续静音来判断「说完」，立刻切断就无从判断起止。",
+    "explanation": "本章开头就画出了这条链路：**从开口提问到听见回答，中间经过 ASR → LLM → TTS**。ASR 把你说的话转成文字，LLM 接过问题来回答，TTS 把文字回答读出来。A 就是这条链路本身。\n\nC 和 D 出自 VAD 那一节。本章说 VAD 主要用于判断用户什么时候开始说话、什么时候结束一轮语音输入；WebRTC VAD 的检测等级可以设为 0、1、2、3，数字越大，对非语音声音的过滤越严格。\n\nE 与 VAD 的工作方式直接矛盾：判断「说完」恰恰要等一段静音出现。逐帧处理的实现里，`silence_seconds` 参数就是用来控制这段等待时长的 —— 设得太短会把话说一半就切断，设得太长则响应变慢。\n\nB 是对本章架构的误解。三个环节各有专门的模型（本节用的是 Qwen3-ASR、TTS 另有一个环节），把音频直接交给 LLM 并不是这条路线的做法。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

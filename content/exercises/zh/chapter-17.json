@@ -1,1 +1,86 @@
-[]
+[
+  {
+    "id": "ch17-ex01",
+    "chapter": "chapter-17",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "按质检规则表算出综合得分与结论",
+    "prompt": "客服质检有 8 个质检项，满分分别是 5、20、15、15、15、10、10、10，总分 100。写函数 `summarize(scores)`：传入一个字典，键是质检项名，值是该项实际得分（可能是小数）。返回字典，包含：\n\n`total` 是各项得分之和；`missing` 是满分为 100 但传进来的得分之和小于 100 时为 `\"incomplete\"`，否则为 `\"complete\"`；`worst` 是得分率（得分 ÷ 满分）最低的那一项的满分，没有低于 0.8 的项时为 `\"none\"`。得分率等于或低于 0.8 就算「低于」。",
+    "starter": "RUBRIC = {\n    '开场与身份说明': 5,\n    '需求识别与回应完整性': 20,\n    '信息准确性与风险控制': 15,\n    '问题解决与承诺闭环': 15,\n    '服务态度与专业措辞': 15,\n    '打断与通话节奏': 10,\n    '客户情绪与服务修复': 10,\n    '结束语与待办确认': 10,\n}\n\n\ndef summarize(scores):\n    # 返回 {'total': ..., 'missing': ..., 'worst': ...}\n    return {}\n\nprint(summarize(RUBRIC))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = summarize(RUBRIC)\nassert out['total'] == 100 and out['missing'] == 'complete' and out['worst'] == 'none'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'开场与身份说明': 5, '需求识别与回应完整性': 12})\nassert out['total'] == 17 and out['missing'] == 'incomplete'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'开场与身份说明': 4})\nassert out['total'] == 4 and out['missing'] == 'incomplete'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'需求识别与回应完整性': 16})\nassert out['worst'] == 20, '16/20 = 0.8，正好低于线也要算'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'需求识别与回应完整性': 17})\nassert out['worst'] == 'none', '17/20 = 0.85 高于 0.8，不该算 worst'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = summarize({'开场与身份说明': 4, '需求识别与回应完整性': 10})\nassert out['worst'] == 20, '10/20 = 0.5 比 4/5 = 0.8 更低，所以取满分 20 那一项'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({})\nassert out['total'] == 0 and out['missing'] == 'incomplete'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 26,
+        "code": "for _cut in (0.4, 0.6, 0.79, 0.8, 0.81, 0.95):\n    _scores = {}\n    for _k, _max in RUBRIC.items():\n        _scores[_k] = round(_max * 0.95, 2)\n    _scores['打断与通话节奏'] = round(10 * _cut, 2)\n    _out = summarize(_scores)\n    _want = 10 if 10 * _cut <= 8 else 'none'\n    assert _out['worst'] == _want, ('被改动的这一项要么独苗不合格，要么完全不计入', _cut, _out)\n    assert abs(_out['total'] - sum(_scores.values())) < 1e-9, (_cut, _out)\n    assert _out['missing'] == 'incomplete', (_cut, _out)\nfor _cut in (0.79, 0.8, 0.81, 0.95):\n    _scores = {k: round(v * _cut, 2) for k, v in RUBRIC.items()}\n    _out = summarize(_scores)\n    if _cut > 0.8:\n        assert _out['worst'] == 'none', (_cut, _out)\n    else:\n        _lowest = None\n        _full = 'none'\n        for _k, _max in RUBRIC.items():\n            _r = _scores[_k] / _max\n            if _lowest is None or _r < _lowest:\n                _lowest = _r\n                _full = _max\n        assert _out['worst'] == _full, ('整体同率时报得分率最低那一项的满分', _cut, _out)\n    assert _out['missing'] == 'incomplete', ('打折就凑不满 100 分', _cut, _out)"
+      },
+      {
+        "kind": "assert_python",
+        "code": "_full = {k: v for k, v in RUBRIC.items()}\nassert summarize(_full)['total'] == 100\n_partial = dict(_full)\n_partial['服务态度与专业措辞'] = 0\n_out = summarize(_partial)\nassert _out['missing'] == 'incomplete' and _out['worst'] == 15, _out",
+        "weight": 16
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解得分率要除以该项满分而不是总分"
+    },
+    "reference": "RUBRIC = {\n    '开场与身份说明': 5,\n    '需求识别与回应完整性': 20,\n    '信息准确性与风险控制': 15,\n    '问题解决与承诺闭环': 15,\n    '服务态度与专业措辞': 15,\n    '打断与通话节奏': 10,\n    '客户情绪与服务修复': 10,\n    '结束语与待办确认': 10,\n}\n\n\ndef summarize(scores):\n    total = sum(scores.values())\n    missing = 'complete' if total >= 100 else 'incomplete'\n    worst = 'none'\n    best_rate = None\n    for name, got in scores.items():\n        rate = got / RUBRIC[name]\n        if rate > 0.8:\n            continue\n        if best_rate is None or rate < best_rate:\n            best_rate = rate\n            worst = RUBRIC[name]\n    return {'total': total, 'missing': missing, 'worst': worst}\n\nprint(summarize(RUBRIC))",
+    "explanation": "本章那张质检规则表有 8 项、满分合计 100，所以这道题的三件事都直接从表里来。\n\n**得分率的分母是该项满分，不是总分**。`需求识别与回应完整性` 满分 20，打 16 分，得分率是 0.8；`开场与身份说明` 满分 5，打 4 分，得分率也是 0.8。这两项得分率相同，但百分制总分算出来完全不同 —— 用总当分母会把这两项误判成不一样的严重程度。\n\n**边界用「小于等于」**。题面写的是得分率等于或低于 0.8 就算「低于」，所以 16/20 = 0.8 这组必须算 `worst`，17/20 = 0.85 才不算。判据把这两种情况分开测了，写成 `<` 的实现会在 16 分那组翻车。\n\n**`worst` 返回的是满分，不是得分率**。这是题面明确指定的，因为报告里要写「需求识别与回应完整性：X/20」，需要的是分母。\n\n**得分率最低的那一项胜出**。判据里给了 `{'开场与身份说明': 4, '需求识别与回应完整性': 10}`，得分率分别是 0.8 和 0.5，所以 `worst` 应当是 20 —— 分低的那项，不分低但分大（这里 10 分也确实比 4 分低，所以这个例子两者结论一致）。主判据还测了一组**整体同率**的情况：8 项全部按同一个比例打分，此时所有项得分率相同，判据不写死是哪一项，只要求报出的满分值对应**得分率最低**的那一项 —— 打折到 0.79 时各档得分率几乎相同，浮点误差会让不同实现选到不同的项（实测 `round(5 * 0.79, 2) / 5` 会比 0.79 略小），所以按「得分率最低」重算期望值才公平。取最大分母或取最后一项的实现仍然会判不过。\n\n**`missing` 按总分判断**。传入的得分加起来不到 100 就是 `'incomplete'` —— 本章说「每个质检项除了给出得分，还需要说明判断结果和主要依据」，少一项说明报告是不完整的。空字典也要算 incomplete。\n\n主判据把三个不同截断比例 × 一套填满的得分全跑一遍，逐组按「得分率 ≤ 0.8」重算 `worst`、按总和重算 `total` 和 `missing` —— 这是专门防「把答案背下来」的。边界诚实说明：这 3 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch17-ex02",
+    "chapter": "chapter-17",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "设计一通客服质检报告的输出要求",
+    "prompt": "你要让模型为一通客服电话生成质检报告。请写出：① 报告里每一项必须包含哪些字段；② 哪些信息没法核验时该怎么写；③ 什么样的结论你认为不可接受，为什么。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否提到每个质检项要有得分、判断结果、主要依据、扣分原因、是否要求引用通话轮次或客服原话作为证据、是否提到业务规则类信息需注明「现有信息无法核验」、以及是否拒绝缺少依据的结论"
+    },
+    "reference": "① 每个质检项四个字段：得分（X/满分）、判断结果、主要依据、扣分原因。依据要具体 —— 引用对应的通话轮次、客服原话或语音综合分析结果，而不是「服务态度较差」这类空话。报告还要有综合得分、质检结论、总体评价、主要问题和改进建议。\n\n② 对于课程时间、请假规则这类需要企业业务规则才能验证的信息，如果没有提供相应的业务标准，只判断客服是否进行了明确回应，不直接判断其内容是否正确，并在报告中注明「现有信息无法核验」。这里的关键是「不判断」和「注明」两件事都要做 —— 既不能凭模型自己的知识编一个答案上去，也不能当成没问题就略过。\n\n③ 不可接受的结论是只给分数或评价、不给出处的。本章明确说「避免只给出『服务态度较差』『问题处理不到位』等缺少依据的结论」。理由是这种报告无法被复核：质检对象拿到结论也没有办法申诉，被检查的客服也不知道具体哪句话要改。反过来，有轮次和原话支撑的结论才既可信又可执行。",
+    "explanation": "这道题对应本章那一节的落点：**「按规则评分，让每个判断都有依据」**。章节标题里的「有依据」是重点，前半句「按规则评分」反而是次要的。\n\n第二问是这一节里最容易被忽略的操作细节。「现有信息无法核验」这个标注看起来只是个格式约定，实际上它承担了本章反复强调的那个责任边界：模型不知道企业业务规则时，不去猜。本章给的信息分析阶段产出里也区分了「根据通话内容判断」的项目和「需要结合录音分析」的项目 —— 同样是评分，不同质检项的证据来源根本不同。\n\n第三问其实在考质检系统本身的意义。质检报告是给别人看的：给业务方看结论，给客服看改进点，给被检查的人看依据。只给结论不给依据，这三个用途一个都实现不了。\n\n这题跑不了真实的语音分析与模型打分，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的要求清单。"
+  }
+]

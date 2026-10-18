@@ -1,1 +1,113 @@
-[]
+[
+  {
+    "id": "ch16-ex01",
+    "chapter": "chapter-16",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "把关键点坐标归一化到统一尺度",
+    "prompt": "不同人做同一个动作，关键点在画面里的坐标也不一样，所以要先归一化。关键点用字典给出，每个值是 `[x, y]`。写函数 `normalize(points)`，返回一个字典：\n\n髋部中心 = 左右髋的中点，肩部中心 = 左右肩的中点，躯干长度 = 这两个中心的欧氏距离（躯干长度小于 `1e-6` 时按 `1e-6` 取值）。归一化后的坐标是 `(原坐标 - 髋部中心) / 躯干长度`，逐个关键点算，返回同名的字典。",
+    "starter": "LM = {\n    'left_shoulder': [0.0, 0.0],\n    'right_shoulder': [0.0, 0.0],\n    'left_hip': [0.0, 0.0],\n    'right_hip': [0.0, 0.0],\n    'knee': [0.0, 0.0],\n}\n\n\ndef normalize(points):\n    # 返回归一化后的关键点字典\n    return points\n\nprint(normalize({\n    'left_shoulder': [0.0, 10.0],\n    'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0],\n    'right_hip': [6.0, 0.0],\n    'knee': [5.0, 20.0],\n}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "out = normalize({\n    'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0], 'knee': [5.0, 20.0],\n})\nassert abs(out['left_hip'][0] + 0.1) < 1e-9 and abs(out['left_hip'][1]) < 1e-9, out['left_hip']"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "out = normalize({\n    'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0], 'knee': [5.0, 20.0],\n})\nassert abs(out['left_shoulder'][1] - 1.0) < 1e-9, '躯干长 10，肩中心高 10，所以 y 归一化后是 1'\nassert abs(out['left_shoulder'][0] + 0.5) < 1e-9 and abs(out['right_shoulder'][0] - 0.5) < 1e-9, '横坐标用的是同一个躯干长，不是各点的横差'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = normalize({\n    'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0], 'knee': [5.0, 20.0],\n})\nassert abs(out['knee'][1] - 2.0) < 1e-9 and abs(out['knee'][0]) < 1e-9, out['knee']"
+      },
+      {
+        "kind": "assert_python",
+        "code": "a = normalize({'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n                  'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0]})\nb = normalize({'left_shoulder': [0.0, 100.0], 'right_shoulder': [100.0, 100.0],\n                'left_hip': [40.0, 0.0], 'right_hip': [60.0, 0.0]})\nassert all(abs(a[k][i] - b[k][i]) < 1e-9 for k in a for i in (0, 1)), '放大 10 倍后归一化结果应完全相同'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "flat = normalize({'left_shoulder': [1.0, 1.0], 'right_shoulder': [1.0, 1.0],\n                 'left_hip': [1.0, 1.0], 'right_hip': [1.0, 1.0], 'knee': [1.0, 1.0]})\nassert all(abs(flat[k][0]) < 1e-3 and abs(flat[k][1]) < 1e-3 for k in flat), '肩髋重合时分母要兜底，不能除零'",
+        "weight": 18
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = {'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n       'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0]}\nsnap = {k: list(v) for k, v in src.items()}\nnormalize(src)\nassert src == snap, 'normalize 不应该改动传入的坐标'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "import math\nfor _w in (1.0, 3.5, 10.0, 47.0):\n    for _dx in (0.0, 2.0, -4.0):\n        for _dy in (0.0, 5.0, -7.0):\n            _pts = {\n                'left_shoulder': [0.0, _w],\n                'right_shoulder': [_w, _w],\n                'left_hip': [4.0, 0.0],\n                'right_hip': [6.0, 0.0],\n                'knee': [4.0 + _dx, _dy],\n                'ankle': [6.0 - _dx, -_dy],\n            }\n            _snap = {k: list(v) for k, v in _pts.items()}\n            _out = normalize(_pts)\n            _hip = [(4.0 + 6.0) / 2, 0.0]\n            _sh = [(_w + 0.0) / 2, _w]\n            _len = math.hypot(_sh[0] - _hip[0], _sh[1] - _hip[1])\n            _len = _len if _len >= 1e-6 else 1e-6\n            for _k in _pts:\n                for _i in (0, 1):\n                    _want = (_pts[_k][_i] - _hip[_i]) / _len\n                    assert abs(_out[_k][_i] - _want) < 1e-9, (_w, _dx, _dy, _k, _i, _out[_k], _want)\n            assert _pts == _snap, 'normalize 不应该改动传入的坐标'\n_same = normalize({'left_shoulder': [5.0, 5.0], 'right_shoulder': [5.0, 5.0],\n                    'left_hip': [5.0, 5.0], 'right_hip': [5.0, 5.0]})\nfor _k in _same:\n    assert abs(_same[_k][0]) < 1e-3 and abs(_same[_k][1]) < 1e-3, ('肩髋完全重合时分母要兜底', _k, _same[_k])",
+        "weight": 36
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解归一化抹掉的是位置与大小，不是姿态"
+    },
+    "reference": "import math\n\n\ndef normalize(points):\n    mid_hip = [(points['left_hip'][i] + points['right_hip'][i]) / 2 for i in (0, 1)]\n    mid_sh = [(points['left_shoulder'][i] + points['right_shoulder'][i]) / 2 for i in (0, 1)]\n    torso = math.hypot(mid_sh[0] - mid_hip[0], mid_sh[1] - mid_hip[1])\n    if torso < 1e-6:\n        torso = 1e-6\n    return {k: [(v[0] - mid_hip[0]) / torso, (v[1] - mid_hip[1]) / torso]\n            for k, v in points.items()}\n\nprint(normalize({\n    'left_shoulder': [0.0, 10.0],\n    'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0],\n    'right_hip': [6.0, 0.0],\n    'knee': [5.0, 20.0],\n}))",
+    "explanation": "本章说「即使完成完全相同的动作，关键点在画面中的坐标也可能存在明显差异」，所以要先归一化再比较。这个函数就是本章那条公式。\n\n**两个中心都要先求中点**。髋部中心是左右髋的中点，肩部中心是左右肩的中点；躯干长度是这两个中心之间的欧氏距离。用左右肩的 x 坐标差当躯干长是错的 —— 本章特意用了斜置的一组数据（左肩 `[0,10]`、右肩 `[10,10]`、髋中心 `[5,0]`），躯干长正好是 10，横纵坐标用同一个分母。\n\n**减的是髋部中心，不是原点**。归一化之后髋部中心落在 `(0, 0)`，判据用 `out['left_hip']` 等于 `(-0.1, 0)` 来钉住这一点（髋中心 x 是 5，左髋 x 是 4，所以偏移是 -1，除以躯干长 10 得到 -0.1）。\n\n**分母要兜底**。肩和髋完全重合时躯干长是 0，直接除会抛 ZeroDivisionError；本章的处理是取 `1e-6`。判据用一组肩、髋、左右四点完全重合的坐标盯这条 —— 这时候归一化结果应当全是 0，不能抛异常。（如果重合点之外还有别的点，它会被除以 1e-6 得到很大的数，这是兜底值的直接后果，不是 bug。）\n\n**归一化抹掉的是位置和大小**。把整个人放大 10 倍，归一化结果必须逐字相同 —— 这正是本章说的「后续比较更加关注身体姿态本身，而不是人在画面中的位置和大小」。判据里明确测了这一点：这是判断实现是否真的做了除以躯干长的最快方法。\n\n主判据把躯干长 4 档 × 髋中心横向偏移 3 档 × 纵向偏移 3 档共 36 组输入全跑一遍，逐坐标按公式重算，并且检查传入的字典没被就地改写。这是专门防「把答案背下来」的。边界诚实说明：这 36 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch16-ex02",
+    "chapter": "chapter-16",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "用向量点积算关节角度",
+    "prompt": "给定三个关键点 A、B、C（B 是要算角度的关节），写函数 `angle(a, b, c)` 返回 B 处的夹角，单位是度。两个向量是 `u = a - b` 和 `v = c - b`，角度 = `arccos(u·v / (|u| × |v|))`，再乘 180/π。任一向量长度为 0 时返回 `None`。用 `math` 模块即可。",
+    "starter": "import math\n\n\ndef angle(a, b, c):\n    # 返回 B 处的夹角（度），任一向量为零时返回 None\n    return None\n\nprint(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert abs(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]) - 90.0) < 1e-6",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert abs(angle([0.0, 1.0], [0.0, 0.0], [0.0, -1.0]) - 180.0) < 1e-6, '反向的两个向量是 180 度'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert abs(angle([1.0, 0.0], [0.0, 0.0], [1.0, 0.0]) - 0.0) < 1e-6, '同向的两个向量是 0 度'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert angle([1.0, 1.0], [1.0, 1.0], [0.0, 0.0]) is None, '第一个向量为零长度要返回 None'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert angle([0.0, 0.0], [1.0, 1.0], [1.0, 1.0]) is None, '第二个向量为零长度要返回 None'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert angle([2.0, 3.0], [0.0, 0.0], [5.0, 1.0]) == angle([2.0, 3.0], [0.0, 0.0], [5.0, 1.0]), '同样的输入要给出同样的结果'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "weight": 34,
+        "code": "import math\nfor _theta in (0, 15, 30, 45, 60, 90, 120, 150, 179):\n    _r = math.radians(_theta)\n    _a = [math.cos(_r), math.sin(_r)]\n    _c = [1.0, 0.0]\n    for _scale in (1.0, 3.0, 0.25):\n        _pa = [_a[0] * _scale, _a[1] * _scale]\n        for _shift in ([0.0, 0.0], [4.0, -2.0], [-7.0, 3.5]):\n            _b = [1.0, 1.0]\n            _P = [_b[0] + _pa[0], _b[1] + _pa[1]]\n            _Q = [_b[0] + _c[0], _b[1] + _c[1]]\n            _got = angle(_P, _b, _Q)\n            assert abs(_got - _theta) < 1e-6, (_theta, _scale, _shift, _got)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 14,
+        "code": "for _b in ([1.0, 2.0], [0.0, 0.0]):\n    assert angle(_b, _b, [3.0, 4.0]) is None, 'A 与 B 重合要返回 None'\n    assert angle([3.0, 4.0], _b, _b) is None, 'C 与 B 重合要返回 None'"
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解夹角算的是 B 处两条骨段的夹角"
+    },
+    "reference": "import math\n\n\ndef angle(a, b, c):\n    u = [a[0] - b[0], a[1] - b[1]]\n    v = [c[0] - b[0], c[1] - b[1]]\n    lu = math.hypot(u[0], u[1])\n    lv = math.hypot(v[0], v[1])\n    if lu == 0 or lv == 0:\n        return None\n    cos = (u[0] * v[0] + u[1] * v[1]) / (lu * lv)\n    cos = max(-1.0, min(1.0, cos))\n    return math.degrees(math.acos(cos))\n\nprint(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]))",
+    "explanation": "本章的公式是 `arccos((A-B)·(C-B) / (|A-B| × |C-B|))`，算出来的是 **B 处**两条骨段的夹角 —— 计算膝关节角度时 A 是髋、B 是膝、C 是踝，得到的才是膝盖那个角。\n\n**两个向量都要从 B 出发减**。写成 `a - b` 和 `b - c` 是最常见的错，因为第二个向量的起点就不对了，而且这样的点积在某些形状下恰好给出一个看起来合理的数。\n\n**长度用欧氏距离**。本章代码用的是 `np.linalg.norm`，在二维就是 `math.hypot`。用曼哈顿距离（`|dx| + |dy|`）会让所有非直角的角度都算错。\n\n**零长度返回 None**。三点重合时除零，这对应「这个关节根本没检测到」。判据把两种情况分开测了：`a == b` 和 `c == b` 都要返回 `None`。\n\n**余弦值夹不夹紧都行（实测）**。理论上浮点误差可能让 `(u·v)/(lu*lv)` 算出 1.0000000000000002 这种值，`math.acos` 会抛 `ValueError`。但实测判据里那 81 组输入（含 179 度这一档）都不会触发它，所以这条判据不区分两种写法。如果你在自己的真实数据上遇到过崩溃，再加 `max(-1.0, min(1.0, cos))` 即可 —— 这是防御性写法，不是本题考点。\n\n主判据把 9 个目标角度 × 3 档骨段长度 × 3 档关节位置共 81 组输入全跑一遍，逐组按公式重算 —— 这是专门防「把答案背下来」的：查表覆盖不了 81 组输入。边界诚实说明：这 81 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  }
+]

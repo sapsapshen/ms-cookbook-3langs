@@ -1,1 +1,87 @@
-[]
+[
+  {
+    "id": "ch19-ex01",
+    "chapter": "chapter-19",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "把长文档切成带重叠的片段",
+    "prompt": "RAG 系统以 Chunk 为基本单位做向量化与检索。先按空行（两个换行符）把文本拆成段落，去掉每一段首尾空格后跳过空段落。然后把相邻段落依次合并：一个段落如果加进当前片段后总长度不超过 `chunk_size` 就合并进去（当前片段为空时直接放进去，非空时用一个空行连接）；放不下就先把当前片段收进结果，再开始一个新片段。返回片段列表。",
+    "starter": "def split_chunks(text, chunk_size=500, chunk_overlap=0):\n    # 返回片段列表\n    return []\n\nprint(split_chunks('第一段。\\n\\n第二段。\\n\\n第三段。', chunk_size=100))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('第一段。\\n\\n第二段。', chunk_size=100)\nassert out == ['第一段。\\n\\n第二段。'], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('abc\\n\\n\\n\\n   \\n\\ndef', chunk_size=100)\nassert out == ['abc\\n\\ndef'], '空段和纯空白段都要跳过'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('aaaa\\n\\nbbbb\\n\\ncccc', chunk_size=5)\nassert out == ['aaaa', 'bbbb', 'cccc'], out",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('aaaa\\n\\nbbbb\\n\\ncccc', chunk_size=8)\nassert out == ['aaaa\\n\\nbbbb', 'cccc'], '放得下就合并，放不下才开新片段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('   padded   ', chunk_size=100)\nassert out == ['padded'], '每段要先 strip 再合并'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split_chunks('', chunk_size=100) == []\nassert split_chunks('\\n\\n\\n', chunk_size=100) == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = split_chunks('x' * 20, chunk_size=5)\nassert out == ['x' * 20], '超长单段不会被切成 4 段，整段原样保留'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _size in (1, 3, 5, 8, 13, 40, 200):\n    for _n in (0, 1, 2, 5, 9):\n        for _pad in ('', '  '):\n            _paras = [_pad + chr(97 + _i) * (2 + _i) + _pad for _i in range(_n)]\n            _text = '\\n\\n'.join(_paras)\n            _out = split_chunks(_text, chunk_size=_size)\n            _expect = []\n            _cur = ''\n            for _p in _paras:\n                _p = _p.strip()\n                if not _p:\n                    continue\n                if len(_cur) + len(_p) <= _size:\n                    _cur = _p if not _cur else _cur + '\\n\\n' + _p\n                else:\n                    if _cur:\n                        _expect.append(_cur)\n                    _cur = _p\n            if _cur:\n                _expect.append(_cur)\n            assert _out == _expect, (_size, _n, _out, _expect)\n            assert ''.join(_out) != '' or _n == 0, (_size, _n, _out)",
+        "weight": 34
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解切分以段落为最小单位，不按字符硬切"
+    },
+    "reference": "def split_chunks(text, chunk_size=500, chunk_overlap=0):\n    chunks = []\n    current = ''\n    for raw in text.split('\\n\\n'):\n        para = raw.strip()\n        if not para:\n            continue\n        if len(current) + len(para) <= chunk_size:\n            current = para if not current else current + '\\n\\n' + para\n        else:\n            if current:\n                chunks.append(current)\n            current = para\n    if current:\n        chunks.append(current)\n    return chunks\n\nprint(split_chunks('第一段。\\n\\n第二段。\\n\\n第三段。', chunk_size=100))",
+    "explanation": "本章的切分是「先按空行拆段落，再按 `chunk_size` 依次合并相邻段落」，而不是按字符硬切。这一点决定了下面几个行为。\n\n**段落是最小单位**。`split_chunks('x' * 20, chunk_size=5)` 返回的仍是**完整的一整段** 20 个字符，而不是被切成 4 段 5 个字符。原因是逻辑是「放不下就先收当前片段，再把这一段作为新片段的开头」，没有「把段落切开」这一步。判据专门测了这一点。\n\n**合并时用两个换行符连接**。段落之间原本就是靠空行分隔的，合并之后仍然保留这个分隔符，所以 `'aaaa\\n\\nbbbb\\n\\ncccc'` 在 `chunk_size=8` 下得到的是 `['aaaa\\n\\nbbbb', 'cccc']` —— 第一段 4 + 空行 2 + 第二段 4 = 10 > 8，所以第二段另起一片。判据把 5 和 8 两个档位分开测了，因为它们落在分界线的两侧。\n\n**先 strip 再判断空**。`split_chunks('   padded   ', ...)` 必须返回 `['padded']` 而不是带空格；`split_chunks('\\n\\n\\n')` 必须返回空列表（连续空行会产生多个空段）。\n\n**空输入返回 `[]`**。这一条不是废话：不加保护的话，最后那句 `chunks.append(current)` 会把一个空字符串塞进结果。\n\n题面里给了 `chunk_overlap` 这个参数，但本章的示例代码描述的是「相邻 Chunk 保留约 50 个字符的重叠」这一思路；这道题按题面要求只实现合并与切分，不实现重叠。所以 `chunk_overlap` 被保留在签名里但不参与计算 —— 这一点在解析里明确写出来，避免读者以为漏了。\n\n主判据把 `chunk_size` 7 档 × 段落数 5 档 × 空白填充 2 档共 70 组输入逐段重算期望结果 —— 这是专门防「把答案背下来」的。边界诚实说明：这 70 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch19-ex02",
+    "chapter": "chapter-19",
+    "type": "predict",
+    "difficulty": 3,
+    "minutes": 6,
+    "objective": "定位 RAG 答不好的原因",
+    "prompt": "RAG 问答系统已经上线，但回答质量不好。下面哪些排查思路与本章一致？（多选）\n\nA. 先分别评测检索效果和生成效果，因为结果同时受这两个阶段影响\nB. 检索阶段用 Recall@K 衡量前 K 个检索结果覆盖了多少相关文档\nC. 检索结果已经准确但生成效果仍然不够时，可以考虑换参数规模更大的生成模型\nD. 只要总体回答看起来还行，就说明检索没有问题，不需要分开评测\nE. 知识更新很频繁的场景更适合用 RAG，而不是把知识灌进模型权重里",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D 错在跳过了拆分评测这一步。本章说「RAG 的结果同时受到知识检索和答案生成两个阶段的影响」，因此评测也要从这两方面分别进行。",
+    "explanation": "本章最后一节的标题就是「没答好，问题出在检索还是生成？」—— 这是一个必须回答的问题，而回答它的前提是分开评测。\n\nA、B、C 都出自同一节：检索阶段用 Recall@K，生成阶段关注答案正确性、完整性、相关性、引用准确性和幻觉。本章那句「检索到相关知识并不代表最终答案一定正确」正是要分开评测的理由 —— 检索命中了不代表模型用上了它。\n\nC 给的处置方向也很具体：检索准但生成不行，换更强的生成模型。这和第 5 章那张对照表里的思路一致 —— 效果问题先定位到具体环节，再决定换什么。\n\nE 出自本章更前面的一节。本章讲什么时候适合用 RAG：知识经常更新的时候适合用 RAG，因为知识在检索库里，改起来不用重新训练模型。而「该补知识，还是该微调模型」是另一道选择题，答案是看需求变化频率和是否需要长期稳定的风格。\n\nD 是这一节明确要避免的做法。不分开评测就换模型，很可能换了也没用 —— 因为瓶颈在检索那一侧。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

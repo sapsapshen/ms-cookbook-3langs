@@ -1,1 +1,145 @@
-[]
+[
+  {
+    "id": "ch09-ex01",
+    "chapter": "chapter-9",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "拼出 Ollama 启动模型与调用接口的命令行",
+    "prompt": "用 Ollama 跑一个本地模型需要两步命令：第一步在终端里启动常驻服务 `ollama serve`，第二步运行模型。下面写一个函数 `ollama_cmds(model)`，返回一个长度为 2 的列表：第一个元素是启动服务的命令字符串，第二个元素是加载模型的命令字符串（模型名原样放进去）。然后把这两条命令各打印一行。",
+    "starter": "def ollama_cmds(model):\n    # 返回 ['ollama serve', 'ollama run <model>']\n    return []\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "cmds = ollama_cmds('qwen3.5:2b')\nassert isinstance(cmds, list) and len(cmds) == 2, cmds",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert ollama_cmds('qwen3.5:2b')[0].strip() == 'ollama serve', '第一条是常驻服务，不能带上模型名'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert ollama_cmds('qwen3.5:2b')[1].split()[:2] == ['ollama', 'run'], '第二条是 ollama run <model>'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'qwen3.5:2b' in ollama_cmds('qwen3.5:2b')[1], '第二条必须带上模型名'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'qwen3.5:2b' not in ollama_cmds('qwen3.5:2b')[0], '服务命令里不该出现模型名'",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "^\\s*ollama\\s+serve",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "ollama\\s+run[\\s=]+['\"]?qwen3\\.5:2b",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('qwen3.5:2b', 'modelscope.cn/unsloth/Qwen3-4B-GGUF', 'llama3:8b'):\n    _c = ollama_cmds(_m)\n    assert len(_c) == 2, (_m, _c)\n    assert _c[0].strip() == 'ollama serve', (_m, _c)\n    assert _c[1].split()[:2] == ['ollama', 'run'], (_m, _c)\n    assert _m in _c[1], (_m, _c)\n    assert _m not in _c[0], (_m, _c)",
+        "weight": 24
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 serve 是常驻服务、必须先起服务再 run 模型"
+    },
+    "reference": "def ollama_cmds(model):\n    return ['ollama serve', f'ollama run {model}']\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)",
+    "explanation": "Ollama 的模型加载分两步：`ollama serve` 启动常驻服务，`ollama run <模型名>` 再把模型跑起来。本章还提到这个顺序的原因 —— 服务是常驻的，而 Jupyter 的单个内核一次只能执行一个单元，所以 `ollama serve` 这条要在终端里执行，不能和 `ollama run` 放进同一个代码单元格。\n\n本章从魔搭起服务的写法是 `ollama run modelscope.cn/unsloth/Qwen3-4B-GGUF`，模型名带仓库前缀，所以第二条命令里的模型名要**原样**放进去，不能自己截断。判据里专门用了这个带前缀的名字跑第三条。\n\n第一条命令里不能带模型名：`ollama serve qwen3.5:2b` 是错的，服务和模型是两次独立的调用。主判据把三个模型名 × 两条命令共 6 组全跑一遍，逐条核对「服务命令干净、模型命令带名字」—— 这是专门防「把这一条答案写死」的：写死返回值覆盖不了别的模型名。边界诚实说明：这 6 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch09-ex02",
+    "chapter": "chapter-9",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "拼出调用本地模型接口的请求体",
+    "prompt": "Ollama 默认在 `127.0.0.1:11434` 提供 OpenAI 兼容接口。写函数 `payload(model, user_text, system_text=None, max_tokens=512)` 返回一个字典，作为请求体发给 `/v1/chat/completions`：`model` 是模型名，`messages` 是消息数组，`max_tokens` 原样带上。`system_text` 不为 `None` 时，在数组**最前面**插入一条 `{\"role\": \"system\", \"content\": system_text}`，然后才是用户消息 `{\"role\": \"user\", \"content\": user_text}`。",
+    "starter": "def payload(model, user_text, system_text=None, max_tokens=512):\n    # 返回请求体字典\n    return {}\n\nprint(payload('qwen3.5:2b', '你是谁？', '你是一个有帮助的中文助手。'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你是谁？')\nassert p['model'] == 'qwen3.5:2b' and p['max_tokens'] == 512, p",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你是谁？')\nassert p['messages'] == [{'role': 'user', 'content': '你是谁？'}], p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert len(p['messages']) == 2, p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert p['messages'][0] == {'role': 'system', 'content': '你是助手'}, 'system 必须在最前面'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert p['messages'][1] == {'role': 'user', 'content': '你好'}, '用户消息排在 system 之后'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', None)\nassert all(m['role'] != 'system' for m in p['messages']), p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert payload('m', 'u', 's', 128)['max_tokens'] == 128, 'max_tokens 必须原样带上'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _model in ('qwen3.5:2b', 'llama3:8b'):\n    for _user in ('你好', '写一首诗'):\n        for _sys in (None, '你是助手', '请用中文回答'):\n            for _mt in (128, 512, 2048):\n                _p = payload(_model, _user, _sys, _mt)\n                assert _p['model'] == _model and _p['max_tokens'] == _mt, (_model, _user, _sys, _mt)\n                if _sys is None:\n                    assert _p['messages'] == [{'role': 'user', 'content': _user}], (_model, _user, _sys)\n                else:\n                    assert _p['messages'] == [{'role': 'system', 'content': _sys},\n                                             {'role': 'user', 'content': _user}], (_model, _user, _sys)",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 system 消息要放在数组最前面"
+    },
+    "reference": "def payload(model, user_text, system_text=None, max_tokens=512):\n    messages = []\n    if system_text is not None:\n        messages.append({'role': 'system', 'content': system_text})\n    messages.append({'role': 'user', 'content': user_text})\n    return {'model': model, 'messages': messages, 'max_tokens': max_tokens}\n\nprint(payload('qwen3.5:2b', '你是谁？', '你是一个有帮助的中文助手。'))",
+    "explanation": "Ollama 提供的是 OpenAI 兼容接口，所以请求体沿用 OpenAI 的 `messages` 数组形状：每条消息有 `role` 和 `content` 两个字段。\n\n最容易错的是 **system 消息的位置**。本章的示例里 system 提示写在最前面，用户消息跟在后面；写成 `messages.append` 再统一补 system，或者把 system 追加到末尾，接口虽然可能不报错，但行为会变。判据里专门用 `p['messages'][0]` 钉住首位、`p['messages'][1]` 钉住次位，把两个顺序都钉死。\n\n第二个坑是 `system_text=None` 的情况：这时**不能**插入 system 消息，哪怕内容是空的。判据用 `all(m['role'] != 'system' ...)` 验证的就是这个 —— 一个「永远插一条 system，内容为 None 时的字符串形式」的实现会在这里判不过。\n\n注意区分「不传」和「传空字符串」：题面写的是 `system_text is not None`，所以传 `''` 仍然要插入一条内容为空字符串的 system 消息。\n\n最后一条判据把 2 个模型名 × 2 个用户输入 × 3 种 system 情况 × 3 档 `max_tokens` 共 36 组全跑一遍，逐组重算期望的 `messages` —— 这是专门防「把答案背下来」的：写死返回值覆盖不了 36 组输入。边界诚实说明：这 36 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch09-ex03",
+    "chapter": "chapter-9",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断本地部署ollama 的适用场景",
+    "prompt": "一个团队考虑把模型从外部 API 搬到自己电脑上。下面哪些说法与本章一致？（多选）\n\nA. 核心文档和客户隐私无法直接传给第三方公有云，这是本地部署的理由之一\nB. 生产环境要求纯离线、内网专线连不上外网时，本地部署更合适\nC. 调用量大且稳定时，自己搭服务器的综合成本通常比一直按 Token 付费更划算\nD. 笔记本电脑没有独立显卡，也可以通过 CPU 运行模型，生成速度通常比较慢\n    E. 模型参数量越大越省显存，所以选模型时优先挑最大的那个",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、B、C、D。E 错在本章的说法正好相反：模型越大，需要的显存通常也越多，所以选模型时要考虑显卡是否有足够的显存。",
+    "explanation": "本章列的三条本地部署理由，逐条对应 A、B、C：数据安全（核心文档、客户隐私、内部业务数据不能传给第三方）、离线可用（内网专线连不上外网）、成本控制（调用量大且稳定时自建更划算）。\n\nD 对应硬件那一节：没有独立显卡也能通过 CPU 跑，只是因为大模型推理需要大量计算，生成速度通常比较慢，所以更适合参数规模较小的模型，或者对响应速度要求不高的场景。\n\nE 是把「参数量越大能力越强」顺手推成了「越大越省显存」。本章的原话是反的 —— **模型越大，需要的显存通常也越多**。这条恰好是本书反复出现的一个直觉陷阱：参数量影响的是占用，不是效率。\n\n另外 Apple Silicon 是个特殊情况：M 系列采用统一内存设计，CPU 和 GPU 共用同一块内存，所以 32GB、64GB 或更大统一内存的 Mac 可以尝试跑一些参数规模较大的量化模型。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

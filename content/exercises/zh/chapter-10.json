@@ -1,1 +1,149 @@
-[]
+[
+  {
+    "id": "ch10-ex01",
+    "chapter": "chapter-10",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "把评价文本判成正面或负面",
+    "prompt": "用模型做情感判断之前，先在 CPU 上跑一个关键词版本把链路打通。写函数 `sentiment(text)` 返回 `\"positive\"` 或 `\"negative\"`：文本里出现「满意」「推荐」「很好」中任意一个就返回 `\"positive\"`，出现「失望」「慢」「差」中任意一个就返回 `\"negative\"`。两者都不出现时也返回 `\"negative\"`（默认保守）。两者同时出现时，以 `\"negative\"` 为准。",
+    "starter": "def sentiment(text):\n    # 返回 \"positive\" 或 \"negative\"\n    pass\n\nprint(sentiment('这家店服务很好，强烈推荐'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('这家店服务很好') == 'positive'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('强烈推荐') == 'positive' and sentiment('很满意') == 'positive'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('有点失望') == 'negative' and sentiment('太慢了') == 'negative' and sentiment('质量太差') == 'negative'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('中规中矩吧') == 'negative', '默认保守，判 negative'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('很好，但是太慢了') == 'negative', '负面词优先'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('慢') == 'negative', '单独一个字也要能匹配到'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in ('很好', '满意', '推荐', '失望', '慢', '差', '中规中矩', '很好但是太慢', '推荐不推荐', ''):\n    _want = 'negative'\n    if any(_w in _t for _w in ('失望', '慢', '差')):\n        _want = 'negative'\n    elif any(_w in _t for _w in ('满意', '推荐', '很好')):\n        _want = 'positive'\n    assert sentiment(_t) == _want, (_t, sentiment(_t), _want)",
+        "weight": 26
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('推荐度不高') == 'positive', '「推荐度不高」里有「推荐」但没有负面词，关键词法只能按正面处理——这正是它的局限'",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解关键词法只是打通链路，不是真正的模型能力"
+    },
+    "reference": "POSITIVE = ('满意', '推荐', '很好')\nNEGATIVE = ('失望', '慢', '差')\n\n\ndef sentiment(text):\n    if any(word in text for word in NEGATIVE):\n        return 'negative'\n    if any(word in text for word in POSITIVE):\n        return 'positive'\n    return 'negative'\n\nprint(sentiment('这家店服务很好，强烈推荐'))",
+    "explanation": "这一章讲的是「先用 CPU 判断一句评价是正面还是负面，换到 GPU 再做文生图」，重点是同一条链路在不同硬件上都能跑通。这个关键词版本就是 CPU 上的那一环。\n\n三个容易写反的地方，判据都单独盯了：\n\n**负面优先**。`sentiment('很好，但是太慢了')` 必须返回 `\"negative\"` —— 文本里正负词都有时按负面算。所以负面那一支要写在前面，先查后返回。\n\n**默认保守**。`sentiment('中规中矩吧')` 里一个关键词都没有，按题面返回 `\"negative\"`。所以两个分支都没命中之后还要再返回一次 `\"negative\"`，只写一个显式 `else` 之外的隐式返回（也就是 `return None`）会判不过。\n\n**单字也要匹配**。`sentiment('慢')` 只有一个字，仍然要判成负面。写成「至少两个字的词才算命中」的实现会在这里露馅。\n\n这条链路只是用来验证代码和模型能跑通，不是模型能力的体现。关键词法分不出否定结构：`sentiment('推荐度不高')` 里有「推荐」却没有负面词，只能按正面处理 —— 这类句子要交给模型才判得对，主判据最后一条专门把这个局限钉住，让你改的时候知道它在哪里失效。\n\n最后一条判据把 10 条文本全跑一遍，逐条按「负面优先、其次正面、最后默认负面」的顺序重算期望值 —— 这是专门防「把答案背下来」的：查表覆盖不了这 10 条之外的任何输入。边界诚实说明：这 10 条输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch10-ex02",
+    "chapter": "chapter-10",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "拼出云端推理的两段代码结构",
+    "prompt": "同一份代码在 CPU 和 GPU 上只差两处：加载模型时的 `device` 参数，以及加载完成后要不要把模型移到显卡上。写函数 `runtime_lines(device)` 返回两行代码字符串组成的列表：`device` 是 `\"cpu\"` 时，第一行是加载模型的语句、第二行是注释掉的移动语句；`device` 是 `\"cuda\"` 时，第一行相同、第二行是真正执行移动的语句（不带注释）。两句都要求把模型赋值给变量 `model`。",
+    "starter": "def runtime_lines(device):\n    # 返回两行代码字符串\n    return []\n\nfor line in runtime_lines('cuda'):\n    print(line)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "lines = runtime_lines('cuda')\nassert isinstance(lines, list) and len(lines) == 2, lines",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert runtime_lines('cpu')[0] == runtime_lines('cuda')[0], '加载模型那一行两种设备是一样的'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'model' in runtime_lines('cpu')[0] and '=' in runtime_lines('cpu')[0], '第一行要把模型赋值给 model'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert runtime_lines('cpu')[1].lstrip().startswith('#'), 'CPU 上移动语句应该被注释掉'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert not runtime_lines('cuda')[1].lstrip().startswith('#'), 'GPU 上移动语句不能是注释'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'model' in runtime_lines('cuda')[1] and 'model' in runtime_lines('cpu')[1], '第二行都涉及 model 变量'",
+        "weight": 10
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "model\\s*=",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "cuda",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _d in ('cpu', 'cuda'):\n    _l = runtime_lines(_d)\n    assert len(_l) == 2, (_d, _l)\n    assert all(isinstance(x, str) and x.strip() for x in _l), (_d, _l)\n    assert '=' in _l[0] and 'model' in _l[0], (_d, _l)\n    assert 'model' in _l[1], (_d, _l)\n    assert _l[1].lstrip().startswith('#') == (_d == 'cpu'), (_d, _l)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解同一份代码只靠 device 参数切换硬件"
+    },
+    "reference": "def runtime_lines(device):\n    load = 'model = AutoModel.from_pretrained(model_id)'\n    if device == 'cuda':\n        move = 'model = model.to(\"cuda\")'\n    else:\n        move = '# model = model.to(\"cuda\")'\n    return [load, move]\n\nfor line in runtime_lines('cuda'):\n    print(line)",
+    "explanation": "本章的写法是同一份代码只靠一个 `device` 参数切换硬件：加载时把 `device` 传进去，加载完再决定要不要把模型移到显卡上。所以两行代码里只有第二行随设备变化，第一行必须**逐字相同** —— 判据里用 `runtime_lines('cpu')[0] == runtime_lines('cuda')[0]` 把这一点钉死。\n\n第二行的区别在**注释状态**：CPU 上那句 `.to(\"cuda\")` 必须留着但被 `#` 注释掉，GPU 上才真正执行。这个形状和「直接删掉那一行」不一样，因为代码里保留着切换点，换设备时才不用重新改结构。判据用 `lstrip().startswith('#')` 检查，`lstrip` 是为了让前面有缩进的写法也能判过。\n\n注意 CPU 那行**仍然含有 `cuda` 这个词**，只是被注释掉了 —— 所以判断设备靠的是注释状态，不是「这行里有没有 cuda」。判据主循环里就是按 `lstrip().startswith('#') == (device == 'cpu')` 来核对的。\n\n这也解释了本章那句「先用 CPU 判断一句评价是正面还是负面，换到 GPU，把文字描述变成图片」：判断任务小，CPU 够用；文生图是重活，才值得上 GPU。\n\n主判据把两种设备共 4 组逐条核对「两行非空、第一行带赋值和 model、第二行带 model、注释状态与设备匹配」—— 这是专门防「把这一条答案写死」的。边界诚实说明：这 4 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch10-ex03",
+    "chapter": "chapter-10",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断云端运行实例该怎么选",
+    "prompt": "你要在云端 Notebook 上跑实验。下面哪些做法与本章一致？（多选）\n\nA. 做情感判断这类小任务，先用 CPU 实例把链路跑通\nB. 要把文字描述变成图片，直接用 CPU 实例跑就行，GPU 只是快一点\nC. 同一个模型换设备，只需要改 `device` 参数和加载后是否移到显卡，代码主体不用重写\nD. 一开始就该申请 GPU 实例，CPU 实例留着太没用了\nE. 实验做完应该停止实例，长时间不用的实例不要一直开着",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B 错在把 GPU 说成只是快一点 —— 本章的流程是先 CPU 判断情感、再换 GPU 做文生图，后者是需要 GPU 的重活。D 与本章「先用 CPU 判断，再换 GPU」的顺序相反。",
+    "explanation": "本章的流程本身就是一道判断题：先用 CPU 实例判断一句评价是正面还是负面，换到 GPU，把文字描述变成图片。所以 A 和 C 都是这个流程的直接体现 —— 同一份代码换个 `device` 就能跑在另一种硬件上。\n\nB 和 D 错在同一个地方：把 GPU 当成「更快一点的 CPU」。本章特意把两件事分给两种硬件，正说明它们不是同一件事的快慢差别 —— 文本分类是判断，图像生成是另一类任务。\n\nE 来自前一章的同一套逻辑：资源有时长限制，跑完要停。这里的对象从 GPU 实例换成了云端运行实例，但道理不变。\n\n另外，本章提到云端跑也有代价：要选对运行实例，实例的规格直接决定你能加载多大的模型。这个选择可以回到第 8 章那套估算方法上。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

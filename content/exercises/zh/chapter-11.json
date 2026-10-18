@@ -1,1 +1,129 @@
-[]
+[
+  {
+    "id": "ch11-ex01",
+    "chapter": "chapter-11",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "按量化位数估算权重大小",
+    "prompt": "量化不改变参数数量，只改变每个参数占的空间。写函数 `quant_size(params_b, bits)` 返回权重占用的 GB 数（按十进制 GB 算）：每个参数占 `bits` 位，先算总位数再换算成字节和 GB。即 `params_b × 10⁹ × bits / 8 / 10⁹` GB。只支持 `8` 和 `4` 这两个位数，传其他值时抛出 `ValueError`。",
+    "starter": "def quant_size(params_b, bits):\n    # 返回量化后的权重大小（GB）\n    pass\n\nprint(quant_size(7, 8))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert quant_size(7, 8) == 7.0",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert quant_size(7, 4) == 3.5",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert quant_size(70, 8) == 70.0 and quant_size(70, 4) == 35.0",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    quant_size(7, 16)\n    assert False, '16 位不属于本章支持的量化位数'\nexcept ValueError:\n    pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    quant_size(7, 6)\n    assert False, '6 位不属于本章支持的量化位数'\nexcept ValueError:\n    pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (0.5, 1, 7, 13, 70, 175):\n    for _b in (4, 8):\n        assert quant_size(_n, _b) == _n * _b / 8, (_n, _b, quant_size(_n, _b))",
+        "weight": 30
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (0, 2, 3, 16, 32, -4, 4.0):\n    try:\n        quant_size(7, _bad)\n        assert False, '应该抛出 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解量化不改变参数量，只改变每个参数的位数"
+    },
+    "reference": "def quant_size(params_b, bits):\n    if not isinstance(bits, int) or isinstance(bits, bool) or bits not in (8, 4):\n        raise ValueError('unsupported bit width: ' + str(bits))\n    return params_b * 1_000_000_000 * bits / 8 / 1_000_000_000\n\nprint(quant_size(7, 8))",
+    "explanation": "本章的核心一句是「参数数量通常没有变，每个参数占用的空间变小了」。所以公式是：总位数 = 参数量 × 每参数字位数，然后除以 8 得到字节。\n\n7B 参数按 8 位算是 7 × 10⁹ × 8 / 8 = 7GB，按 4 位算是 3.5GB —— 和本章那张表对得上（16 位 14GB、8 位 7GB、4 位 3.5GB）。\n\n这里有个容易写错的地方：`1_000_000_000` 出现两次，一次把「B」变成实际参数个数，一次把字节变成 GB。两个都是十进制。如果把其中一个写成 `1024**3`（GiB），7B 的 8 位量化会得到约 6.52，和表里的 7 对不上。\n\n「只支持 8 和 4」是题面明确写出的边界，所以 `16`、`6`、`0`、`2`、`32` 这些都要抛 `ValueError`。这里有个真实的陷阱：Python 里 `4.0 == 4` 为真，所以光写 `if bits not in (8, 4)` 会**意外放行** `4.0`。要拒绝它，得先检查 `isinstance(bits, int)`；判据里专门放了 `4.0` 这一组输入来盯这个陷阱。\n\n注意本章提醒过：实际的量化文件还要保存缩放系数等信息，也可能混用不同精度，所以真实文件大小会和这个估算有差异。\n\n主判据把 6 档参数量 × 2 个位数共 12 组全跑一遍，逐组按公式重算 —— 这是专门防「把答案背下来」的：写死返回值覆盖不了 12 组输入。边界诚实说明：这 12 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch11-ex02",
+    "chapter": "chapter-11",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "按显存余量挑一个能跑的量化版本",
+    "prompt": "同一个模型有多个量化版本，命名形如 `\"Q4_K_M\"`、`\"Q5_K_S\"`、`\"Q8_0\"`。写函数 `pick_version(label, device_gb)` 挑一个能跑的版本：从标签里取出量化位数 —— `\"Q4_K_M\"` 是 4 位、`\"Q5_K_S\"` 是 5 位、`\"Q8_0\"` 是 8 位（取 `Q` 后面、`_K_` 或 `_` 前面的那个数字）。按 `quant_size(params_b, bits)` 的口径算出这个版本占多少 GB（这里模型固定是 7B），再预留 2GB 余量：`占用 + 2` 不超过 `device_gb` 就返回这个标签，否则返回 `\"none\"`。",
+    "starter": "def parse_bits(label):\n    # 从 'Q4_K_M' 里取出 4\n    pass\n\n\ndef pick_version(label, device_gb):\n    # 返回 label 或 \"none\"\n    pass\n\nprint(pick_version('Q4_K_M', 8))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert parse_bits('Q4_K_M') == 4 and parse_bits('Q5_K_S') == 5 and parse_bits('Q8_0') == 8",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q4_K_M', 8) == 'Q4_K_M', 'Q4 占 3.5GB，加 2GB 余量是 5.5GB，8GB 装得下'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q8_0', 8) == 'none', 'Q8 占 7GB，加余量 9GB 超了'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q5_K_S', 8) == 'Q5_K_S', 'Q5 占 4.375GB'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q4_K_M', 5.5) == 'Q4_K_M', '正好卡在边界上算装得下'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q4_K_M', 5.4) == 'none', '差一点点也不行'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bits in (2, 3, 4, 5, 6, 7, 8, 9):\n    for _suffix in ('_K_M', '_K_S', '_0'):\n        _label = f'Q{_bits}{_suffix}'\n        _size = 7 * _bits / 8\n        for _dev in (3.5, 5.4, 5.5, 6, 8, 9, 16, 24):\n            _want = _label if _size + 2 <= _dev else 'none'\n            _got = pick_version(_label, _dev)\n            assert _got == _want, (_label, _dev, _got, _want)",
+        "weight": 32
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解标签里的 K/M/S 是配置代号，不是位数"
+    },
+    "reference": "def parse_bits(label):\n    rest = label.split('Q', 1)[1]\n    digits = ''\n    for ch in rest:\n        if ch.isdigit():\n            digits += ch\n        else:\n            break\n    return int(digits)\n\n\ndef pick_version(label, device_gb):\n    bits = parse_bits(label)\n    size = 7 * bits / 8\n    if size + 2 <= device_gb:\n        return label\n    return 'none'\n\n\nprint(pick_version('Q4_K_M', 8))",
+    "explanation": "这一章讲怎么读懂 `Q4_K_M` 这类标签。本章说：Q 表示量化，后面的数字表示主要采用的量化位数；K 表示 K-quant 方案，M 是该方案里的 Medium 配置。\n\n所以位数只来自紧跟 `Q` 的那一个数字，`_K_`、`_M`、`_S`、`_0` 都是配置代号，不参与位数计算。`parse_bits` 干的就是这件事：取出 Q 后面连续的数字，遇到第一个非数字就停。这一步做错的话，`Q8_0` 会被读成 0 位的整数，或者把 `_0` 里的 0 也算进去。\n\n`pick_version` 把本章那句「如果一个版本已经接近设备的内存或显存上限，就要考虑换一个占用更小的版本，给上下文和运行过程留出余量」变成可执行的规则：占用加 2GB 余量，不超过设备容量才算装得下。\n\n边界用「不超过」。`pick_version('Q4_K_M', 5.5)` 恰好等于 3.5 + 2，必须判成装得下；`5.4` 则必须判 `\"none\"`。写 `<` 或加额外容差的实现会在这两个输入上翻车。\n\n主判据把位数 2 到 9 × 三种后缀 × 8 档设备共 192 组全跑一遍，标签是**生成**出来的而不是列出来的，逐组按 `占用 + 2 <= 设备` 重算期望值 —— 这是专门防「把答案背下来」的：只背下 `Q4_K_M`、`Q5_K_S`、`Q8_0` 这三个标签的实现，遇到 `Q3_K_S` 或 `Q7_0` 就露馅（192 组输入，192 个不同标签，覆盖 Q2 到 Q9）。边界诚实说明：这 192 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch11-ex03",
+    "chapter": "chapter-11",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "判断量化版本怎么选",
+    "prompt": "你下载了一个 GGUF 量化模型，硬盘和显存都比较紧张。有 Q4、Q5、Q8 三个版本可选。请写出你的选择过程：先确认什么、再比较什么、最后怎么判断「能不能稳定运行」，以及回答质量下降时你会怎么处理。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否按本章顺序提到先确认推理工具支持、再看量化位数与余量、先确保稳定运行再用关心的问题比较回答质量、以及质量下降时换更高位数的版本"
+    },
+    "reference": "① 先确认推理工具支持这个模型：选 GGUF 量化版本，第一步是确认你的推理工具（Ollama、llama.cpp 等）支持它。工具不支持，位数再低也没用。\n\n② 再看占用和余量：7B 模型 Q8 约 7GB、Q5 约 4.375GB、Q4 约 3.5GB。如果一个版本已经接近设备内存或显存上限，就要换一个占用更小的版本，给上下文和运行过程留出余量。所以我倾向 Q4 或 Q5，而不是刚好卡住的 Q8。\n\n③ 再判断能不能稳定运行：这一步不能只看数字。本章的提醒是文件缩小到原来的四分之一，并不意味着回答速度提高四倍 —— 还要实际跑一遍，看会不会 OOM、响应是否可接受。\n\n④ 质量下降怎么办：如果资源允许，用相同的问题比较不同版本的回答，尤其关注自己要用的任务，比如信息抽取、代码生成或规定格式的输出。如果 Q4 的回答明显不可靠，就升到 Q5 或 Q8。\n\n还要诚实记住量化本身的代价：降低精度可能影响回答质量，具体影响取决于模型、量化方法和任务。所以最后是「先确认能稳定运行，再检查回答质量」。",
+    "explanation": "本章的顺序不是随手排的，而是有依赖关系：工具不支持 → 后面都白搭；占用超限 → 装都装不上；装上了跑不稳 → 也没用；最后才是质量。\n\n第二个容易忽略的点，本章专门强调了：**文件小四倍不等于快四倍**。很多人看到 Q4 只有 Q8 一半大小就当成提速手段，但它省的是空间。\n\n第三点对应本章「记住模型能下载，不代表可以随便用」之外的那一半 —— 量化是取舍，不是免费午餐。降低精度可能影响回答质量，而影响多大取决于模型、量化方法和任务，所以你关心的任务上必须自己试。\n\n这题跑不了真实的模型下载与推理，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的判断顺序。"
+  }
+]

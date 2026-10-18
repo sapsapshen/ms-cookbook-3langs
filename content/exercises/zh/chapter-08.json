@@ -1,1 +1,140 @@
-[]
+[
+  {
+    "id": "ch08-ex01",
+    "chapter": "chapter-8",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "按精度估算模型权重占用",
+    "prompt": "模型参数规模用 B 表示，1B 是 10 亿参数。写函数 `weight_gb(params_b, precision)` 估算模型权重占多少 GB：FP32 每个参数 4 GB/1B，FP16 和 BF16 各 2 GB/1B，INT8 是 1 GB/1B，INT4 是 0.5 GB/1B。精度名统一传大写字符串（`\"FP32\"`、`\"FP16\"`、`\"BF16\"`、`\"INT8\"`、`\"INT4\"`）。传入未知精度时抛出 `ValueError`。",
+    "starter": "def weight_gb(params_b, precision):\n    # 返回权重占用的 GB 数\n    pass\n\nprint(weight_gb(7, 'FP16'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'FP16') == 14",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'FP32') == 28",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'BF16') == 14, 'BF16 和 FP16 同为 2GB/1B'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'INT8') == 7 and weight_gb(7, 'INT4') == 3.5",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    weight_gb(7, 'fp16')\n    assert False, '小写精度名应该抛出 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    weight_gb(7, 'FP8')\n    assert False, '未知精度应该抛出 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _p in ('FP32', 'FP16', 'BF16', 'INT8', 'INT4'):\n    for _n in (0.5, 1, 7, 8, 13, 70, 175):\n        _per = {'FP32': 4, 'FP16': 2, 'BF16': 2, 'INT8': 1, 'INT4': 0.5}[_p]\n        _got = weight_gb(_n, _p)\n        assert _got == _n * _per, (_p, _n, _got)",
+        "weight": 22
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('', 'fp32', 'FP8', 'INT2', 'FP16 '):\n    try:\n        weight_gb(7, _bad)\n        assert False, '未知精度应该抛出 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 12
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解这是权重静态占用，不含 KV Cache 与框架开销"
+    },
+    "reference": "PER_GB = {\n    'FP32': 4,\n    'FP16': 2,\n    'BF16': 2,\n    'INT8': 1,\n    'INT4': 0.5,\n}\n\n\ndef weight_gb(params_b, precision):\n    if precision not in PER_GB:\n        raise ValueError('unknown precision: ' + precision)\n    return params_b * PER_GB[precision]\n\nprint(weight_gb(7, 'FP16'))",
+    "explanation": "本章的估算公式是「模型权重 = 参数量 × 该精度下 1B 参数存储占用量」，这个函数就是这条公式。\n\nBF16 那一行值得单独记：它和 FP16 一样是 2GB/1B，但两者不是同一个东西，写成查表而不是 `if precision in ('FP16', 'BF16')` 都行 —— 关键是别把 BF16 当成 FP32。判据专门盯了这一条。\n\nINT4 的结果是 `3.5` 而不是 `4`（`7 × 0.5`），这里不能取整。\n\n精度名按题面统一传大写，所以小写 `'fp16'`、带空格的 `'FP16 '`、以及 `'FP8'`、`'INT2'` 这些都算未知精度，要抛 `ValueError`。判据里用一组错误输入逐一验证抛异常这件事 —— 少了这条，一个「查不到就返回 0」的实现能拿到满分。\n\n这道题算的是**权重本身**，不含 KV cache、框架开销和激活值；本章说过推理显存还要加这些，训练则要再上梯度、优化器状态和 FP32 副本。所以这个函数回答的是「静态占用」，不是「运行要多少显存」。\n\n最后一条判据把 5 种精度 × 7 档参数量共 35 组输入全跑一遍，逐组按公式重算 —— 这是专门防「把答案背下来」的：写死返回值覆盖不了 35 组输入。边界诚实说明：这 35 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch08-ex02",
+    "chapter": "chapter-8",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "区分推理显存与训练显存的估算口径",
+    "prompt": "同一个模型，推理和训练的资源需求差很多。写两个函数：\n\n`infer_gb(params_b, precision)` 返回推理时的权重 GB，精度口径同「按精度估算权重」那题（FP32 是 4、FP16 与 BF16 是 2、INT8 是 1、INT4 是 0.5，每 1B 参数）。\n\n`train_gb(params_b, precision)` 返回训练时的显存 GB。完整训练时每 1B 参数要 16GB：权重、梯度、优化器状态和 FP32 副本各占一份；LoRA 训练时只加载基础权重，不更新原参数，新增的 LoRA 参数及其梯度与优化器状态按每 1B 参数 0.5GB 估。\n\n`train_gb` 第三个参数是 `mode`，取 `\"full\"` 或 `\"lora\"`。",
+    "starter": "def infer_gb(params_b, precision):\n    pass\n\n\ndef train_gb(params_b, precision, mode):\n    pass\n\nprint(infer_gb(7, 'FP16'), train_gb(7, 'FP16', 'full'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert infer_gb(7, 'FP16') == 14 and infer_gb(7, 'INT4') == 3.5",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'FP16', 'full') == 112, '7 x 16 = 112GB'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'FP16', 'lora') == 17.5, '7 x 2 = 14GB 权重，加上 7 x 0.5 = 3.5GB LoRA 开销'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'INT4', 'lora') == 7.0, '量化基础权重后 LoRA 也跟着省：7 x (0.5 + 0.5)'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'FP16', 'full') > infer_gb(7, 'FP16'), '完整训练一定比推理吃资源'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'INT4', 'lora') < train_gb(7, 'FP16', 'lora')",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _p in ('FP32', 'FP16', 'BF16', 'INT8', 'INT4'):\n    for _n in (0.5, 1, 7, 13, 70):\n        _per = {'FP32': 4, 'FP16': 2, 'BF16': 2, 'INT8': 1, 'INT4': 0.5}[_p]\n        assert infer_gb(_n, _p) == _n * _per, ('infer', _p, _n)\n        assert train_gb(_n, _p, 'full') == _n * 16, ('full', _p, _n)\n        assert train_gb(_n, _p, 'lora') == _n * (_per + 0.5), ('lora', _p, _n)",
+        "weight": 22
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解完整训练 16GB/1B 的四个组成部分各占一份"
+    },
+    "reference": "PER_GB = {'FP32': 4, 'FP16': 2, 'BF16': 2, 'INT8': 1, 'INT4': 0.5}\n\n\ndef infer_gb(params_b, precision):\n    if precision not in PER_GB:\n        raise ValueError('unknown precision: ' + precision)\n    return params_b * PER_GB[precision]\n\n\ndef train_gb(params_b, precision, mode):\n    if precision not in PER_GB:\n        raise ValueError('unknown precision: ' + precision)\n    if mode == 'full':\n        return params_b * 16\n    if mode == 'lora':\n        return params_b * (PER_GB[precision] + 0.5)\n    raise ValueError('unknown mode: ' + mode)\n\nprint(infer_gb(7, 'FP16'), train_gb(7, 'FP16', 'full'))",
+    "explanation": "本章说「同一个模型，训练为什么更占资源」，答案是训练要同时存权重、梯度、优化器状态和中间结果。\n\n完整训练的 16GB/1B 是四份加起来：权重 2GB（FP16）+ 梯度 2GB + 优化器状态 8GB + FP32 副本 4GB。优化器状态之所以是 8GB，是因为 Adam 要保存两份 FP32 状态（动量和方差），所以是 2 × 4GB。这也是为什么它跟 `precision` 无关 —— 训练口径固定按 16GB/1B 算。\n\nLoRA 则完全不同：原模型权重只加载不更新，本章说新增参数量仅为原模型的 0.1%~1%，所以梯度和优化器开销几乎可以忽略。这里按题面统一估成 0.5GB/1B。于是 `train_gb(7, 'FP16', 'lora')` 是 7 × (2 + 0.5) = 17.5GB，而完整训练是 112GB —— 差了一个数量级，这正是本章说 LoRA 让 7B 模型能在 24GB 卡上跑起来的原因。\n\n注意 LoRA 这一支的答案**依赖** `precision`：`train_gb(7, 'INT4', 'lora')` 是 7 × (0.5 + 0.5) = 7GB 而不是 17.5GB，因为基础权重被量化了。所以把 LoRA 写成 `params_b * 16` 或 `params_b * 2` 的实现会在这两个输入点上判不过。\n\n这些都是**静态**估算，没有计入激活值、KV cache 和框架开销，所以实际需求更高。\n\n最后一条判据把 5 种精度 × 5 档参数量共 25 组输入，三条公式各跑一遍 —— 这是专门防「把答案背下来」的：写死返回值覆盖不了 25 组输入。边界诚实说明：这 25 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch08-ex03",
+    "chapter": "chapter-8",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断 CPU 与 GPU 该用在什么场景",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. 包含大量逻辑判断和任务调度的场景，CPU 的执行效率更高\nB. 只要是深度学习任务，GPU 就一定比 CPU 快\nC. 计算任务规模较小时，GPU 的资源无法充分利用，CPU 可能反而更高效\nD. 一个 7B 模型用 FP16 完整训练，至少需要约 112GB 显存，还要加上激活值\nE. 参数量较小、访问量较低的推理场景，CPU 就能满足需求",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B 错在把 GPU 说成无条件更快。本章的限定是「只有计算任务规模较大时，GPU 的优势才会比较明显」—— 数据量小时，GPU 算力用不满，CPU 与 GPU 之间的数据传输和调度开销反而让 CPU 更高效。",
+    "explanation": "本章的 CPU/GPU 对比不是一句「GPU 更快」，而是有条件的：\n\nCPU 面向通用计算，每个核心都有较完整的控制和运算能力，能根据执行过程判断、跳转和调度，所以逻辑密集的场景（操作系统、数据库查询）是它的主场。GPU 靠大量计算单元并行，适合数据规模大、重复性高的任务（矩阵乘法、卷积）。\n\nC 是这段话里最容易被忽略的一句，也是 B 的破绽所在。\n\nD 和 E 对应本章的两个估算结论：7B 模型 FP16 完整训练至少 7 × 16 Byte ≈ 112GB，加上激活值后实际需求更大；而参数量小、访问量低的推理场景，CPU 就够，还能靠量化进一步降低占用。\n\n值得注意的是，本章也提醒选型不只看设备：GPU 有采购、功耗、散热、驱动与框架兼容性这些持续成本，多 GPU 还涉及设备间通信与软件配置。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  }
+]

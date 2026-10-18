@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch02-ex01",
+    "chapter": "chapter-2",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "拼出模型下载命令行并说明各段作用",
+    "prompt": "用一条 `modelscope download` 命令，把 `Qwen/Qwen3-0.6B` 整个模型下载到本地目录 `./Qwen3-0.6B`。写一个函数 `build_cmd(model, local_dir)` 返回这条命令的字符串，再打印它。",
+    "starter": "def build_cmd(model, local_dir):\n    # 返回 modelscope download 命令字符串\n    return \"\"\n\nprint(build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nassert isinstance(c, str) and c.strip(), 'build_cmd 必须返回非空字符串'",
+        "weight": 2
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "modelscope\\s+download",
+        "weight": 4
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "--model[\\s=]+['\"]?Qwen/Qwen3-0\\.6B",
+        "weight": 4
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "--local[-_]dir[\\s=]+['\"]?\\./Qwen3-0\\.6B",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nparts = c.split()\nassert parts[0] == 'modelscope' and parts[1] == 'download', parts[:2]",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nassert 'README.md' not in c, '下载整个模型时不要写文件名，否则只会拿到那一个文件'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('Qwen/Qwen3-0.6B', 'deepseek-ai/DeepSeek-V3'):\n    for _d in ('./out', '/tmp/models'):\n        _c = build_cmd(_m, _d)\n        assert isinstance(_c, str) and _c.strip(), (_m, _d)\n        assert _m in _c, (_m, _d, _c)\n        assert _d in _c, (_m, _d, _c)\n        assert 'README.md' not in _c, (_m, _d, _c)",
+        "weight": 8
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否分清了 --model 与 --local_dir 各自管什么"
+    },
+    "reference": "def build_cmd(model, local_dir):\n    return f\"modelscope download --model {model} --local_dir {local_dir}\"\n\nprint(build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B'))",
+    "explanation": "两个长选项各管一件事：`--model` 后面是模型在魔搭上的名字，`--local_dir` 后面是本地保存目录。命令以 `modelscope download` 开头，装包用的 `pip install -U modelscope` 是另一条命令。\n\n下载整个模型时不要在模型名后面再写文件名 —— 写了 `README.md` 就只下载那一个文件。想先验证下载是否通畅，才把文件名补上。判分里专门有一条盯这个：命令里出现 `README.md` 就算错，遍历判据里也重跑了一遍。\n\n参数写法上判分不挑分隔符：`--model Qwen/...` 和 `--model=Qwen/...` 都能过。\n\n最后一条判据把两个模型名 × 两个目录共 4 组输入跑一遍，要求命令非空、模型名和目录都在、且都没有多余文件名 —— 这条是防「把这一条答案写死」的：写死返回值覆盖不了别的模型和目录。边界诚实说明：这 4 组输入在公开语料里，它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch02-ex02",
+    "chapter": "chapter-2",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "挑选适合当前场景的下载方式",
+    "prompt": "你接手一个项目，要把 `Qwen/Qwen3-0.6B` 下载到本地跑推理。下面哪种做法与本章的建议一致？（多选）\n\nA. 临时只想确认下载通不通，先在模型文件页面点按钮下载一个文件试试\nB. 要在 Python 程序里下载并拿到保存路径，用 `snapshot_download`\nC. 团队平时用 Git 管理模型文件，直接 `git clone` 仓库地址即可，不需要装 Git LFS\nD. 四种方式不用全试一遍，按场景挑一种就行\nE. 下载完就算完成，可以直接开始大规模训练",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、B、D。C 错在模型文件通常较大，Git 方式要先安装 Git 和 Git LFS，`git lfs install` 只是初始化 LFS，不负责安装这个工具本身。E 错在本章的收尾是「把模型路径换成本地目录，先跑通一次输入和输出」，而不是下载完就开训。",
+    "explanation": "本章给的对应关系是：临时拿几个文件用网页，终端操作用命令行，Python 项目用 SDK，已有 Git 工作习惯就继续用 Git——所以 B 和 D 是同一件事的两面，「不用全试一遍」正是本章的结论。\n\nGit 那条有个容易踩的坑：`git lfs install` 是在当前环境里初始化 LFS，不是安装工具本身。提示没有 `lfs` 命令时要先完成工具安装，顺序反了会一路卡住。\n\nE 是最关键的一条。下载完成之后本章要求的是打开使用示例、把路径换成本地目录、先跑通一次输入和输出。这一步没做，你不知道是模型的问题还是环境的问题。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch02-ex03",
+    "chapter": "chapter-2",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "用 Model Card 筛掉不合适的候选模型",
+    "prompt": "你要为「中文客服意图识别」挑一个模型，候选有五六个。打开 Model Card 之前，你先写下要核对哪些信息？核对完如果发现某个模型不满足要求，你会怎么处置？请写出你的核对清单和处置原则。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否覆盖了模型能力与架构、适用范围（语言、输入类型、限制）、运行环境与方法、许可证，以及发现不满足时的明确处置动作（淘汰而不是将就）"
+    },
+    "reference": "核对顺序：① 这是什么模型、能做什么——模型名称、基本介绍、架构说明，用来确认没找错方向；② 适用范围——支持哪些语言、适合什么输入、有哪些限制，中文客服场景要确认语言覆盖与是否支持意图分类这类输入；③ 使用方法——需要什么运行环境、依赖哪些工具、输入该怎么准备，运行环境装不上就等于不能用；④ 许可证——是否允许商用、是否有地区或场景限制。处置原则：任何一项硬性不满足就直接淘汰并写明原因，不将就；只是偏好差异（比如两个都能用）才进入下一轮对比，不在这里拍板。",
+    "explanation": "本章说 Model Card「值得多看两眼」，看的是四类信息：这个模型是什么、适用范围是什么、怎么用、以及许可证。前三类帮你确认找没找错方向，最后一类决定你能不能真的用。\n\n「处置原则」这半边比清单本身更容易漏：核对不是为了比较优劣，而是为了淘汰。硬性条件不满足就直接出局，只有在都满足之后才轮到下一轮的对比 —— 这也呼应第 1 章的提醒，能下载不等于能随便用。\n\n这题跑不了真实下载，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的清单。"
+  }
+]

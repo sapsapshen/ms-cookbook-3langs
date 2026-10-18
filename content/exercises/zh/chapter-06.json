@@ -1,0 +1,123 @@
+[
+  {
+    "id": "ch06-ex01",
+    "chapter": "chapter-6",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "判断一份评测集的分数是否值得相信",
+    "prompt": "一份评测集里的每条样本都有一个 `kind` 标记：`\"basic\"`（日常高频基础问题）、`\"hard\"`（复杂长难问题）、`\"edge\"`（边界异常问题）。写函数 `trustworthy(rows)` 判断这份评测集的分数能不能直接拿来比较模型：当三种类型都至少出现一条时返回 `\"trustworthy\"`；只要有任何一种类型一条都没有（包括传入空列表），返回 `\"biased\"`。",
+    "starter": "def trustworthy(rows):\n    # 返回 \"trustworthy\" 或 \"biased\"\n    pass\n\ndata = [\n    {'kind': 'basic'},\n    {'kind': 'basic'},\n    {'kind': 'hard'},\n    {'kind': 'edge'},\n]\nprint(trustworthy(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "mix = [{'kind': 'basic'}] * 90 + [{'kind': 'hard'}] * 5 + [{'kind': 'edge'}] * 5\nassert trustworthy(mix) == 'trustworthy'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "only_basic = [{'kind': 'basic'}] * 98 + [{'kind': 'hard'}] * 2\nassert trustworthy(only_basic) == 'biased', '缺 edge 就该判 biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "only_basic2 = [{'kind': 'basic'}] * 98 + [{'kind': 'edge'}] * 2\nassert trustworthy(only_basic2) == 'biased', '缺 hard 就该判 biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'basic'}, {'kind': 'hard'}, {'kind': 'edge'}]) == 'trustworthy', '每种各一条也算覆盖到'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'hard'}]) == 'biased', '只跑长难题的评测集分数没有参考价值'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'edge'}, {'kind': 'edge'}]) == 'biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([]) == 'biased', '空评测集没有任何类型覆盖，不能算可信'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "big = ([{'kind': 'basic'}] * 98 + [{'kind': 'hard'}] * 1 + [{'kind': 'edge'}] * 1)\nassert trustworthy(big) == 'trustworthy', '各占 1% 正好踩线上，按「至少一条」算就是覆盖到了'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "skew = ([{'kind': 'basic'}] * 198 + [{'kind': 'hard'}] * 1 + [{'kind': 'edge'}] * 1)\nassert trustworthy(skew) == 'trustworthy', '比例低到 0.5% 也算覆盖到，判据看的是存在性不是占比'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _small in (1, 2):\n    for _large in (50, 200, 1000):\n        _rows = ([{'kind': 'basic'}] * _large + [{'kind': 'hard'}] * _small\n                 + [{'kind': 'edge'}] * _small)\n        assert trustworthy(_rows) == 'trustworthy', (\n            '占比低到 %.3f%% 也算覆盖到，判据看的是存在性不是占比'\n            % (100.0 * _small / len(_rows)))",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _b in range(0, 5):\n    for _h in range(0, 5):\n        for _e in range(0, 5):\n            for _scale in (1, 40):\n                _rows = ([{'kind': 'basic'}] * _b * _scale\n                         + [{'kind': 'hard'}] * _h * _scale\n                         + [{'kind': 'edge'}] * _e * _scale)\n                _want = 'trustworthy' if (_b and _h and _e) else 'biased'\n                _got = trustworthy(_rows)\n                assert _got == _want, (_b, _h, _e, _scale, _got, _want)",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解「数据量不如代表性重要」这个前提"
+    },
+    "reference": "KINDS = ('basic', 'hard', 'edge')\n\n\ndef trustworthy(rows):\n    for kind in KINDS:\n        if not any(r['kind'] == kind for r in rows):\n            return 'biased'\n    return 'trustworthy'\n\ndata = [\n    {'kind': 'basic'},\n    {'kind': 'basic'},\n    {'kind': 'hard'},\n    {'kind': 'edge'},\n]\nprint(trustworthy(data))",
+    "explanation": "本章说「数据量越大越好」是个误区：准备几万条但大多是简单重复的问题，分数哪怕很高也没有参考价值。合理的业务测试集应该有清晰的梯度 —— 日常高频的基础问题、一定比例的复杂长难问题、以及边界异常问题。\n\n这个函数检查的就是「梯度」在不在：三种类型一种都不能缺。注意它不检查配比是否合理 —— 本章说的是「要有一定比例」，没有给具体数字，所以判据盯的是**存在性**而不是比例。判据里特意放了几组「98 条基础 + 2 条长难、没有边界」的输入，那种数据集正是本章批评的形状，所以判 `\"biased\"`。\n\n题目里写明的边界要老实对待：比例按 1% 算，但因为「只要该类型存在就算满足」，所以哪怕 200 条里只有 1 条长难题（0.5%），也算覆盖到了。真正把它判成 `\"biased\"` 的原因是那一类**一条都没有**。判据专门放了这组 `\"trustworthy\"` 的输入，以及空评测集必须判 `\"biased\"`，来钉住这两条。\n\n主判据把三种类型各 0 到 4 条、总量放大 1 倍和 40 倍共 250 组输入全跑一遍，只有「三种都非空」才返回 `\"trustworthy\"` —— 这是专门防「把答案背下来」的：写死返回值或者只算 1% 阈值的实现，都会在这 250 组里露馅。边界诚实说明：这 250 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch06-ex02",
+    "chapter": "chapter-6",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断哪些选型依据是本章认可的",
+    "prompt": "你在给团队选一个做中文客服的基座模型。下面哪些依据与本章一致？（多选）\n\nA. 直接拿 MMLU 分数最高的那几个进入下一轮\nB. 用自己的真实咨询记录再做一轮业务评测，看它在具体场景里的表现\nC. 评测集里除了高频问题，也要放一部分复杂长难问题和边界异常问题\nD. 模型上线后的并发吞吐和首 Token 延迟也是选型要看的指标\nE. 某个模型在榜单上分数一般，但它见过的预训练数据和我的业务高度相似，值得进一步测",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B、C、D、E。A 错在把通用榜单分数当成了结论 —— 本章讲的正是「通用榜单超群但业务里表现平平」这个真实教训，通用指标只能作参考。",
+    "explanation": "本章开篇就是一个踩坑故事：以为越新的、通用榜单越好的模型，在业务场景里就越出色，结果并非如此。原因是各模型的预训练和后训练数据不同，有的恰好见过大量相似业务数据，微调时事半功倍，有的则「八字不合」。\n\n所以结论是本章那句加粗的话：**所有模型在选择前，通用指标只能是一个参考标准，最终模型选择还要看在业务数据上的表现。** A 恰好是被这个故事否掉的做法。\n\nE 是同一件事的正面表述 —— 预训练数据与业务的重合度，本章把它列为「微调时自然事半功倍」的原因之一。\n\nC 对应本章讲评测集梯度的那段；D 对应 EvalScope 的推理性能压测：吞吐量、请求延迟、首 Token 延迟（TTFT）、单 Token 输出耗时（TPOT）。选型不只看效果，服务要扛得住并发。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch06-ex03",
+    "chapter": "chapter-6",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "设计一份分层的业务评测集",
+    "prompt": "你要为「内部知识库问答」准备一份评测集，用来比较三个候选模型。请写出：① 评测集应该有哪些层次、每层大概放什么；② 为什么不能只堆数量；③ 拿到分数之后，除了准确率你还会看什么，以及如果两个模型分数接近你怎么决定。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否提到分层（高频基础问题、复杂长难问题、边界异常问题）、是否解释了代表性和覆盖面比数量更重要、以及是否提到性能指标（并发吞吐、延迟、TTFT）与业务侧的综合判断"
+    },
+    "reference": "① 层次：日常高频的基础问题 —— 这是线上真实咨询里最常见的那批，用来兜住基本盘；复杂长难问题 —— 多跳、需要跨文档综合的提问；边界异常问题 —— 库里根本没有答案、超出范围、或者问法含糊的提问，用来暴露幻觉。数据来源是员工日常的检索与问答记录。\n\n② 为什么不能只堆数量：几万分简单重复的问题，测出来的分数再高也没有参考价值。评测集的价值在于代表性和覆盖面 —— 它要能代表真实流量，而不是代表你抄数据的容易程度。\n\n③ 除了准确率还看什么：答案是否真的有用（有没有答到点上、有没有幻觉）、推理性能（并发下的吞吐、请求延迟、首 Token 延迟 TTFT、单 Token 输出耗时 TPOT），因为要上线的服务扛不扛得住同样重要。\n\n分数接近怎么决定：不看总分，看分层得分 —— 如果两个模型总分一样但一个在长难问题上明显更好，按业务实际分布去加权；再去业务数据上确认，而不是停在公开榜单上。如果关键分层上仍然分不出来，就说明当前评测集区分度不够，要先改评测集再选模型。",
+    "explanation": "这道题问的是评测集的**设计**，而设计决定结论的可信度。本章那句「数据量越大越好是个误区」是这道题的中心：评测集的价值来自代表性和覆盖面。\n\n第三问最值得展开。本章讲了通用榜单不能作数，但没有讲业务评测集自己也会失效 —— 分不出差异就说明评测集区分度不够，这时候正确的动作是改评测集，而不是硬选一个或者干脆放弃。\n\n另外，本章说的评测范围不止效果：推理性能压测里的吞吐量、TTFT、TPOT 都是选型依据。效果分数高但扛不住并发的模型，在线上一样不能用。\n\n这题跑不了真实的模型评测，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的设计要点。"
+  }
+]

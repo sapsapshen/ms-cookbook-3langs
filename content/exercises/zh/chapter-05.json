@@ -1,0 +1,103 @@
+[
+  {
+    "id": "ch05-ex01",
+    "chapter": "chapter-5",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "把业务需求归到模型任务类别",
+    "prompt": "模型选型的第一步是把业务需求翻译成模型任务。写函数 `classify(goal, in_types, out_types)`：先按业务目标 `goal` 判断任务类型 —— `\"generate\"` 对应生成任务，`\"categorize\"` 对应分类任务，`\"extract\"` 对应信息抽取任务，`\"rank\"` 对应检索与排序任务。再判断数据类型：`in_types` 与 `out_types` 是各一个字符串（`\"text\"`、`\"image\"`、`\"audio\"`、`\"video\"`）。两者相同时返回 `\"单模态\"`，不同时返回 `\"多模态\"`。函数返回一个 `\"任务类型-数据类型\"` 形式的字符串，比如 `\"分类任务-单模态\"`。",
+    "starter": "def classify(goal, in_types, out_types):\n    # 返回 \"任务类型-单模态\" 或 \"任务类型-多模态\"\n    pass\n\nprint(classify('categorize', 'text', 'text'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert classify('categorize', 'text', 'text') == '分类任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('extract', 'text', 'text') == '信息抽取任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('generate', 'text', 'image') == '生成任务-多模态', '输入输出类型不同就是多模态任务'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('rank', 'image', 'image') == '检索与排序任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('generate', 'video', 'audio') == '生成任务-多模态', '多模态不看类型是否相邻'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('categorize', 'audio', 'text') == '分类任务-多模态', '语音输入文本输出也是多模态'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _g in ('generate', 'categorize', 'extract', 'rank'):\n    for _i in ('text', 'image', 'audio', 'video'):\n        for _o in ('text', 'image', 'audio', 'video'):\n            _got = classify(_g, _i, _o)\n            _task = {'generate': '生成任务', 'categorize': '分类任务',\n                     'extract': '信息抽取任务', 'rank': '检索与排序任务'}[_g]\n            _mode = '单模态' if _i == _o else '多模态'\n            assert _got == f'{_task}-{_mode}', (_g, _i, _o, _got)",
+        "weight": 16
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否按「先看目标再看数据类型」的顺序判断"
+    },
+    "reference": "TASKS = {\n    'generate': '生成任务',\n    'categorize': '分类任务',\n    'extract': '信息抽取任务',\n    'rank': '检索与排序任务',\n}\n\n\ndef classify(goal, in_types, out_types):\n    task = TASKS[goal]\n    mode = '单模态' if in_types == out_types else '多模态'\n    return f'{task}-{mode}'\n\nprint(classify('categorize', 'text', 'text'))",
+    "explanation": "本章给的判断顺序是「先看业务问题的最终目标，再看输入和输出的数据类型」，这个函数就是这两步：目标决定任务类型，数据类型决定单模态还是多模态。\n\n四种任务类型对应四种目标：`generate` 生成、`categorize` 分类、`extract` 信息抽取、`rank` 检索与排序。判据覆盖了这四种目标各至少一次，主判据更是把 4 种目标 × 4 种输入 × 4 种输出共 64 组全跑一遍。\n\n多模态的判定只看「相同还是不同」，不看类型是否相邻。`classify('generate', 'video', 'audio')` 仍然是多模态，`classify('categorize', 'audio', 'text')` 这种「语音转文字」也是 —— 这正是本章举的样例一里的思路。\n\n需要说清楚的是：这是本章那张表的机械翻译，不含任何模型选型判断。真实场景里业务目标往往要人先拆一遍，函数只负责已经拆清楚之后的归类。\n\n最后一条判据把 64 组输入逐组重算期望值再比对 —— 这是专门防「把答案背下来」的：查表覆盖不了 64 组组合。边界诚实说明：这 64 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch05-ex02",
+    "chapter": "chapter-5",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "选出模型筛选与比较的正确做法",
+    "prompt": "你要给「中文合同关键信息抽取」挑模型。下面哪些做法与本章一致？（多选）\n\nA. 先在模型库左侧的「任务类型」里选信息抽取，平台会自动筛出带这个标签的模型\nB. 候选还很多时，再按框架、开源协议、结构、语种继续缩小范围\nC. 通用模型的下载量通常高于垂直领域专用模型，所以下载量最高的那个最适合\nD. 社区活跃度要看 Issue 和 Discussion 的响应速度，需要进模型卡片页查看\nE. 商用场景应该把开源协议筛成 Apache 2.0、MIT 这类宽松许可证",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、B、D、E。C 错在跨领域比较下载量意义不大 —— 通用模型的下载量本来就显著高于垂直专用模型，本章的建议是在同类任务范围内比较。",
+    "explanation": "本章给的热度指标有四个：下载量、喜欢数、更新时间、社区活跃度。它们的用途都是「缩小范围时提供参考」，没有一个是「直接决定选谁」。\n\nC 之所以错，是因为它把一个统计口径问题当成了质量问题。本章那句提醒是关键：通用模型的下载量通常显著高于垂直领域专用模型，所以跨领域直接对比数值意义不大，要比就在同类任务范围内比。同理，「更新时间过久」提示的是兼容性风险，也不是能力差。\n\nA 的顺序也对：任务标签是最直接的筛选方式，优先推荐，其他条件是在它之后才加的。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch05-ex03",
+    "chapter": "chapter-5",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "为一份文档处理系统做任务拆解",
+    "prompt": "你要搭一个「扫描件合同」处理系统：输入是扫描件图片，最后要拿到结构化的合同要素表。请写出你会把它拆成哪几个模型任务、每个任务用什么数据类型、某一步效果不好时怎么改，以及为什么这里可能需要多个模型而不是一个。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否按本章的多模型组合思路拆出 OCR、版面分析、信息抽取等独立环节、是否说明了单步替换而非重做整个系统、以及是否解释了单模型承担全流程的问题"
+    },
+    "reference": "拆解：① OCR，把扫描件里的文字识别出来 —— 输入图像，输出文本，多模态；② 版面分析，判断页面上每个元素是什么、在哪个位置 —— 输入图像，输出结构化信息，多模态；③ 信息抽取，从识别结果里提取合同要素（甲方、金额、期限等） —— 输入文本，输出结构化字段，单模态；表格多的合同还需要表格识别，同样是独立环节。\n\n单步替换：每个环节的效果不好时只换这一个环节的模型，不用重新修改整个系统。没有依赖关系的环节（比如多页合同的不同页）还可以并行处理，减少整体时间。对准确率要求高的环节选大模型，对速度要求高的环节选小模型。\n\n为什么要多个模型：本章说一个业务系统通常不只使用一个模型。整条链路上「识别像素里的字」「判断版面结构」「抽取语义字段」是三种不同的能力，用一个大模型包办，出了问题你既不知道错在哪一步，也不知道该换什么。\n\n再往前一步，本章的另一条提醒也适用：这条链路最终能不能用，要看真实业务数据上的表现，通用榜单分数只能作参考。",
+    "explanation": "这道题对应本章最后那节「一件事，也可以让几个模型一起做」，它举的例子正是文档处理系统：文档分类、OCR、版面分析、表格识别、信息抽取。本章给的三个特点是：每个模型负责一个独立任务、单步效果不好可以只替换这一步、没有依赖关系的任务可以并行。\n\n最后一问是这道题真正要考的。答案不在「多个模型更好」，而在于**可归责**：拆分之后，每一步都能单独测、单独换。这和第 6 章的评测思路是一条线 —— 系统没法定位问题的时候，评测分数也无从谈起。\n\n另外本章那句「通用指标只能作参考，最终模型选择还要看业务数据上的表现」同样适用于这里：这条链路上每个环节的模型，都要在自己的合同样本上验证过。\n\n这题跑不了真实的文档处理流水线，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的拆解。"
+  }
+]

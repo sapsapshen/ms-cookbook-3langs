@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch04-ex01",
+    "chapter": "chapter-4",
+    "type": "code",
+    "difficulty": 1,
+    "minutes": 8,
+    "objective": "判断 GPU 额度够不够跑一个实验",
+    "prompt": "魔搭免费 GPU 环境是 NVIDIA A10、24GB 显存，36 小时免费时长。写一个函数 `can_fit(weight_gb, batch_hint)` 判断这次实验能不能跑：`weight_gb` 是模型权重占用的 GB 数，`batch_hint` 是个提示性的系数（默认 1）。当 `weight_gb * batch_hint` 不超过 24 时返回 `\"ok\"`，否则返回 `\"too-big\"`。",
+    "starter": "def can_fit(weight_gb, batch_hint=1):\n    # 返回 \"ok\" 或 \"too-big\"\n    pass\n\nprint(can_fit(14))\nprint(can_fit(30))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14) == 'ok'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24) == 'ok', '正好等于 24GB 也算装得下'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24.5) == 'too-big' and can_fit(30) == 'too-big'",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14, 1.5) == 'ok', '14 x 1.5 = 21，仍然装得下'",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14, 2) == 'too-big', 'batch_hint 必须参与计算，不能只是摆设'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24.0001) == 'too-big', '只比 24 大一点点也要判 too-big'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _w in (0.5, 7, 13.5, 24, 24.25, 24.5, 25, 48, 70):\n    for _b in (1, 1.0001, 1.2, 1.5, 2, 3.7):\n        _got = can_fit(_w, _b)\n        _want = 'ok' if _w * _b <= 24 else 'too-big'\n        assert _got == _want, (_w, _b, _got, _want)",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解这是粗略估算而非精确显存预测"
+    },
+    "reference": "def can_fit(weight_gb, batch_hint=1):\n    if weight_gb * batch_hint <= 24:\n        return 'ok'\n    return 'too-big'\n\nprint(can_fit(14))\nprint(can_fit(30))",
+    "explanation": "本章说免费 GPU 是 NVIDIA A10、24GB 显存、36 小时免费时长，所以「装不装得下」的分界线就是 24GB。\n\n边界用「不超过」而不是「小于」：`can_fit(24)` 必须返回 `\"ok\"`，正好用满显存是能跑的，判据里专门盯了这一条；反过来只比 24 大一点点的 `can_fit(24.0001)`，以及权重 24.25GB 和 24.5GB 这两档，都必须判 `\"too-big\"` —— 写 `!=`、写 `<`，或者像「留点余量就当 24.5GB 以内都算行」那样自作主张加 0.5GB 容差，这三种实现都会在这几个输入点上判不过。\n\n`batch_hint` 是必答点而不是装饰：它不参与运算的实现，`can_fit(14, 2)` 会返回 `\"ok\"`（14 确实小于 24），但正确答案该是 `\"too-big\"`。\n\n需要说清楚的是，这里的计算是本章那种「粗略估算」：只算权重乘系数，没有计入 KV cache、框架开销和激活值。真正在 24GB 卡上跑，往往还要调小批次和上下文长度。所以这个函数回答的是「量级上有没有希望」，不是「一定能跑起来」—— 它不会替你判断余量够不够。\n\n最后一条判据把权重 9 档 × 系数 6 档共 54 组输入全跑一遍，逐组用 `weight * hint <= 24` 重算期望值 —— 这条是防「把答案背下来」的：写死返回值覆盖不了 54 组输入。边界诚实说明：这 54 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch04-ex02",
+    "chapter": "chapter-4",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "判断免费资源的使用方式是否正确",
+    "prompt": "你在魔搭 Notebook 上跑完了第一个实验。下面哪些做法与本章一致？（多选）\n\nA. 需要保留的文件放在 `/mnt/workspace` 目录下，因为 100GB 持久化存储挂载在这里\nB. 实验跑完了直接关掉浏览器窗口，云端实例就停了，GPU 不会继续占用额度\nC. GPU 额度用完后，可以继续用免费 CPU 环境处理数据和调试代码\nD. 长任务要提前安排保存进度，训练得到的文件写到 `/mnt/workspace` 里\nE. 只离开页面就算释放资源，回来还能接着用",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、C、D。B 和 E 错在同一点：只是离开页面或者关闭浏览器，不要当成已经停止了云端机器，要返回 Notebook 页面手动停止实例。",
+    "explanation": "这一章有一条主线：免费资源是共享的、有额度的，所以「及时归还」比「怎么用」更值得记住。\n\nA、D 是同一个机制的两次应用。`/mnt/workspace` 挂着 100GB 持久化存储，其他路径里的文件在实例关闭后默认不保留 —— 所以要长期留存的训练产物必须落到这个目录下。本章给的 `mkdir -p /mnt/workspace/models /mnt/workspace/data /mnt/workspace/outputs` 就是为这件事。\n\nB、E 是一道很实际的坑，本章专门写了一段强调：关闭浏览器不等于停止云端机器，额度还在按时间走。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch04-ex03",
+    "chapter": "chapter-4",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "规划一次免费环境上的小型验证实验",
+    "prompt": "你刚入门，想在免费资源上先跑通一个小实验，再决定要不要买设备。请写出你会怎么安排这次实验：先在 CPU 上做什么、什么条件下才升到 GPU、实验结束后怎么收尾。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否按先 CPU 后 GPU 的顺序安排、说明了升到 GPU 的判断依据（如模型规模或是否需要推理/小规模微调）、并提到把文件写入 /mnt/workspace 与实验结束后停止实例"
+    },
+    "reference": "先在 CPU 上：下载文件、处理数据、调试代码。CPU 环境是 8 核 32GB 内存、时长不限，可以慢慢把数据和代码跑顺，不用抢额度。此时的目标是把代码和数据都准备好，而不是出结果。\n\n升到 GPU 的判断依据：要做模型推理或小规模微调，且模型规模落在 A10 24GB 显存能覆盖的范围内时再升。本章给的参考路径就是「打开环境，建一个 Notebook，下载一个小模型，把示例跑起来」，先在小模型上验证整条链路。\n\n升上去之后：把要留的文件写到 `/mnt/workspace`，长任务提前安排保存进度，避免实例到时被中断。\n\n收尾：任务跑完记得停止实例 —— 关闭浏览器不算，要回 Notebook 页面手动停。额度用完后可以回到免费 CPU 环境继续处理数据和调试代码。",
+    "explanation": "本章开头那句话是这道题的主旨：刚开始学习不必先买新电脑，先把小实验跑起来，看看自己究竟需要多少资源。这道题问的就是这个「先看清楚需求再花钱」的动作。\n\n先 CPU 后 GPU 有两个理由叠在一起：CPU 环境时长不限，调试阶段本来就不需要 GPU；而一旦上了 GPU，额度就在按小时消耗，所以应该留到真正需要算力的那一步再用。\n\n收尾那一问容易漏，但它恰好是本章单独写了一段强调的内容 —— 免费资源上最贵的成本不是 GPU 时长，是忘记停下来的那些小时。\n\n这题跑不了真实的环境操作，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的安排。"
+  }
+]

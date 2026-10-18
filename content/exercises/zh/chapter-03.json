@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch03-ex01",
+    "chapter": "chapter-3",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "按字段整理问答数据并过滤空值",
+    "prompt": "从问答数据里挑出能用来训练的样本。给定一组记录，每条是字典，字段 `question` 与 `answer` 分别存放问题和答案。写函数 `clean(rows)`，返回一个新的列表：丢掉 `question` 或 `answer` 为空（去掉首尾空白后为空）的记录，并把每条保留记录的 `question` 与 `answer` 都去掉首尾空白。输入顺序要保持不变。",
+    "starter": "def clean(rows):\n    # 返回清理后的列表\n    return rows\n\ndata = [\n    {'question': '什么是模型量化？', 'answer': '降低参数的表示精度。'},\n    {'question': '  ', 'answer': '这条答案不该留下来。'},\n    {'question': 'LoRA 是什么？', 'answer': '  参数高效微调方法。  '},\n    {'question': 'GGUF 是什么格式？', 'answer': ''},\n]\nprint(clean(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': ' 问题 ', 'answer': ' 答案 '}])\nassert out == [{'question': '问题', 'answer': '答案'}], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': 'a1'}, {'question': '   ', 'answer': 'a2'}, {'question': 'q3', 'answer': 'a3'}])\nassert len(out) == 2 and [r['question'] for r in out] == ['q1', 'q3'], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': ''}, {'question': 'q2', 'answer': '   '}])\nassert out == [], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': 'a1'}])\nassert len(out) == 1 and set(out[0]) == {'question', 'answer'}, out",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = [{'question': 'q1', 'answer': ' a1 '}, {'question': 'q2', 'answer': 'a2'}]\nsnapshot = [dict(r) for r in src]\nclean(src)\nassert src == snapshot, 'clean 不应该改动传入的字典'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 8):\n    for _pad in (' ', '', '   '):\n        for _blank_side in (0, 1):\n            _rows = []\n            for _i in range(_n):\n                _q = _pad + f'问题{_n - _i}' + _pad\n                _a = f'答案{_i}' + _pad\n                if _i % 2 == _blank_side:\n                    _a = _pad\n                _rows.append({'question': _q, 'answer': _a, 'source': 'tag'})\n            _before = [{k: v for k, v in r.items()} for r in _rows]\n            _out = clean(_rows)\n            _want = [{'question': f'问题{_n - _i}', 'answer': f'答案{_i}'}\n                     for _i in range(_n) if _i % 2 != _blank_side]\n            assert _out == _want, (_n, _pad, _blank_side, _out, _want)\n            for _r in _out:\n                assert set(_r) == {'question', 'answer'}, ('多余键', _r)\n            assert _rows == _before, 'clean 不应该改动传入的字典'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': ' b ', 'answer': ' x '}, {'question': ' a ', 'answer': ' y '}])\nassert [r['question'] for r in out] == ['b', 'a'], '顺序必须和输入一致，不能重新排序'",
+        "weight": 4
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否先判断空值再 strip，避免把空白当成有效内容"
+    },
+    "reference": "def clean(rows):\n    out = []\n    for row in rows:\n        q = row['question'].strip()\n        a = row['answer'].strip()\n        if q and a:\n            out.append({'question': q, 'answer': a})\n    return out\n\ndata = [\n    {'question': '什么是模型量化？', 'answer': '降低参数的表示精度。'},\n    {'question': '  ', 'answer': '这条答案不该留下来。'},\n    {'question': 'LoRA 是什么？', 'answer': '  参数高效微调方法。  '},\n    {'question': 'GGUF 是什么格式？', 'answer': ''},\n]\nprint(clean(data))",
+    "explanation": "本章说「数据下载好了，先别急着全交给模型」——先抽几条样本看看有没有空值、乱码或者明显错误，再确认字段是不是符合训练代码要求。这个函数做的就是这件事的前两步。\n\n顺序上有个容易写反的地方：先 `strip()` 再判断是否为空。如果反过来先判空，`'   '` 这种全空白字符串会通过检查进入训练集 —— 它非空，但里面什么都没有。判据里 `answer` 全为空白的输入点盯的就是这个，`answer` 是 `''` 和 `'   '` 两种都试了。\n\n另外两条边界：返回的字典只保留 `question` 和 `answer` 两个键（原始数据常有来源、标注人之类的额外字段，它们不是训练要的），以及不能就地改传入的字典 —— 原列表原样保留。\n\n顺序那条也进了主判据：主判据按 `问题7`、`问题6` 这样倒着编号，排序之后必然对不上，写成排序的实现会判不过。\n\n最后一条判据不看单个输入，而是把条数 0 到 7 × 三种空白填充 × 两种空值落在哪一侧共 128 组输入全跑一遍，逐组重算期望结果、比对返回的键、并且检查传入的字典没被改动。这是专门防「把答案背下来」的：查表或写死返回值覆盖不了 128 组输入。边界诚实说明：这 128 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch03-ex02",
+    "chapter": "chapter-3",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断数据集使用方式是否符合本章要求",
+    "prompt": "你准备用一份开源问答数据集做微调。下面哪些做法与本章一致？（多选）\n\nA. 在「数据预览」里先看几条样本，确认问题在哪一列、答案在哪一列、有没有标签\nB. 心里想着「要做问答」，所以看到数据集名字里有问答就直接开始写训练代码\nC. 同一份数据集会更新，所以要连数据集版本一起记下来，否则实验没法复现\nD. 准备用来检查模型效果的样本，提前混进训练集也没关系\nE. 用 `MsDataset.load` 可以只加载其中一个子集，不必每次都读完整数据集",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A、C、E。B 错在人类回答和模型回答可能分别保存在不同字段里，不先看清字段就得靠猜，写出来的字段名多半对不上。D 错在训练集和测试集必须分开：提前混入会让分数看着不错，却判断不了模型遇到新问题时的表现。",
+    "explanation": "本章这一节的顺序是有理由的：先想清楚要做什么 → 在预览里翻几条 → 确认字段 → 记录版本 → 读进来。A、C、E 分别落在预览、版本和加载这三步上。\n\nB 是最典型的翻车方式。本章的原话是「问题放在哪一列，答案放在哪一列，有没有标签，一条数据里是一段文字还是一组对话，这些都可以先看清楚。后面写处理代码时，就不用对着字段名猜了」—— 按名字猜字段，正好是它要避免的那件事。\n\nD 的后果值得单独记：测试集混进训练集，分数会好看，但这个分数不再回答任何问题。所以本章把它单列为一段话强调。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch03-ex03",
+    "chapter": "chapter-3",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "为一份数据集写出训练前的检查清单",
+    "prompt": "你从魔搭上找到一份数据集，准备直接拿去微调。请写出下载之前、下载之后、交给模型之前这三个阶段，各要检查什么？并说明哪一步发现问题会直接推翻你最初的任务设计。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否按下载前（任务与数据是否匹配、筛选条件）、下载后（预览字段、版本记录、训练测试划分）、交给模型前（空值乱码、答案格式一致性）三个阶段组织，并指出字段结构与任务不匹配或训练测试未分离是最致命的两类问题"
+    },
+    "reference": "下载前：任务与数据是否匹配——按关键词标签和任务类别检索，确认这份数据对应的是你要做的任务，而不是名字相近的另一件事；确认覆盖范围够不够。\n下载后：① 预览样本，确认问题列、答案列、标签列分别是什么，有没有多余字段，避免后面靠猜字段名；② 记录数据集版本，同一份数据集会更新，训练样本、字段或划分都可能变化，不记版本实验无法复现；③ 把训练数据和测试数据分开取，检查效果的样本不能提前混进训练集。\n交给模型前：抽几条看有没有空值、乱码或明显错误，确认字段符合训练代码要求；同一批问题的答案格式如果前后差别很大，要先整理再训。\n最致命的一类是字段结构与任务不匹配——人类回答和模型回答可能分别存在不同字段里，准备拿它做什么任务就要决定读哪些字段。若整份数据的字段结构与预期不符，这份数据就不是「差一点」，而是不能用，需要换数据或者改任务设计。",
+    "explanation": "本章的逻辑是一条链：找数据之前先想清楚要做什么，筛选时看预览而不是看名字，读进来时把版本和划分记好，交给模型前再抽查一遍。三个阶段各拦一类问题，缺一环就会漏到训练里去。\n\n最后一问是这道题的重点。前面那些问题多数是「脏了要洗」，而字段结构与任务不匹配是「方向错了」—— 它推翻的是最初的任务设计，不是数据的质量。这两类的处理方式完全不同：前者改数据，后者要么换数据要么改任务。\n\n这题跑不了真实的数据集加载与训练，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的清单。"
+  }
+]

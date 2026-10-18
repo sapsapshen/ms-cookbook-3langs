@@ -1,1 +1,107 @@
-[]
+[
+  {
+    "id": "ch27-ex01",
+    "chapter": "chapter-27",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "按 inputSchema 校验工具调用参数",
+    "prompt": "MCP 工具用 `inputSchema` 描述参数：顶层有 `type` 和 `properties`，`properties` 里每个参数有自己的 `type`，`required` 列出必填参数名。\n\n写函数 `validate(schema, args)`，返回一个长度为 2 的列表 `[是否通过, 问题说明]`：\n\n按顺序检查，**遇到第一个问题就返回**：\n\n1. `args` 里出现 `properties` 中没有的键 → `\"unknown-key:<键名>\"`\n2. `required` 里某个键在 `args` 中缺失 → `\"missing:<键名>\"`\n3. 某个参数的类型对不上（`\"string\"` 对应 `str`、`\"number\"` 对应 `int` 和 `float`、`\"boolean\"` 对应 `bool`）→ `\"type:<键名>\"`\n\n全部通过返回 `[True, \"\"]`。",
+    "starter": "def validate(schema, args):\n    # 返回 [是否通过, 问题说明]\n    return [True, '']\n\nprint(validate({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']},\n               {'order_id': 'A123'}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {'order_id': 'A123'}) == [True, ''], validate(_s, {'order_id': 'A123'})",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {}) == [False, 'missing:order_id'], validate(_s, {})",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {'order_id': 'A1', 'extra': 1}) == [False, 'unknown-key:extra'], '未知键优先于缺失检查'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'n': {'type': 'number'}}, 'required': ['n']}\nassert validate(_s, {'n': 3}) == [True, ''] and validate(_s, {'n': 3.5}) == [True, '']\nassert validate(_s, {'n': '3'}) == [False, 'type:n']",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}\nassert validate(_s, {'b': True}) == [True, '']\nassert validate(_s, {'b': 1}) == [False, 'type:b'], '布尔不能接受数字'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'a': {'type': 'string'}, 'b': {'type': 'string'}}, 'required': ['a', 'b']}\nassert validate(_s, {'a': 'x', 'b': 'y', 'c': 'z', 'd': 1}) == [False, 'unknown-key:c'], '多个未知键时报告字典顺序里的第一个'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {}, 'required': []}\nassert validate(_s, {}) == [True, '']\nassert validate(_s, {'x': 1}) == [False, 'unknown-key:x']",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "_TYPES = {'string': str, 'number': (int, float), 'boolean': bool}\n_SHAPES = [\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {'order_id': 'A1'}),\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {}),\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {'order_id': 'A1', 'x': 1}),\n    ({'properties': {'n': {'type': 'number'}}, 'required': ['n']}, {'n': 1}),\n    ({'properties': {'n': {'type': 'number'}}, 'required': ['n']}, {'n': 'x'}),\n    ({'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}, {'b': True}),\n    ({'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}, {'b': 0}),\n    ({'properties': {'a': {'type': 'string'}, 'b': {'type': 'string'}}, 'required': ['a', 'b']}, {'a': 'x', 'b': 'y', 'c': 1}),\n    ({'properties': {}, 'required': []}, {}),\n    ({'properties': {}, 'required': []}, {'z': 1}),\n    ({'properties': {'a': {'type': 'string'}}, 'required': []}, {'a': 'x'}),\n    ({'properties': {'a': {'type': 'string'}}, 'required': []}, {'b': 'x'}),\n]\nfor _sch, _arg in _SHAPES:\n    _extra = [k for k in _arg if k not in _sch['properties']]\n    if _extra:\n        _want = [False, 'unknown-key:' + _extra[0]]\n    else:\n        _miss = [k for k in _sch['required'] if k not in _arg]\n        if _miss:\n            _want = [False, 'missing:' + _miss[0]]\n        else:\n            _bad = [k for k in _sch['required']\n                    if not isinstance(_arg[k], _TYPES[_sch['properties'][k]['type']])]\n            _want = [False, 'type:' + _bad[0]] if _bad else [True, '']\n    assert validate(_sch, _arg) == _want, (_sch, _arg, validate(_sch, _arg), _want)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 MCP 工具描述是模型与外部能力之间的契约"
+    },
+    "reference": "TYPES = {\n    'string': str,\n    'number': (int, float),\n    'boolean': bool,\n}\n\n\ndef validate(schema, args):\n    props = schema['properties']\n    for key in args:\n        if key not in props:\n            return [False, 'unknown-key:' + key]\n    for key in schema['required']:\n        if key not in args:\n            return [False, 'missing:' + key]\n    for key, spec in props.items():\n        if key in args and not isinstance(args[key], TYPES[spec['type']]):\n            return [False, 'type:' + key]\n    return [True, '']\n\nprint(validate({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']},\n               {'order_id': 'A123'}))",
+    "explanation": "本章说 MCP 让大模型「不需要直接理解各种复杂接口，只需要按照 MCP 提供的工具描述进行调用」。这个函数就是那道契约的校验端 —— `inputSchema` 写清楚能传什么，校验器按它判断这次调用合不合法。\n\n**检查顺序是题面明确规定的，而且顺序会改变结论**。传了一个 schema 里没有的键 `extra` 时，报的是 `unknown-key:extra` 而不是缺失或类型错误：未知键先查，所以多余的参数会直接导致失败，不会等到后面才发现。判据里用两组「只多传了未知键」和「多传了两个未知键」的输入分别测了它。\n\n**`required` 要按 `required` 列表的顺序报**，不是按 `properties` 的顺序。多个必填都缺失时，报第一个出现在 `required` 里的那个。\n\n**布尔不能接受数字**。Python 里 `isinstance(True, int)` 是 `True`（`bool` 是 `int` 的子类），所以「把 number 和 boolean 都当数字检查」的实现会让 `{'b': 1}` 通过，而题目要求它判 `type:b`。这正好是判据里那组要测的。反过来 `{'n': 3}` 和 `{'n': 3.5}` 都算 number，两者都要接受。\n\n**`required` 为空、参数可选的情况也要走通**。`{'properties': {'a': ...}, 'required': []}` 传 `{'a': 'x'}` 应该通过 —— 判据主循环的最后两组专门测了可选参数存在与不存在的两种情况。\n\n主判据把 12 组「schema × 参数」组合逐组按「未知键 → 缺失 → 类型」的顺序重算期望结果 —— 这是专门防「把答案背下来」的。边界诚实说明：这 12 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch27-ex02",
+    "chapter": "chapter-27",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断 MCP 各层职责与选型",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. Host 是协调者，即使 Server 声明了删除文件这类高风险能力，Host 也可以选择不暴露该工具\nB. 一个 MCP Client 通常只对应一个 Server，Host 可以同时创建多个 Client\nC. 接入 MCP 之后，原来给程序调用的业务 API 就应该被取消掉\nD. 本地工具、命令行程序或桌面应用适合用 stdio，团队共用的云端服务适合用 Streamable HTTP\nE. MCP Server 能访问什么，由协议自动决定，Server 自己说了不算",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "C 与本章相反：本章说「原有 API 不需要因为接入 MCP 而取消」，MCP Server 就是在内部调用这些 API。C 错在把「在外面加了一层」理解成「把里面换掉了」。E 错在权限由 Host 传什么、Server 运行环境有什么系统权限、以及用什么账号令牌共同决定，不是协议自动授予。",
+    "explanation": "A、B、D 分别对应本章讲 Host、Client 和连接方式的三段。\n\nA 是本章里很值得记的一句：本章说「即使某个 MCP MCP Server 声明自己具备删除文件等高风险能力，Host 仍然可以选择不向模型暴露该工具，或者要求用户在真正执行操作前再次确认」。也就是说**能力声明不等于能力可用** —— Server 声明了，Host 决定给不给模型看。\n\nB 是「一个 Client 对应一个 Server」这条边界的意义所在。本章说 Host 负责决定哪些信息可以在这些连接之间传递，「而不是让多个 Server 自行共享全部上下文」—— 这条边界正是为了避免权限和上下文混在一起。\n\nD 出自连接方式那一段。本章说 stdio 适合本地场景、部署简单但要注意本地运行环境与文件访问范围；Streamable HTTP 更适合远程或共享服务，但要重点考虑 HTTPS、身份认证和访问权限。\n\nC 是这一节最值得停下来的一条。本章说「API 和 MCP 不是互相替代的两种技术」「原有 API 不需要因为接入 MCP 而取消」，甚至给出了选型标准：如果某个服务只需要固定调用一个 API、不需要模型发现工具或按任务选操作，直接用 API 更简单。\n\nE 也出自同一节。本章列了一个 Server 最终能做什么的三方面决定因素：Host 实际传给它什么信息、Server 运行环境本身拥有什么系统权限、以及它连接外部系统时用了什么账号或令牌。MCP 本身提供的是标准化连接机制，「并不会自动扩大 Server 的权限范围」。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch27-ex03",
+    "chapter": "chapter-27",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "为一套业务系统设计 MCP 接入方案",
+    "prompt": "你们公司有订单查询、审批提交、内部知识库三个现成系统，都是普通 API 或数据库接口，现在想让 Agent 能用上。请写出：你会怎么切分 Server、每个 Server 暴露什么工具、权限怎么定、以及在什么情况下你会建议**不用** MCP 而直接用 API。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否按「一个 Client 对应一个 Server」的边界拆分、是否为每个工具写清楚了 name/description/inputSchema 三要素、是否覆盖了权限与高风险操作的确认机制、以及是否说清了不该用 MCP 的场景"
+    },
+    "reference": "拆分：按本章「一个 Client 通常只对应一个 Server」的原则，开三个 Server —— 订单 Server、审批 Server、知识库 Server。Host 侧建三个 Client。本章特别提醒 Host 要决定哪些信息可以在这些连接之间传递，不要让 Server 之间共享全部上下文 —— 比如订单 Server 不该自动看到审批 Server 的上下文。\n\n每个 Server 暴露什么工具：沿用本章那个订单查询的例子 —— 原来有一个「根据订单号查询订单状态」的 API，包装成工具 `query_order`，`description` 写「根据订单编号查询订单状态和预计发货时间」，`inputSchema` 里 `order_id` 是 string 且列进 `required`。审批 Server 暴露 `submit_approval`（需要审批单号和结论），知识库 Server 暴露 `search_docs`（需要查询词）和 `get_doc`（需要文档 ID）。每个工具只做一件事，因为工具是给模型挑的，职责太杂模型容易选错。\n\n权限怎么定：① Host 侧决定暴露范围 —— 高风险工具（提交审批、删除类操作）可以先不暴露，或暴露但要求用户执行前再次确认，这正是本章举的「删除文件」那个例子；② Server 侧用最小权限的账号或令牌访问外部系统，不复用管理员凭据；③ 明确 Server 能访问什么由三方面决定 —— Host 传什么、运行环境有什么系统权限、用什么账号令牌，所以这三处都要收紧。\n\n什么时候不用 MCP：如果某个程序只需要固定调用一个 API、不需要模型自动发现工具或按任务选择操作，直接用 API 更简单。MCP 的价值在于「让模型理解能力」，如果根本不需要模型理解，就不该付这个设计成本。反过来，多工具、模型需要按任务挑、或同一批能力要服务多个不同场景的 Agent 时，MCP 的收益才显现。",
+    "explanation": "这道题对应本章的核心主张：MCP 是在既有能力外面加一层「模型能理解」的说明，而不是替代原有接口。\n\n第一问的关键是**按什么边界切**。本章给的原则是「一个 Client 通常只对应一个 Server」，理由是保持边界清楚 —— 混在一起就会出现「多个 Server 自行共享全部上下文」的局面。本章还明确把上下文传递的决定权放在 Host，这一点写方案时要落到具体动作上：哪些信息可以跨 Server 传递，由 Host 的策略决定。\n\n第二问的 `description` 不是可省项。本章的例子把「根据订单编号查询订单状态和预计发货时间」写得比工具名详细得多，原因就是模型靠这段文字判断该调哪个工具。工具名 `query_order` 告诉开发者，description 告诉模型。\n\n第三问是这道题最容易被跳过的部分 —— 本章专门用一段讲权限：Server 能访问什么**不由协议决定**，而由 Host 传什么、运行环境有什么系统权限、用什么账号令牌三者共同决定。所以「接了 MCP 就等于开放了能力」是错的理解。\n\n最后一问反向考「不该用的时候不用」。本章说得很直接：如果服务只需固定调用一个 API，直接用 API 更简单。这正是本章那句「API 和 MCP 不是互相替代的两种技术」的实践含义 —— 判断标准是**是否需要模型理解和选择**，不是「哪个技术更新」。\n\n这题跑不了真实的 MCP 服务，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的方案。"
+  }
+]

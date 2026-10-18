@@ -1,1 +1,108 @@
-[]
+[
+  {
+    "id": "ch26-ex01",
+    "chapter": "chapter-26",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "写一个按 ReAct 循环推进的执行器",
+    "prompt": "ReAct 模式按 Thought → Action → Observation 循环推进：模型看已有信息决定下一步，行动的结果作为新信息回来。\n\n写函数 `run_react(steps, observe)`：`steps` 是「思考后要做什么」的列表，元素是字符串；`observe(action)` 是一个函数，传入行动字符串，返回这一行动的观察结果字符串。规则：\n\n- 先执行第 1 步，拿到观察结果；之后每一步都基于**到目前为止的全部观察结果**来决定，但本题里模型行为是给定的，所以只要按顺序执行即可。\n- 一旦某一步的观察结果是 `\"stop\"`，立刻结束，后面的步骤不再执行。\n- 返回一个长度为 2 的列表：所有观察结果组成的列表，以及实际执行的步数。\n\n`observe` 返回 `None` 或抛异常时抛出 `ValueError`。",
+    "starter": "def run_react(steps, observe):\n    # 返回 [观察结果列表, 执行步数]\n    return [], 0\n\nprint(run_react(['搜索获奖名单', '查询出生日期', '比较年龄'],\n               lambda a: 'stop' if a == '比较年龄' else 'ok'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a', 'b'], lambda x: 'r' + x)\nassert out == [['ra', 'rb'], 2], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a', 'b', 'c'], lambda x: 'stop' if x == 'b' else 'ok')\nassert out == [['ok', 'stop'], 2], '遇到 stop 立刻结束，后面的步骤不执行'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a'], lambda x: 'stop')\nassert out == [['stop'], 1], '第一步就 stop 要执行 1 步'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "calls = []\nrun_react(['a', 'b', 'c'], lambda x: calls.append(x) or ('stop' if x == 'b' else 'ok'))\nassert calls == ['a', 'b'], 'stop 之后不能再调用 observe'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    run_react(['a'], lambda x: None)\n    assert False, 'observe 返回 None 应该抛 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "def boom(x):\n    raise RuntimeError('tool failed')\ntry:\n    run_react(['a'], boom)\n    assert False, 'observe 抛异常应该转成 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react([], lambda x: 'ok')\nassert out == [[], 0], '空步骤列表返回空结果'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 7):\n    for _stop_at in [None] + list(range(_n)):\n        _steps = ['s%d' % i for i in range(_n)]\n        _seen = []\n        def _obs(action):\n            _seen.append(action)\n            _idx = int(action[1:])\n            return 'stop' if _stop_at is not None and _idx == _stop_at else 'ok'\n        _out = run_react(_steps, _obs)\n        if _stop_at is None:\n            _want_obs = ['ok'] * _n\n            _want_n = _n\n        else:\n            _want_obs = ['ok'] * _stop_at + ['stop']\n            _want_n = _stop_at + 1\n        assert _out == [_want_obs, _want_n], (_n, _stop_at, _out, _want_obs, _want_n)\n        assert _seen == _steps[:_want_n], ('stop 之后不应再调用', _n, _stop_at, _seen)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 ReAct 的核心是「行动结果回来后决定下一步」"
+    },
+    "reference": "def run_react(steps, observe):\n    results = []\n    for action in steps:\n        try:\n            got = observe(action)\n        except Exception as error:\n            raise ValueError('observe failed: ' + str(error))\n        if got is None:\n            raise ValueError('observe returned None')\n        results.append(got)\n        if got == 'stop':\n            return [results, len(results)]\n    return [results, len(results)]\n\nprint(run_react(['搜索获奖名单', '查询出生日期', '比较年龄'],\n               lambda a: 'stop' if a == '比较年龄' else 'ok'))",
+    "explanation": "本章说 ReAct 的过程是 Thought → Action → Observation 循环，直到任务完成。这个函数把那个循环的**控制逻辑**抽出来，模型的行为本身用给定的步骤代替。\n\n**遇到 `stop` 立刻结束，而且不能多调用一次 observe**。这是最容易写漏的一处 —— 如果写成「先收集全部观察结果，最后再判断要不要停」，那么 stop 之后的步骤仍然会执行一遍。判据专门用一个记录调用序列的 observe 来验证：`run_react(['a','b','c'])` 在 `'b'` 返回 `'stop'` 时，observe 收到的调用序列必须正好是 `['a', 'b']`。\n\n**第一步就返回 `stop` 时，执行步数是 1 而不是 0**。stop 是一个观察结果，说明这一步已经执行了。判据里单列了这一组。\n\n**异常和 `None` 都要转成 `ValueError`**。`observe` 代表工具调用 —— 工具挂掉或者返回空结果都是真实会发生的。本章说 ReAct 适合「搜索、查询、工具调用等需要与外部环境不断交互的任务」，而外部环境是会失败的，所以这里把它变成一个明确的错误而不是让程序崩在一个 RuntimeError 上。\n\n**空步骤列表返回 `([], 0)`**。判据里单列了这一组。\n\n主判据把步骤数 0 到 6 × stop 位置（含「不停」这一档）共 56 组输入逐组重算期望的观察序列、执行步数和实际调用序列 —— 这是专门防「把答案背下来」的。边界诚实说明：这 56 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch26-ex02",
+    "chapter": "chapter-26",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "按任务特点选 Agent 执行模式",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. ReAct 比较适合搜索、查询、工具调用等需要与外部环境不断交互的任务\nB. 步骤较多的复杂任务完全用 ReAct，可能出现遗漏步骤或执行路径反复\nC. Plan-and-Execute 更适合步骤较多、目标明确且能提前拆分的任务\nD. Reflection 适合报告生成、代码编写这类对结果质量要求高的任务\nE. Agent 数量越多越好，多 Agent 协作总能降低难度",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "E 与本章的说法相反：本章说「Agent 数量并不是越多越好」，Agent 数量增加会让任务分配、信息传递和结果协调更复杂，并增加模型调用次数和执行成本。",
+    "explanation": "本章把四种模式逐一讲清了，四种选择正好对应 A 到 D。\n\nA 和 B 是同一段的两面。本章说 ReAct「并没有在任务开始时确定所有执行步骤，而是根据每次工具返回的结果决定下一步操作」，所以适合需要与环境交互的任务；紧跟着就说了代价 —— 对于步骤较多的复杂任务，可能出现遗漏步骤或执行路径反复。\n\nC 对应 Plan-and-Execute 那一节的定位：「与 ReAct 相比，Plan-and-Execute 更强调在执行前建立整体计划，因此适合步骤较多、任务目标明确并且能够提前进行拆分的任务」。本章举的「分析三家新能源汽车企业」正是这种任务。\n\nD 对应 Reflection 那一节。本章说这种模式「比较适合报告生成、代码编写、复杂分析等对结果质量要求较高的任务」，同时提醒了代价：多次检查修改会增加模型调用次数和执行时间，所以要设结束条件。\n\nE 是这一节末尾那句提醒的直接反面。本章的原话是「对于单个 Agent 能够完成的任务，通常没有必要额外引入多个 Agent」—— 多 Agent 的收益来自分工降低单点难度，代价是协调复杂度上升，两者要一起看。\n\n最后一条背景：这些模式不是互斥的。本章说可以先 Plan-and-Execute 规划、再 ReAct 执行某一步、再 Reflection 检查结果，规模更大时交给多 Agent 协作。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch26-ex03",
+    "chapter": "chapter-26",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "为一个任务设计 Agent 执行方案",
+    "prompt": "你要让 Agent 完成「查三家公司的年报数据，做成一份对比报告」。请写出：你会用哪种（或哪几种组合）执行模式、按什么顺序、每一步之间靠什么衔接、以及你需要设置哪些结束条件。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否提到先用 Plan-and-Execute 拆分步骤、执行时用 ReAct 处理工具调用、结果用 Reflection 检查、是否考虑到计划需要可调整、是否设置了最大轮次或最大检查次数这类结束条件"
+    },
+    "reference": "模式组合：Plan-and-Execute 规划 + ReAct 执行每一步 + Reflection 检查结果。\n\n第一步，Plan-and-Execute：先把任务拆成步骤 —— 确定比较哪三家公司、收集各家最近一年数据、整理关键指标、对比分析、生成报告。这正是本章举的同类例子（「分析三家新能源汽车企业」用的是同一个拆法）。计划不是一次定死的，本章说执行中发现原计划无法继续或出现新需求时可以调整，所以这一步的产物要能改。\n\n第二步，ReAct 执行每一个步骤：收数据这一步要查多个来源，模型不知道该查哪几个，得根据搜索结果决定下一步 —— 这是 ReAct 的适用场景。拆指标、整理数据这一步路径确定，按计划走就行。\n\n第三步，Reflection 检查结果：检查是否覆盖了三家公司、数据是否与原始资料一致、对比维度是否遗漏。本章说这种任务「对结果质量要求较高」，适合加这一段。要注意每家公司的年报结构不一样，所以「与原始资料一致」这项检查可能需要回到 ReAct 阶段重新查资料。\n\n衔接方式：前一步的产物是后一步的输入。整理指标的输出就是对比分析的输入，对比分析的输出就是报告草稿。这属于本章说的「前后存在依赖关系」的情况，可以把一个环节的结果传递给下一个。\n\n结束条件：① 数据收集这一步每个来源检索 3 次仍没拿到关键指标就标记为缺失，继续往下走，不要死磕；② Reflection 最多检查 3 轮，仍有问题就输出「哪些部分未能核实」而不是继续改；③ 报告生成 1 次即可。本章说 Reflection「会增加模型调用次数和执行时间，因此实际应用中通常需要设置结束条件」，所以这几条是必需的不是可选的。",
+    "explanation": "这道题对应本章末尾那句「这些任务执行模式并不是相互独立的，在实际应用中可以根据任务需要组合使用」—— 本章自己给出的组合就是 Plan-and-Execute → ReAct → Reflection，这道题的答案基本是把它套到具体任务上。\n\n第二问的衔接方式值得多说一句。本章讲多 Agent 协作时分了三类情况：可独立拆分的分别处理再汇总、前后有依赖的传递结果、需要反复讨论的通过消息交互。这个任务的主体是**有依赖**的（收集 → 整理 → 对比 → 成文），所以「把上一个环节的产物交给下一个环节」是自然选择；只有收集多家公司数据这一段内部可以并行。\n\n第三问是这道题真正的考点。本章专门提示了 Reflection 的代价：「多次检查和修改也会增加模型调用次数和执行时间，因此实际应用中通常需要设置结束条件」。很多 Agent 方案失败不是因为不会反思，而是因为没有停止条件 —— 反复检查到一个自己满意为止，成本和延迟都不可控。\n\n这题跑不了真实的 Agent 执行，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的方案。"
+  }
+]

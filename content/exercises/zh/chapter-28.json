@@ -1,1 +1,117 @@
-[]
+[
+  {
+    "id": "ch28-ex01",
+    "chapter": "chapter-28",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "按 Skill 目录选对要加载的文件",
+    "prompt": "一个 Skill 的目录约定是：入口 `SKILL.md`；`references/` 放术语与隐私规则；`assets/` 放输出模板；`scripts/` 放机械处理的程序；`tests/` 是开发验证用的，不是每次执行都要加载。\n\n写函数 `load_for(need)` 返回本次执行需要读取的文件名列表，规则如下：\n\n- `need` 包含 `\"术语\"` 或 `\"隐私\"` 时，把 `\"references/terms.md\"` 和 `\"references/privacy-rules.md\"` 都加进去\n- `need` 包含 `\"模板\"` 时加 `\"assets/meeting-template.md\"`\n- `need` 包含 `\"清洗\"` 时加 `\"scripts/clean-transcript.py\"`\n- `need` 包含 `\"测试\"` 时**不加任何文件** —— tests 目录不参与运行时加载\n- 无论是否匹配，最后都要把 `\"SKILL.md\"` 放在列表第一位\n\n列表中不重复，按上面的顺序排列（`SKILL.md`、references、assets、scripts）。`need` 不是字符串时抛出 `TypeError`。",
+    "starter": "def load_for(need):\n    # 返回需要读取的文件名列表\n    return []\n\nprint(load_for('按模板输出，清洗时间戳'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('') == ['SKILL.md'], load_for('')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('遇到术语') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], load_for('遇到术语')",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('有隐私要求') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], '隐私和术语命中同一组文件'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('套用模板') == ['SKILL.md', 'assets/meeting-template.md'], load_for('套用模板')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('清洗时间戳') == ['SKILL.md', 'scripts/clean-transcript.py'], load_for('清洗时间戳')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('跑测试') == ['SKILL.md'], 'tests 目录不参与运行时加载'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = load_for('有隐私要求，套用模板并清洗')\nassert out == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md', 'assets/meeting-template.md', 'scripts/clean-transcript.py'], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('术语术语隐私隐私') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], '重复关键词不产生重复条目'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (None, 123, ['术语'], {'a': 1}):\n    try:\n        load_for(_bad)\n        assert False, '非字符串应该抛 TypeError: %r' % (_bad,)\n    except TypeError:\n        pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "_CASES = ['', '术语', '隐私', '模板', '清洗', '测试', '术语+模板', '隐私清洗',\n          '测试模板', '术语隐私模板清洗测试', '无关内容', '业务术语很多需要模板']\nfor _need in _CASES:\n    _out = load_for(_need)\n    _want = ['SKILL.md']\n    if ('术语' in _need) or ('隐私' in _need):\n        _want += ['references/terms.md', 'references/privacy-rules.md']\n    if '模板' in _need:\n        _want += ['assets/meeting-template.md']\n    if '清洗' in _need:\n        _want += ['scripts/clean-transcript.py']\n    assert _out == _want, (_need, _out, _want)\n    assert len(_out) == len(set(_out)), ('不能有重复条目', _need, _out)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解 Skill 是方法沉淀，Prompt 是本次任务"
+    },
+    "reference": "def load_for(need):\n    if not isinstance(need, str):\n        raise TypeError('need must be a string')\n    files = ['SKILL.md']\n    if '术语' in need or '隐私' in need:\n        files.append('references/terms.md')\n        files.append('references/privacy-rules.md')\n    if '模板' in need:\n        files.append('assets/meeting-template.md')\n    if '清洗' in need:\n        files.append('scripts/clean-transcript.py')\n    return files\n\nprint(load_for('按模板输出，清洗时间戳'))",
+    "explanation": "本章说 `SKILL.md` 是入口，Agent 先从这里了解这个 Skill 适合处理什么任务、需要什么输入、按什么步骤执行；其他目录是按需加载的。这个函数把「按需」这件事变成可判断的规则。\n\n**入口永远在第一位**。本章的任务链是「大模型根据名称和描述判断是否需要加载 → 从 SKILL.md 读取执行方法 → 需要时再读其他文件」，所以不管这次需求是什么，`SKILL.md` 都要加载。判据里 `load_for('')` 返回 `['SKILL.md']` 这一组就钉住了这点。\n\n**术语和隐私命中同一组文件**。本章的目录里 `references/` 放的是「术语表和内容分类规则」与「敏感信息与脱敏要求」，遇到专业术语或隐私要求时都是去读这个目录，所以「有隐私要求」和「遇到术语」触发的是同样两个文件。判据把这两种写法分开测了。\n\n**`tests/` 不参与运行时加载**。本章说得很明确：「tests/ 主要用于开发和改版后的验证，不是每次执行任务都要加载的内容」。所以需求里出现「测试」不加载任何文件 —— 这是最容易照着「看到关键词就加文件」的思路写错的一条，判据专门测了 `load_for('跑测试') == ['SKILL.md']`。\n\n**重复关键词不产生重复条目**。`load_for('术语术语隐私隐私')` 仍然只有两个 references 文件。这看着像细节，但如果实现里用「对每个关键词都 append 一次」，就会把同一份文件读两遍。\n\n**非字符串抛 `TypeError` 而不是 `ValueError`**。如果 `need` 是列表，`'术语' in need` 仍然能工作（列表的 `in` 是成员判断）但语义完全错了，所以题面要求先挡掉。\n\n主判据把 12 种需求组合逐组按「入口 → references → assets → scripts」的顺序重算期望列表，并检查没有重复 —— 这是专门防「把答案背下来」的。边界诚实说明：这 12 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。"
+  },
+  {
+    "id": "ch28-ex02",
+    "chapter": "chapter-28",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "分清 Prompt、Skill、工作流与 MCP",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. Prompt 回答「这一次要做什么」，Skill 回答「这类任务通常怎样完成」\nB. MCP 负责 Agent 怎样连接和调用外部能力，Skill 负责描述怎样用这些能力完成任务\nC. 一个 Skill 可以完全不使用 MCP\nD. 工具已经连接好了，Skill 就不必再规定删除或发送前的确认点\nE. `tests/` 目录是 Skill 执行任务时必须加载的内容",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D 与本章相反：本章说「涉及发送消息、修改记录、删除数据、产生费用或公开发布时，Skill 应明确规定确认点，不能因为工具已经连接就默认允许执行」。E 与本章相反：tests 目录是开发和改版后验证用的，不是每次执行都要加载。",
+    "explanation": "这一章讲的是四个概念各管哪一段。本章给的那张表是最直接的对照：A、B 对应表格里 Prompt 与 Skill 的行，以及「MCP 提供连接外部工具和数据的标准方式，Skill 描述怎样使用这些能力完成一类任务」这句话。\n\nC 出自同一段：「一个 Skill 可以指导 Agent 调用 MCP 工具，也可以完全不使用 MCP。一个 MCP 服务也可以被多个 Skill 采用。」两个方向都是多对多，说明它们是解耦的。\n\nD 是这一节里最值得记住的一条。本章先说「连接成功只代表 Agent 可以使用某项能力，不代表它已经知道应该怎样完成业务任务」，然后举了一串必须写进 Skill 的问题 —— 该查哪个项目、统计什么时间范围、哪些字段属于敏感信息、创建修改删除前是否需要确认。紧接着就是那句结论：确认点必须写进 Skill，**不能因为工具已经连接就默认允许执行**。这是权限边界上的实际风险点。\n\nE 出自 Skill 的基本组成那一节。本章说 `tests/` 主要用于开发和改版后的验证，「不是每次执行任务都要加载的内容」—— 这一点和前面那道题里的判据是同一件事。\n\n还有一条常被忽略的：Prompt 和 Skill 不是二选一。同一个 Skill 面对不同输入时，仍然需要 Prompt 说明本次目标 —— Prompt 告诉 Agent 这次处理哪份材料，Skill 提供这类任务沉淀好的做法。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。"
+  },
+  {
+    "id": "ch28-ex03",
+    "chapter": "chapter-28",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "把一个模糊需求拆成一个完整 Skill",
+    "prompt": "你的团队反复让模型「整理客户反馈并给出改进建议」，每次都要重新写一大段 Prompt。请按本章的构成要素，设计这个 Skill：写清触发条件、输入、执行步骤、要额外准备的资源，以及你会怎么定义验收标准和确认点。",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否覆盖触发条件、输入要求、执行步骤、工具与资源、输出格式、异常处理这六项构成、是否按「规则少时一个 SKILL.md 就够」的原则判断拆分时机、是否写明了验收标准与高风险操作的确认点"
+    },
+    "reference": "触发条件：什么情况下 Agent 应该自动加载这个 Skill —— 用户提到「客户反馈」「用户评价整理」「改进建议」这类意图，或者明确点名这个 Skill。要写清触发边界，否则会出现该用的时候不用、不该用的时候乱用。\n\n输入要求：需要拿到什么才能开始 —— 反馈原文（可以是多条、也可以是文件）、产品或功能名称、反馈的采集时间范围。写清「缺什么不能开工」，比如没有明确的产品范围就停下来问，而不是猜一个。\n\n执行步骤：① 清洗与归类（去时间戳、合并重复表达）；② 按问题类型归类（功能缺陷、使用体验、价格、期望）；③ 按影响面排序；④ 逐条给出可执行的改进建议。本章说步骤要写进 SKILL.md，「规则较少时，一个 SKILL.md 就能组成可运行的 Skill」，所以不要一开始就把每个细节拆成独立文件。\n\n额外准备的资源：术语表（内部产品线的黑话需要统一口径）放 references/；改进建议的输出模板放 assets/；反馈文本的批量清洗程序放 scripts/。只有当某项资料反复用到、或者 SKILL.md 开始变得很长时才拆出去 —— 本章明确说「在构建阶段，目录不要求一次完全建设完毕」。\n\n输出：结论摘要 + 分类后的反馈清单 + 每类对应的改进建议 + 需要产品负责人确认的开放问题。\n\n验收标准：分类是否覆盖了全部反馈、每条建议是否可执行、是否引用了具体反馈而不是泛泛而谈。这一项对应本章说的「验收」要素 —— 没有验收标准，Skill 的产出质量就无法保证。\n\n确认点：如果后续要把建议自动提交到需求系统或发给客户，必须先确认；涉及删除已有记录、对外发送、产生费用或公开发布的动作也要设确认点。本章强调过「不能因为工具已经连接就默认允许执行」。\n\n测试案例：正常情况、信息缺失、冲突意见各准备一份放 tests/，改版后跑一遍。\n\n这题跑不了真实的 Skill 执行，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的设计。",
+    "explanation": "这道题考的是本章说的「Skill 把这些相对稳定的规则提前保存下来」。原来每次都要重写的一大段 Prompt 里，真正反复出现的其实是方法部分 —— 怎么归类、怎么排序、建议怎么写；而目标、材料、临时要求这些每次都不同的部分，仍然由 Prompt 提供。本章说「Prompt 和 Skill 并不是二选一」，讲的正是这个分工。\n\n第二问（触发条件）最容易漏，但它是 Skill 能不能被用起来的门槛。本章的目录注释写着「入口：名称、描述、输入、步骤和验收」，其中名称和描述就是给模型判断「要不要加载我」用的。写得太宽会到处误触发，写得太窄则需要用户每次点名才生效。\n\n第四问（资源拆分时机）对应本章那句「在构建阶段，目录不要求一次完全建设完毕」和「规则较少时，一个 SKILL.md 就能组成可运行的 Skill」。过度拆分会带来维护成本：文件一多，改一处规则不知道该改哪个。所以先写 SKILL.md，等某项资源反复用到或主文件过长时再拆。\n\n第五问（验收标准）是这道题最实质的部分。本章把「验收」列为 Skill 必须写清的构成要素之一 —— 没有验收标准，Skill 的产出质量就只能靠感觉。参考答案是三条可检查的标准：分类是否覆盖全部反馈、每条建议是否可执行、是否引用了具体反馈。\n\n最后一问（确认点）对应本章那句「不能因为工具已经连接就默认允许执行」。如果 Skill 会把建议写回需求系统或发给客户，这一步就涉及修改记录、对外发送、公开发布，都要有确认环节。\n\n这题跑不了真实的 Skill 执行，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的设计。"
+  }
+]

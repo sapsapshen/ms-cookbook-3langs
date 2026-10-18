@@ -245,6 +245,184 @@ async function main() {
     assert.notDeepEqual(offered, ['A', 'C', 'D']);
   });
 
+  /* ---- accessible names and grouping ------------------------------------ */
+  /* Four bare checkboxes reach a screen reader as four unrelated controls with
+     no statement of what they answer, and a <textarea> with no name is announced
+     as "text field" and nothing else. A placeholder is not a name: it vanishes
+     the moment the reader types, and several screen readers never read one. */
+
+  await check('选项组是 fieldset + legend，不是无分组的 div', async () => {
+    const item = exercise({
+      id: 'ch07-ex03', type: 'predict', starter: '', prompt: '选一个\n\nA. a\nB. b\nC. c',
+      checks: [{kind: 'output_choice', correct: ['A'], weight: 1}],
+    });
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    const group = body.querySelector('fieldset');
+    assert.ok(group, 'the options are not inside a fieldset');
+    assert.equal(group.className, 'exercise-choices');
+    const legend = group.querySelector('legend');
+    assert.ok(legend, 'a fieldset without a legend names no group at all');
+    assert.ok(legend.textContent.length > 0, 'the legend has no text');
+    // Every checkbox lives inside that fieldset, so the grouping actually
+    // applies to them rather than sitting next to them.
+    const inputs = body.querySelectorAll('input');
+    assert.equal(inputs.length, 3);
+    for (const input of inputs) {
+      let node = input.parentNode;
+      while (node && node !== group) node = node.parentNode;
+      assert.equal(node, group, 'a checkbox sits outside the fieldset');
+    }
+  });
+
+  await check('代码编辑器与自评框都有可见的可访问名称（label[for] 指向控件）', async () => {
+    const code = await expand(boot(), 'ch07-ex01');
+    const editor = code.querySelector('textarea');
+    const codeLabel = code.querySelector('label');
+    assert.ok(editor.id, 'the editor has no id, so no label can name it');
+    assert.ok(codeLabel, 'the editor has no visible label');
+    assert.equal(codeLabel.getAttribute('for'), editor.id,
+      'the label points at a different control');
+    assert.ok(codeLabel.textContent.length > 0, 'the label is empty -- that is not a name');
+    // The name is a locale key today (Task 11 supplies the copy) rather than a
+    // hard-coded string, but it is still non-empty and still reachable.
+    assert.ok(codeLabel.textContent.startsWith('exercise.'),
+      `the editor label should be a locale key, got ${codeLabel.textContent}`);
+
+    const reflectItem = exercise({id: 'ch13-ex03', type: 'reflect', checks: [{kind: 'self_assessed'}]});
+    const rh = boot({data: exerciseData([reflectItem])});
+    const reflect = await expand(rh, 'ch13-ex03');
+    const area = reflect.querySelector('textarea');
+    const areaLabel = reflect.querySelector('label');
+    assert.ok(area.id && areaLabel, 'the reflection box has no label');
+    assert.equal(areaLabel.getAttribute('for'), area.id);
+    // The placeholder stays as a hint, but it is not what names the control.
+    assert.ok(area.placeholder.length > 0, 'the reflection box lost its placeholder hint');
+    assert.ok(areaLabel.textContent.length > 0);
+  });
+
+  await check('同页两道题的编辑器 id 不冲突（label 各自指向自己的控件）', async () => {
+    const second = exercise({id: 'ch07-ex09'});
+    const h = boot({data: exerciseData([exercise({id: 'ch07-ex01'}), second])});
+    const one = await expand(h, 'ch07-ex01');
+    const two = await expand(h, 'ch07-ex09');
+    const firstId = one.querySelector('textarea').id;
+    const secondId = two.querySelector('textarea').id;
+    assert.notEqual(firstId, secondId, `both editors answered to "${firstId}"`);
+    assert.equal(one.querySelector('label').getAttribute('for'), firstId);
+    assert.equal(two.querySelector('label').getAttribute('for'), secondId);
+  });
+
+  /* ---- the option list is rendered once --------------------------------- */
+  /* `.exercise-prompt` used to render the prompt whole, including its
+     "A. ... B. ... C. ... D. ..." lines, and then the parsed checkboxes showed
+     the same four lines again. The reader read the options twice. */
+
+  await check('选项只渲染一遍：题干段落只剩题干，选项交给复选框', async () => {
+    const item = exercise({
+      id: 'ch07-ex03', type: 'predict', starter: '',
+      prompt: '下面哪个写法能直接得到模型输出？\n\nA. 第一个\nB. 第二个\nC. 第三个\nD. 第四个',
+      checks: [{kind: 'output_choice', correct: ['A'], weight: 1}],
+    });
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    const prompt = body.querySelector('.exercise-prompt').textContent;
+    assert.equal(prompt, '下面哪个写法能直接得到模型输出？',
+      'the stem was not what was left after the options were taken out');
+    for (const letter of ['A', 'B', 'C', 'D']) {
+      assert.ok(!prompt.includes(`${letter}.`), `option ${letter} is still rendered as prompt text`);
+    }
+    // And each option is still fully readable -- once -- as a control.
+    const labels = body.querySelectorAll('label').map(node => node.textContent);
+    assert.deepEqual(labels, ['A. 第一个', 'B. 第二个', 'C. 第三个', 'D. 第四个']);
+  });
+
+  await check('代码题与自评题的题干不被剥（它们没有选项行）', async () => {
+    const code = await expand(boot(), 'ch07-ex01');
+    assert.equal(code.querySelector('.exercise-prompt').textContent, '打印一句话',
+      'a code exercise prompt was altered for no reason');
+    const rh = boot({data: exerciseData([exercise({id: 'ch13-ex03', type: 'reflect', checks: [{kind: 'self_assessed'}]})])});
+    const reflect = await expand(rh, 'ch13-ex03');
+    assert.equal(reflect.querySelector('.exercise-prompt').textContent, '打印一句话');
+  });
+
+  /* ---- option parsing: partial parses are worse than none ---------------- */
+
+  await check('CRLF 题干：全部选项都能解析出来（不只最后一行）', async () => {
+    // `.` does not match \r and `$` without `m` is end-of-string, so on a
+    // prompt authored on Windows the naive scan matched only the LAST option:
+    // one checkbox, and no answer the reader could pick was ever right.
+    const item = exercise({
+      id: 'ch07-ex03', type: 'predict', starter: '',
+      prompt: 'Which?\r\n\r\nA. one\r\nB. two\r\nC. three',
+      checks: [{kind: 'output_choice', correct: ['A', 'C'], weight: 1}],
+    });
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    assert.deepEqual(body.querySelectorAll('input').map(node => node.value), ['A', 'B', 'C'],
+      'a CRLF prompt lost options');
+    assert.equal(body.querySelector('.exercise-fallback'), null, 'a CRLF prompt was declared unparsable');
+    assert.equal(buttonsIn(body, 'submit')[0].disabled, false, 'a fully parsed prompt left Submit disabled');
+    // And the reader can actually answer it.
+    body.querySelectorAll('input')[0].checked = true;
+    body.querySelectorAll('input')[2].checked = true;
+    await buttonsIn(body, 'submit')[0].fire('click');
+    assert.equal(h.calls.grade[0].options.outcomes[0].ok, true);
+  });
+
+  await check('围栏代码块里的伪选项不会被解析（也不会顶掉真正的 A）', async () => {
+    // `X. not an option` inside a ``` block is not an option, and because the
+    // first letter wins an `A.` inside code DISPLACED the real option A.
+    const item = exercise({
+      id: 'ch07-ex03', type: 'predict', starter: '',
+      prompt: 'Pick\n\n```python\nA. from the code\nX. not an option\n```\n\nA. real one\nB. real two',
+      checks: [{kind: 'output_choice', correct: ['B'], weight: 1}],
+    });
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    assert.deepEqual(body.querySelectorAll('input').map(node => node.value), ['A', 'B'],
+      'a fenced code block contributed options');
+    const labels = body.querySelectorAll('label').map(node => node.textContent);
+    assert.deepEqual(labels, ['A. real one', 'B. real two'],
+      'the real option A lost its text to a line inside a code fence');
+  });
+
+  await check('换行的选项被接回上一行，而不是静默截断', async () => {
+    const item = exercise({
+      id: 'ch07-ex03', type: 'predict', starter: '',
+      prompt: 'Pick\n\nA. the first option,\n   continued here\nB. the second',
+      checks: [{kind: 'output_choice', correct: ['A'], weight: 1}],
+    });
+    const h = boot({data: exerciseData([item])});
+    const body = await expand(h, 'ch07-ex03');
+    assert.equal(body.querySelectorAll('label')[0].textContent,
+      'A. the first option, continued here',
+      'the wrapped second half of option A was dropped');
+  });
+
+  await check('解析不到 2 个选项或字母不连续时：禁用提交并说明，而不是让读者永远答错', async () => {
+    const lone = exercise({
+      id: 'ch07-ex03', type: 'predict', starter: '', prompt: 'Pick\n\nA. only one',
+      checks: [{kind: 'output_choice', correct: ['A'], weight: 1}],
+    });
+    const loneHarness = boot({data: exerciseData([lone])});
+    const loneBody = await expand(loneHarness, 'ch07-ex03');
+    assert.ok(loneBody.querySelector('.exercise-fallback'), 'a one-option question offered a control');
+    assert.equal(buttonsIn(loneBody, 'submit')[0].disabled, true,
+      'the reader could submit an unanswerable question');
+    assert.equal(loneHarness.calls.grade.length, 0);
+
+    const gapped = exercise({
+      id: 'ch07-ex04', type: 'predict', starter: '', prompt: 'Pick\n\nA. one\nC. three',
+      checks: [{kind: 'output_choice', correct: ['A', 'C'], weight: 1}],
+    });
+    const gappedHarness = boot({data: exerciseData([gapped])});
+    const gappedBody = await expand(gappedHarness, 'ch07-ex04');
+    assert.ok(gappedBody.querySelector('.exercise-fallback'),
+      'a gapped option list was rendered as if it were complete -- the reader lost B with no explanation');
+    assert.equal(buttonsIn(gappedBody, 'submit')[0].disabled, true);
+  });
+
   await check('predict 选对通过、选错不通过，判据仍按索引对齐', async () => {
     const item = exercise({
       id: 'ch07-ex03', type: 'predict', starter: '', prompt: 'A. a\nB. b\nC. c',
@@ -711,7 +889,7 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
         if (settings.sessionThrows) return Promise.reject(new Error('offline'));
         return Promise.resolve({ok: true, json: () => Promise.resolve(session)});
       }
-      if (path.endsWith('/api/exercises/progress')) {
+      if (path.includes('/api/exercises/progress')) {
         if (init && init.method === 'POST') {
           const payload = JSON.parse(init.body);
           (settings.posts || (settings.posts = [])).push(payload);
@@ -731,8 +909,12 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
     };
   }
 
-  const pulls = h => h.calls.fetch.filter(c => c.url.endsWith('/api/exercises/progress') && !(c.init && c.init.method === 'POST'));
-  const posts = h => h.calls.fetch.filter(c => c.url.endsWith('/api/exercises/progress') && c.init && c.init.method === 'POST');
+  /* `includes`, not `endsWith`: the pull now carries a `?chapter=` filter, so a
+     helper matching the bare path would stop seeing the request it is meant to
+     count -- and a test that silently stops counting is worse than one that
+     fails. */
+  const pulls = h => h.calls.fetch.filter(c => c.url.includes('/api/exercises/progress') && !(c.init && c.init.method === 'POST'));
+  const posts = h => h.calls.fetch.filter(c => c.url.includes('/api/exercises/progress') && c.init && c.init.method === 'POST');
 
   await check('拉取后：服务端返回的记录被合并进本地存储', async () => {
     // Three cases in one pull: a row this device has never seen, a row that

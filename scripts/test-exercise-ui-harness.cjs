@@ -91,6 +91,12 @@ class Node {
   set className(value) { this.attributes.set('class', String(value)); }
   get id() { return this.attributes.get('id') || ''; }
   set id(value) { this.attributes.set('id', String(value)); }
+  /* `<label for>` and `label.htmlFor` are the same attribute in a real
+     document, and assets/discussion.js writes the property form while any test
+     asserting on the association has to read the attribute. Same two-way
+     mirroring dataset/className already get above, for the same reason. */
+  get htmlFor() { return this.attributes.get('for') || ''; }
+  set htmlFor(value) { this.attributes.set('for', String(value)); }
   get textContent() {
     return this._text + this.children.map(child => child.textContent).join('');
   }
@@ -313,7 +319,7 @@ function boot(options) {
   vm.runInContext(STORE, context);
   // Grade through the real implementation, but record what the panel handed it.
   const realGrade = context.ExerciseGrader.grade;
-  window.ExerciseGrader = {
+  const graderFacade = {
     PASS_THRESHOLD: context.ExerciseGrader.PASS_THRESHOLD,
     LLM_WEIGHT: context.ExerciseGrader.LLM_WEIGHT,
     grade(input, gradeOptions) {
@@ -327,7 +333,7 @@ function boot(options) {
   // write through it would never reach the panel.
   const realCreate = context.ExerciseStore.create;
   let liveStore = null;
-  window.ExerciseStore = Object.assign(Object.create(null), context.ExerciseStore, {
+  const storeFacade = Object.assign(Object.create(null), context.ExerciseStore, {
     create(options) {
       const store = realCreate.call(context.ExerciseStore, options);
       if (!liveStore) liveStore = store;
@@ -335,6 +341,8 @@ function boot(options) {
     },
   });
   window.ExerciseGraderReal = context.ExerciseGrader;
+  window.ExerciseGrader = graderFacade;
+  window.ExerciseStore = storeFacade;
   vm.runInContext(UI, context);
 
   const panel = () => document.querySelector('#exercisePanel');

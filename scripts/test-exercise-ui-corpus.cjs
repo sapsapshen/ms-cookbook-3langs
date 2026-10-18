@@ -46,8 +46,24 @@ console.log('exercise panel against the real corpus');
       jobs.push((async () => {
         const body = await expand(h, item.id);
         const prompt = body.querySelector('.exercise-prompt').textContent;
-        assert.equal(prompt, item.prompt, `${item.id}: prompt text was altered`);
-        assert.ok(prompt.trim().length > 0, `${item.id}: empty prompt`);
+        // For a choice exercise the prompt paragraph carries the STEM only --
+        // the option lines are rendered once, as the checkboxes -- so the
+        // assertion is "the stem survives, minus the options it should have
+        // handed to the controls", not "the paragraph is the raw string".
+        if (item.type === 'predict') {
+          assert.ok(prompt.trim().length > 0, `${item.id}: empty prompt`);
+          const optionLines = item.prompt.split('\n').filter(line => /^\s*[A-Z][.、)）]\s/.test(line));
+          for (const line of optionLines) {
+            assert.ok(!prompt.includes(line.trim()), `${item.id}: option "${line.trim()}" was rendered twice`);
+          }
+          // Every option the prompt lists must be reachable as a checkbox.
+          const options = body.querySelectorAll('input').map(node => node.value);
+          assert.equal(options.length, optionLines.length,
+            `${item.id}: ${options.length} controls for ${optionLines.length} options in the prompt`);
+        } else {
+          assert.equal(prompt, item.prompt, `${item.id}: prompt text was altered`);
+          assert.ok(prompt.trim().length > 0, `${item.id}: empty prompt`);
+        }
         if (item.type === 'reflect') {
           assert.ok(body.querySelector('.exercise-editor'), `${item.id}: no reflection box`);
           assert.equal(buttonsIn(body, 'run').length, 0, `${item.id}: a reflect exercise offered Run`);
@@ -123,13 +139,20 @@ console.log('exercise panel against the real corpus');
     for (const item of DATA.chapters[chapterId].exercises.zh) {
       if (item.type !== 'predict') continue;
       const body = await expand(h, item.id);
-      if (body.querySelector('.exercise-fallback')) fallbacks.push(item.id);
+      if (body.querySelector('.exercise-fallback')) {
+        fallbacks.push(item.id);
+        // The degraded path also refuses to let the reader answer, so a question
+        // that parses into something unusable cannot be submitted into a
+        // guaranteed-wrong verdict.
+        const submit = buttonsIn(body, 'submit')[0];
+        assert.ok(submit && submit.disabled, `${item.id}: an unparsable question left Submit enabled`);
+      }
     }
   }
   assert.deepEqual(fallbacks, [], 'these predict exercises could not parse their options');
 });
 
-  await check('三语切换后每一章都能渲染对应语言的题目', () => {
+await check('三语切换后每一章都能渲染对应语言的题目', () => {
   for (const language of DATA.languages) {
     for (const chapterId of Object.keys(DATA.chapters)) {
       const h = boot({data: DATA, hash: `#${chapterId}`, lang: language});

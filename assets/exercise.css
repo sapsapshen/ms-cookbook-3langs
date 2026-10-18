@@ -121,10 +121,23 @@
   color: var(--text);
 }
 .exercise-solution pre { margin: .3rem 0; overflow-x: auto; }
-.exercise-choices { display: flex; flex-direction: column; gap: .4rem; margin: 0 0 .75rem; }
-.exercise-choices label { display: flex; gap: .5rem; align-items: flex-start; font-size: .92rem; }
-.exercise-fallback { font-size: .84rem; color: var(--muted); }
+/* A fieldset, not a div: four bare checkboxes reach a screen reader as four
+   unrelated controls with no statement of what they answer. The legend is what
+   carries that.
 
+   The fieldset is laid out as a plain block rather than a flex column on
+   purpose. `<legend>` inside a flex container is a flex item in some engines,
+   where it stops being the fieldset's caption and starts behaving like a
+   misaligned first row -- so the grouping semantics the fieldset exists to
+   provide would be the thing that breaks. The spacing is on the labels. */
+.exercise-choices { border: 0; margin: 0 0 .75rem; padding: 0; }
+.exercise-choices legend { padding: 0; font-size: .84rem; color: var(--muted); margin-bottom: .45rem; }
+.exercise-choices label { display: flex; gap: .5rem; align-items: flex-start; font-size: .92rem; margin-bottom: .4rem; }
+.exercise-editor-label { display: block; font-size: .84rem; color: var(--muted); margin-bottom: .35rem; }
+.exercise-fallback { font-size: .84rem; color: var(--muted); }
+/* The optional LLM opinion on a reflection. Styled as an aside, not a verdict:
+   it is advice, it never changes the badge, and the reader already has their
+   own self-assessment recorded by the time it can arrive. */
 .exercise-map { padding: 2rem 0; }
 .exercise-map-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .exercise-map-head h2 { font-size: 1.05rem; font-weight: 500; margin: 0; color: var(--text); }

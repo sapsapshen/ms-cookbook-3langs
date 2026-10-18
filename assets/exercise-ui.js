@@ -82,9 +82,9 @@
     return match ? `chapter-${match[1]}` : '';
   }
 
-  /* One outcome per check, in the check's own order. `slot` is what the
-     evaluator knows about the check at that index; anything the evaluator
-     could not judge fails closed, which is the same answer the worker gives. */
+  /* One outcome per check, in the check's own order. The evaluator is handed the
+     check at that index and nothing else; anything it could not judge fails
+     closed, which is the same answer the worker gives. */
   function alignOutcomes(checks, evaluate) {
     const list = Array.isArray(checks) ? checks : [];
     return list.map((check, index) => {
@@ -367,11 +367,30 @@
     return saved;
   }
 
+  /* A labelled textarea, in the shape assets/discussion.js:20-21 already uses for
+     the chapter comment box -- a visible <label for> bound to the control's id.
+     A bare <textarea> has no accessible name: a screen reader announces "text
+     field" with nothing else, and a placeholder (which the reflection box used
+     to rely on) is not a label -- it disappears the moment the reader types,
+     and several screen readers never read it at all.
+
+     `id` is derived from the exercise id, so two expanded cards on the same
+     page cannot collide and every label points at exactly one control. */
+  function labelledEditor(exercise, key, placeholder) {
+    const id = `exercise-editor-${exercise.id}-${key}`;
+    const label = el('label', t(`exercise.${key}Label`), 'exercise-editor-label');
+    label.htmlFor = id;
+    const area = document.createElement('textarea');
+    area.className = 'exercise-editor';
+    area.id = id;
+    area.spellcheck = false;
+    if (placeholder) area.placeholder = placeholder;
+    return { label, area };
+  }
+
   function buildSandboxExercise(exercise, host) {
     if (!sandbox && Sandbox) sandbox = Sandbox.create({ onPhase });
-    const editor = document.createElement('textarea');
-    editor.className = 'exercise-editor';
-    editor.spellcheck = false;
+    const { label, area: editor } = labelledEditor(exercise, 'code', '');
     editor.value = exercise.starter || '';
     const previous = store && store.read(chapterId, exercise.id);
     if (previous && previous.code) editor.value = previous.code;
@@ -387,7 +406,7 @@
     const status = el('p', null, 'exercise-status');
     status.setAttribute('role', 'status');
     const output = el('div');
-    host.append(editor, actions, status, output);
+    host.append(label, editor, actions, status, output);
 
     reset.addEventListener('click', () => {
       editor.value = exercise.starter || '';
@@ -455,24 +474,73 @@
   /* The option letters live in the prompt ("A. ...\nB. ..."), not in the
      check, which carries only the correct ones. Rendering check.correct as the
      choice list would hide every wrong option from the reader and make the
-     question unanswerable-but-always-right. */
-  function promptOptions(exercise) {
-    const text = String(exercise.prompt || '');
-    const found = [];
-    for (const line of text.split('\n')) {
-      const match = /^\s*([A-Z])[.、)）]\s*(\S.*)$/.exec(line);
+     question unanswerable-but-always-right.
+
+     Returns the parsed options AND the prompt with those option lines removed,
+     so the caller renders each of them exactly once. See splitPrompt.
+
+     Four ways a naive line-by-line scan goes wrong, all of which cost the
+     reader the question rather than merely looking untidy:
+
+     1. CRLF. `.` does not match \r and `$` without the `m` flag is end-of-
+        string, so on a prompt authored on Windows only the LAST option line
+        ever matched -- the reader got one checkbox and could never be right.
+     2. Fenced code. `X. not an option` inside a ``` block is not an option,
+        and because the first letter wins, an `A.` inside a code block
+        DISPLACES the real option A.
+     3. Wrapped options. "A. the first option,\n   continued here" is one
+        option; dropping the continuation silently truncates it.
+     4. A lone or gapped list. One parsed option, or A/C/D with no B, means
+        the scan lost something. Offering the control anyway produces a
+        question that is unanswerable and says nothing about why. */
+function splitPrompt(exercise) {
+  // Normalize line endings FIRST: every later step reasons about "\n".
+  const text = String(exercise.prompt || '').replace(/\r\n?/g, '\n');
+  const found = [];
+  const stem = [];
+  let fenced = false;
+  let previous = null;
+  for (const raw of text.split('\n')) {
+    if (/^\s*(?:```|~~~)/.test(raw)) { fenced = !fenced; stem.push(raw); previous = null; continue; }
+    if (!fenced) {
+      const match = /^\s*([A-Z])[.、)）]\s*(\S.*)$/.exec(raw);
       if (match && !found.some(option => option.letter === match[1])) {
         found.push({ letter: match[1], label: match[2] });
+        previous = found[found.length - 1];
+        continue;
       }
+      // A wrapped option: an unlabelled, non-blank line directly under one.
+      // Attached rather than dropped, and attached with a space so the two
+      // halves do not run together.
+      if (previous && raw.trim()) { previous.label += ` ${raw.trim()}`; continue; }
     }
-    return found;
+    if (raw.trim()) previous = null;
+    stem.push(raw);
   }
+  // Contiguous from A with no gaps, and at least two of them. A gap means the
+  // scan dropped a line somewhere, and one option is not a question.
+  const contiguous = found.length >= 2
+    && found.every((option, index) => option.letter.charCodeAt(0) === 'A'.charCodeAt(0) + index);
+  return { options: found, prompt: stem.join('\n').replace(/\n{3,}/g, '\n\n').trim(), usable: contiguous };
+}
 
-  function buildChoiceExercise(exercise, host) {
+/* The option list, for callers that only want the options. */
+function promptOptions(exercise) {
+  return splitPrompt(exercise).options;
+}
+
+function buildChoiceExercise(exercise, host) {
     const checks = exercise.checks || [];
-    const options = promptOptions(exercise);
-    const field = el('div', null, 'exercise-choices');
-    if (options.length) {
+    const { options, usable } = splitPrompt(exercise);
+    // A fieldset, not a div: four bare checkboxes reach a screen reader as four
+    // unrelated controls with no statement of what they are answers TO. The
+    // legend is what carries that. The <p> inside on the degraded path is the
+    // content model a fieldset allows for exactly this.
+    const field = document.createElement('fieldset');
+    field.className = 'exercise-choices';
+    const legend = el('legend', t('exercise.chooseAnswer'));
+    field.append(legend);
+    if (usable) {
       for (const option of options) {
         const label = el('label');
         const input = document.createElement('input');
@@ -482,16 +550,19 @@
         field.append(label);
       }
     } else {
-      // No parsable option list: say where the options are rather than
-      // inventing a control that cannot be graded.
-      field.append(el('p', t('exercise.optionPlaceholder'), 'exercise-fallback'));
+      // Unparsable or gapped option list: say where the options are rather
+      // than offering a control that cannot be graded, and keep Submit
+      // disabled so the reader is not invited to answer a truncated question.
+      const reason = el('p', options.length ? t('exercise.optionsUnparsed') : t('exercise.optionPlaceholder'));
+      reason.className = 'exercise-fallback';
+      field.append(reason);
     }
 
     const actions = el('div', null, 'exercise-actions');
     const submit = el('button', t('exercise.submit'));
     submit.type = 'button';
     submit.dataset.role = 'submit';
-    submit.disabled = !options.length;
+    submit.disabled = !usable;
     actions.append(submit);
     const status = el('p', null, 'exercise-status');
     status.setAttribute('role', 'status');
@@ -518,10 +589,7 @@
   }
 
   function buildReflectExercise(exercise, host) {
-    const area = document.createElement('textarea');
-    area.className = 'exercise-editor';
-    area.spellcheck = false;
-    area.placeholder = t('exercise.reflectPlaceholder');
+    const { label, area } = labelledEditor(exercise, 'reflect', t('exercise.reflectPlaceholder'));
     const previous = store && store.read(chapterId, exercise.id);
     if (previous && previous.code) area.value = previous.code;
 
@@ -541,7 +609,7 @@
       });
       actions.append(button);
     }
-    host.append(area, actions, status);
+    host.append(label, area, actions, status);
     renderSolution(exercise, host);
   }
 
@@ -557,7 +625,14 @@
     toggle.append(title, state, meta);
     const body = el('div', null, 'exercise-body');
     body.hidden = true;
-    body.append(el('p', exercise.prompt, 'exercise-prompt'));
+    /* For a choice exercise the prompt is not shown whole. Its option lines are
+       rendered once, as the checkboxes this card is built around, and the
+       `.exercise-prompt` paragraph carries only the stem -- so the reader sees
+       each option exactly once instead of reading a block of A/B/C/D and then
+       being shown the same four lines again as controls. A code or reflection
+       exercise has no option list, so its prompt goes through untouched. */
+    const shown = exercise.type === 'predict' ? splitPrompt(exercise).prompt : exercise.prompt;
+    body.append(el('p', shown, 'exercise-prompt'));
     card.append(toggle, body);
     toggle.addEventListener('click', () => {
       body.hidden = !body.hidden;

@@ -1,1 +1,118 @@
-[]
+[
+  {
+    "id": "ch34-ex01",
+    "chapter": "chapter-34",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "按缩放点积注意力算一次注意力输出",
+    "prompt": "实现本章的缩放点积注意力。写函数 `attention(q, k, v)`，三个参数都是列表的列表：`q` 是 `[长度][维度]`，`k` 和 `v` 是 `[长度][维度]`，`k` 和 `v` 的长度相同。\n\n计算步骤：\n\n1. 每个分数 = `q[i]` 与所有 `k[j]` 的点积，再除以 `sqrt(d)`，其中 `d` 是 `k` 的维度（用 `len(k[0])`）。\n2. 对每一行分数做 softmax（减去最大值再取指数，避免溢出）。\n3. 输出第 `i` 行 = 权重与 `v` 的加权平均（对 `j` 求和：`权重[j] * v[j][c]`）。\n\n返回二维列表。维度不一致或 `q` 的维度与 `k` 不一致时抛出 `ValueError`。",
+    "explanation": "本章给的公式是 `softmax(QKᵀ / √d_k)·V`，三步：算分数、softmax 转权重、按权重加权 V。这个函数就是这三步。\n\n**除以 `sqrt(d_k)` 不是可选项**。本章说这一步「用于调整分数尺度，使计算更加稳定」—— 点积的值会随维度增长，维度 64 时点积的量级可能到几十，直接送进 softmax 会几乎全部饱和成一个 1 和其余 0。\n\n不过要说清楚一件事：**在某些输入上，这一项是观察不到的**。判据的探针只在「原始分数不全相等且维度大于 1」时才断言差异；原因是分数本来全相等时，缩放前后权重一样（都是均匀分布），维度为 1 时 √1 = 1 除以等于没除。只有一个 key 时 softmax 恒为 1。这三种情况不是实现的漏洞，是数学上本来就相同 —— 判据因此只在可观察的输入上要求差异。\n\n**每一行独立做 softmax**。`q` 有两行时两行各自归一化，权重各自和为 1 —— 判据里用两行正交的 query 验证了两行各自的对角占优，互不影响。\n\n**softmax 前减去最大值**。这一步数学上等价，但能避免 `exp` 溢出。判据专门给了一组 `[100.0, 100.0]` 的输入：不做这一步的话 `exp(100 × 2 / √2)` 直接溢出抛异常。\n\n**输出维度等于 `d_k`**。每个位置输出的向量长度是 `d_k`，因为加权的是 `v` 的每一列。\n\n主判据对 3 档维度 × 3 档 key 数 × 2 档 query 数共 18 组输入逐元素与公式重算值比对，权重和为 1 也一并检查 —— 这是专门防「把答案背下来」的。边界诚实说明：这 18 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。",
+    "reference": "import math\n\n\ndef attention(q, k, v):\n    if not q or not k or not v:\n        raise ValueError('q, k and v must be non-empty')\n    dk = len(k[0])\n    if any(len(row) != dk for row in k) or any(len(row) != dk for row in v):\n        raise ValueError('k and v must share one dimension')\n    if any(len(row) != dk for row in q):\n        raise ValueError('q must match the key dimension')\n    if len(k) != len(v):\n        raise ValueError('k and v must have the same length')\n    scale = math.sqrt(dk)\n    out = []\n    for qi in q:\n        scores = [sum(qi[c] * kj[c] for c in range(dk)) / scale for kj in k]\n        top = max(scores)\n        exps = [math.exp(s - top) for s in scores]\n        total = sum(exps)\n        weights = [e / total for e in exps]\n        out.append([sum(weights[j] * v[j][c] for j in range(len(k))) for c in range(dk)])\n    return out\n\nprint(attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]))",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解缩放与 softmax 分别解决什么问题"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]])\nassert len(out) == 1 and len(out[0]) == 2, out"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "import math\n_k = [[1.0, 0.0], [0.0, 1.0]]\n_v = [[1.0, 0.0], [0.0, 1.0]]\n_scores = [1.0 / math.sqrt(2.0), 0.0]\n_mx = max(_scores)\n_ex = [math.exp(_s - _mx) for _s in _scores]\n_w = [_e / sum(_ex) for _e in _ex]\n_want = [_w[0] * _v[0][_c] + _w[1] * _v[1][_c] for _c in (0, 1)]\n_out = attention([[1.0, 0.0]], _k, _v)\nfor _c in (0, 1):\n    assert abs(_out[0][_c] - _want[_c]) < 1e-9, (_c, _out[0][_c], _want[_c])\nassert abs(_want[0] - 0.6697615493266569) < 1e-9 and abs(_want[1] - 0.3302384506733431) < 1e-9, _want"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[5.0, 5.0]], [[1.0, 1.0], [2.0, 2.0]], [[1.0, 0.0], [0.0, 1.0]])\nassert abs(sum(out[0]) - 1.0) < 1e-9, '权重归一化后两个分量之和是 1'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_o = attention([[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]])\n_a, _b = 0.6697615493266569, 0.3302384506733431\nassert abs(_o[0][0] - _a) < 1e-9 and abs(_o[0][1] - _b) < 1e-9, _o\nassert abs(_o[1][0] - _b) < 1e-9 and abs(_o[1][1] - _a) < 1e-9, '两行各自 softmax，互不影响'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_k = [[4.0, 0.0], [0.0, 1.0]]\n_v = [[1.0, 0.0], [0.0, 1.0]]\n_scaled = attention([[1.0, 0.0]], _k, _v)\n_plain = attention([[2.0, 0.0]], _k, _v)\nassert abs(_scaled[0][0] - 0.9441927807928303) < 1e-9, '分数 2/sqrt(2)'\nassert abs(_plain[0][0] - 0.9965186727029345) < 1e-9, '不除以 sqrt(d_k) 时分数是 2'\nassert abs(_scaled[0][0] - _plain[0][0]) > 1e-3, '缩放与否给出明显不同的权重'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[100.0, 100.0]], [[100.0, 100.0], [0.0, 0.0]], [[1.0, 2.0], [3.0, 4.0]])\nassert all(abs(x) < 1e6 for x in out[0]), '减去最大值后 exp 不该溢出'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([[1.0, 0.0]], [[1.0, 0.0, 0.0]], [[1.0, 0.0]])\n    assert False, 'q 与 k 维度不一致要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([[1.0, 0.0]], [[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]])\n    assert False, 'k 与 v 长度不一致要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([], [[1.0, 0.0]], [[1.0, 0.0]])\n    assert False, '空输入要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 30,
+        "code": "import math\nfor _d in (1, 2, 4):\n    for _nk in (1, 2, 3):\n        for _nq in (1, 2):\n            _k = [[float((i * 3 + j) % 5) - 2.0 for j in range(_d)] for i in range(_nk)]\n            _v = [[float((i * 11 + j * 5) % 9) - 4.0 for j in range(_d)] for i in range(_nk)]\n            _q = [[float((i * 5 + j) % 4) - 1.5 for j in range(_d)] for i in range(_nq)]\n            _out = attention(_q, _k, _v)\n            _scale = math.sqrt(_d)\n            assert len(_out) == _nq, (_d, _nk, _nq, _out)\n            for _i in range(_nq):\n                _scores = [sum(_q[_i][_c] * _k[_j][_c] for _c in range(_d)) / _scale\n                           for _j in range(_nk)]\n                _mx = max(_scores)\n                _ex = [math.exp(_s - _mx) for _s in _scores]\n                _tot = sum(_ex)\n                _w = [_e / _tot for _e in _ex]\n                assert abs(sum(_w) - 1.0) < 1e-12, (_d, _nk, _nq, _w)\n                for _c in range(_d):\n                    _want = sum(_w[_j] * _v[_j][_c] for _j in range(_nk))\n                    assert abs(_out[_i][_c] - _want) < 1e-9, (_d, _nk, _nq, _i, _c, _out[_i][_c], _want)\n                _raw = [sum(_q[_i][_c] * _k[_j][_c] for _c in range(_d)) for _j in range(_nk)]\n                _mx2 = max(_raw)\n                _ex2 = [math.exp(_s - _mx2) for _s in _raw]\n                _w2 = [_e / sum(_ex2) for _e in _ex2]\n                _spread = max(_raw) - min(_raw)\n                if _spread > 1e-9 and _d > 1:\n                    _diff = [abs(_out[_i][_c] - sum(_w2[_j] * _v[_j][_c] for _j in range(_nk)))\n                             for _c in range(_d)]\n                    assert max(_diff) > 1e-9, 'no-scale %s' % ((_d, _nk, _nq, _i, _diff),)\n                else:\n                    assert _spread <= 1e-9 or _d == 1, 'trivial %s' % ((_d, _nk, _nq, _raw),)"
+      }
+    ],
+    "starter": "import math\n\n\ndef attention(q, k, v):\n    # 返回注意力输出 [[...], ...]\n    return []\n\nprint(attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]))\n"
+  },
+  {
+    "id": "ch34-ex02",
+    "chapter": "chapter-34",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断注意力与词元相关的说法",
+    "prompt": "下面哪些说法与本章一致？（多选）\n\nA. 同一句话在不同 Tokenizer 中可能得到不同数量的 Token\nB. Q 表示当前位置正在寻找什么信息，K 表示每个位置用什么特征被匹配，V 表示匹配后取回的内容\nC. 词表越小越好，所以应该完全按单个字符切分\nD. 注意力公式里除以 `sqrt(d_k)` 是为了让计算更稳定\nE. 自注意力中 Q、K、V 来自同一段序列，交叉注意力中 Q 来自一段、K 和 V 来自另一段",
+    "explanation": "A 出自 Token 那一节。本章给的那个例子很直观：同一句「大型语言模型正在改变办公方式。」，分词器 A 得到 8 个 Token，分词器 B 得到 10 个。所以「Token 数量」和「字符数」不是一回事。\n\nA 还带出一个实际后果，本章专门点出了：模型生成的摘要、结论和行动项同样会占用 Token，所以「同一份材料要求输出得越详细，留给原始记录的空间就可能越少」。这不是理论问题，长文档处理时经常撞上。\n\nB 和 D 出自注意力那一节。B 是本章对 Q、K、V 的原话定义；D 是本章说除以 `sqrt(d_k)`「用于调整分数尺度，使计算更加稳定」。\n\nE 也是原话：「如果 Q、K、V 来自同一段序列，就称为自注意力……如果 Q 来自一段序列，而 K、V 来自另一段序列，就称为交叉注意力」。\n\nC 把权衡说反了。本章明确摆了两难：完全按字符切分，词表小但序列变长；完全按完整单词切分，词表庞大而且不断遇到新词、缩写和拼写变化。所以主流做法是子词分词（BPE、WordPiece、Unigram、SentencePiece），在字符和完整单词之间取平衡。\n\n另外，本章还提到生成式模型的因果掩码：因为当前位置只能参考已出现的内容，要屏蔽后续位置；即使屏蔽了未来 Token，完整因果注意力的关联数量仍随序列长度近似按平方增长，这正是后面各种注意力变体要解决的问题。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
+    "reference": "C 与本章相反：本章说「如果完全按字符切分，词表可以比较小，但序列会变长；如果完全按完整单词切分，词表会非常庞大」，大模型通常采用子词分词在两者之间平衡。",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "id": "ch34-ex03",
+    "chapter": "chapter-34",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "给一个业务需求选词元与上下文方案",
+    "prompt": "你要处理「把一整本产品手册整理成问答库」。请写出：① 输入和输出各会占多少 Token、要控制什么；② 词表切分方式怎么选、为什么；③ 上下文变长时你会遇到什么开销、有哪些应对思路。",
+    "explanation": "这道题把本章三节内容串到一个具体场景上：Token 一节解决「装得下吗」，分词一节解决「怎么切」，注意力一节解决「长了有多贵」。\n\n第一问最容易被答成一句「上下文长度有限」。本章讲得更细：Token 有输入侧和输出侧两侧，而且两侧都会随要求变详细而增加 —— 这个细节在整理问答库时特别致命，因为输出条数越多，输入侧能装的手册内容就越少。算 Token 应该在设计阶段做，不是跑不动了才回头看。\n\n第二问考的是权衡而不是结论。本章把两个极端的代价都写清楚了，选子词的理由是「在字符和完整单词之间寻找平衡」。放到产品手册这个场景还能说出为什么：型号缩写和新词恰好是纯单词切分最吃亏的地方。\n\n第三问是本章真正想传达的成本意识。「随着上下文变长，Attention 的计算和缓存开销会越来越突出」这句话后面还跟着一整串注意力变体（MQA、GQA、SWA、MLA 等），都是围绕这个问题展开的。所以知道「平方增长」和「KV Cache」比知道有哪些变体名字更重要 —— 有了问题意识，方案自然往检索、分块、换模型这几个方向想。\n\n这题跑不了真实的模型推理，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的方案。",
+    "reference": "① Token 占用：输入侧是整本手册加上要求（哪些章节、输出什么格式），输出侧是生成的问答对。本章明确说过模型看到的不是完整文档而是一串 Token ID，生成的摘要、结论和行动项同样会占用 Token。所以要控制的是「手册全量进上下文 + 逐条生成」这个总量 —— 要求输出越详细，留给原始记录的空间越少。这本手册的场景尤其明显：手册本身已经很长。所以先算一遍 Token 数，超预算就要先筛章节或先做检索再送进去。\n\n② 词表切分：选子词分词，理由是本章给的那个权衡 —— 完全按字符切分，词表小但序列变长；完全按完整单词切分，词表庞大且不断遇到新词、缩写和拼写变化。手册里尤其可能有型号缩写（Pro Max、v2.0）和型号后缀这类内容，纯单词切分会切得很碎，纯字符切分则让序列暴涨。\n\n③ 长上下文开销：本章说「即使屏蔽了未来 Token，完整因果注意力的关联数量仍会随序列长度近似按平方增长」，而且生成阶段还要保存历史 Token 的 K 和 V，形成 KV Cache。所以上下文越长，注意力的计算和缓存开销越突出。手册整理这件事上，超长上下文会让两件事同时变贵：每次生成都要对全部历史做注意力，以及 KV Cache 一直占着显存。\n\n应对思路：① 分块 + 检索，先用向量检索挑出相关章节再送进上下文（RAG）；② 按章节分批处理，最后汇总，减少单次上下文长度；③ 输出改成结构化、短输出（本章也提到格式遵循本身就是生成任务的一个评测维度）；④ 如果模型本身受限于上下文长度，就换上下文更长的模型，或者接受分批处理换来的一致性代价。\n\n另外本章提到同一个词在不同上下文里表示会不同（「会议延期」和「延期会议」包含相似 Token 但表达不同含义），所以手册里的术语要靠上下文澄清 —— 这也是第 19 章那套 RAG 做法有用的原因。",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否分别算了输入与输出的 Token 占用、是否提到子词分词的权衡、是否说明长上下文的注意力平方级开销与 KV Cache 问题、是否提到 RAG 或分块等应对方向"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

@@ -1,1 +1,121 @@
-[]
+[
+  {
+    "id": "ch29-ex01",
+    "chapter": "chapter-29",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "按环境检查表判断能否安装",
+    "prompt": "安装 Claude Code 前要按本章的检查表核对环境。写函数 `check_env(env)`，`env` 是一个字典，可能含有 `os`、`os_version`、`memory_gb`、`network`、`node`、`git_bash`、`login`。返回一个问题列表（字符串列表），问题如下：\n\n- `os_version` 小于该系统要求（macOS 13、Windows 1809、Linux 20.04）→ `\"系统版本过低\"`\n- `memory_gb` 小于 4 → `\"内存不足\"`\n- `network` 为 `False` → `\"无法连接模型服务\"`\n- `login` 不在 `(\"pro\", \"max\", \"team\", \"enterprise\", \"console\")` 之中 → `\"登录方式不可用\"`\n- `os` 是 `\"Windows\"` 且 `git_bash` 为 `False` 且没有 `powershell` → `\"缺少 Bash 工具\"`\n\n按上面顺序返回，遇到第一个问题就返回长度为 1 的列表；全部通过返回 `[]`。",
+    "explanation": "本章给了一张安装前的检查表，这个函数就是把它变成可执行的。几个点对应表里的具体条目。\n\n**系统版本要求按系统分别查**：macOS 13、Windows 10 1809、Linux 20.04+。用同一个版本号去卡三个系统是错的 —— Windows 那个 1809 是内部版本号，和 macOS 的 13 完全不是一个量纲。判据主循环对三个系统分别测了「刚好低一个版本」「刚好达标」「高一个版本」。\n\n**登录方式是独立的一条**。本章说「Claude 免费账号不包含 Claude Code 使用权限」，所以 `free` 要报「登录方式不可用」。这一条还牵扯计费：订阅和 Console API 余额是两套，购买订阅不会自动给 API 账户充值。\n\n**Windows 的 Bash 工具是推荐而非必需**。本章说「Windows 推荐安装 Git for Windows，以便使用 Bash 工具；没有安装时，当前版本也支持使用 PowerShell 工具」—— 所以有 `powershell` 就不算缺。判据把这两种情况分开测了。\n\n**遇到第一个问题就返回，不累积**。这是题面明确规定的，所以「系统版本过低 + 内存不足 + 免费账号」这种环境只报一条。判据里专门给了这个多错并存的输入。\n\n**Windows 1809 的那个版本号不能当成 1809 分**。表里 Windows 写的是 10 1809，函数里用的就是 1809；判据主循环用 19045 这种真实的 Windows 内部版本号来测，确认大版本号同样能通过。\n\n主判据把 3 个系统 × 3 档版本 × 3 档内存 × 2 种网络 × 4 种登录共 216 组输入逐组按顺序重算期望结果，并且对 Windows 再测一次「补上 powershell」的情形 —— 这是专门防「把答案背下来」的。边界诚实说明：这 216 组输入也在公开语料里，所以它提高的是抄答案的成本，不是杜绝。",
+    "reference": "MIN_VERSIONS = {'macOS': 13, 'Windows': 1809, 'Linux': 20.04}\nLOGINS = ('pro', 'max', 'team', 'enterprise', 'console')\n\n\ndef check_env(env):\n    need = MIN_VERSIONS[env['os']]\n    if env['os_version'] < need:\n        return ['系统版本过低']\n    if env['memory_gb'] < 4:\n        return ['内存不足']\n    if not env['network']:\n        return ['无法连接模型服务']\n    if env['login'] not in LOGINS:\n        return ['登录方式不可用']\n    if env['os'] == 'Windows' and not env.get('git_bash') and not env.get('powershell'):\n        return ['缺少 Bash 工具']\n    return []\n\nprint(check_env({'os': 'macOS', 'os_version': 13, 'memory_gb': 8,\n                 'network': True, 'login': 'pro'}))",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "是否理解安装前核对环境和选模型来源是两件独立的事"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_ok = {'os': 'macOS', 'os_version': 13, 'memory_gb': 8, 'network': True, 'login': 'pro'}\nassert check_env(_ok) == [], check_env(_ok)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "_e = {'os': 'macOS', 'os_version': 12, 'memory_gb': 8, 'network': True, 'login': 'pro'}\nassert check_env(_e) == ['系统版本过低'], check_env(_e)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'macOS', 'os_version': 13, 'memory_gb': 3, 'network': True, 'login': 'pro'}\nassert check_env(_e) == ['内存不足'], check_env(_e)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'macOS', 'os_version': 13, 'memory_gb': 8, 'network': False, 'login': 'pro'}\nassert check_env(_e) == ['无法连接模型服务'], check_env(_e)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "_e = {'os': 'macOS', 'os_version': 13, 'memory_gb': 8, 'network': True, 'login': 'free'}\nassert check_env(_e) == ['登录方式不可用'], '免费账号不包含使用权限'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'Windows', 'os_version': 19045, 'memory_gb': 8, 'network': True, 'login': 'pro'}\nassert check_env(_e) == ['缺少 Bash 工具'], 'Windows 上没有 Git Bash 也没有 PowerShell 就要报'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "_e = {'os': 'Windows', 'os_version': 19045, 'memory_gb': 8, 'network': True, 'login': 'pro', 'powershell': True}\nassert check_env(_e) == [], '有 PowerShell 就不算缺工具'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "_e = {'os': 'Windows', 'os_version': 19045, 'memory_gb': 8, 'network': True, 'login': 'pro', 'git_bash': True}\nassert check_env(_e) == [], '有 Git Bash 也不算缺工具'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'macOS', 'os_version': 12, 'memory_gb': 3, 'network': False, 'login': 'free'}\nassert check_env(_e) == ['系统版本过低'], '遇到第一个问题就返回，不累积'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'Linux', 'os_version': 20.04, 'memory_gb': 4, 'network': True, 'login': 'console'}\nassert check_env(_e) == [], 'Linux 20.04 与 4GB 都刚好达标'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 24,
+        "code": "_MIN = {'macOS': 13, 'Windows': 1809, 'Linux': 20.04}\n_OK = ('pro', 'max', 'team', 'enterprise', 'console')\nfor _os in sorted(_MIN):\n    for _ver in (_MIN[_os] - 1, _MIN[_os], _MIN[_os] + 1, 19045 if _os == 'Windows' else _MIN[_os] + 5):\n        for _mem in (3, 4, 8):\n            for _net in (True, False):\n                for _login in ('pro', 'console', 'free', 'Pro'):\n                    _e = {'os': _os, 'os_version': _ver, 'memory_gb': _mem,\n                           'network': _net, 'login': _login}\n                    if _ver < _MIN[_os]:\n                        _want = ['系统版本过低']\n                    elif _mem < 4:\n                        _want = ['内存不足']\n                    elif not _net:\n                        _want = ['无法连接模型服务']\n                    elif _login not in _OK:\n                        _want = ['登录方式不可用']\n                    elif _os == 'Windows':\n                        _want = ['缺少 Bash 工具']\n                    else:\n                        _want = []\n                    assert check_env(_e) == _want, (_os, _ver, _mem, _net, _login, check_env(_e), _want)\n                    if _os == 'Windows' and _want == ['缺少 Bash 工具']:\n                        for _key in ('powershell', 'git_bash'):\n                            _e2 = dict(_e)\n                            _e2[_key] = True\n                            assert check_env(_e2) == [], (_e2, check_env(_e2))\n                    _e3 = dict(_e)\n                    _e3['git_bash'] = True\n                    _e3['powershell'] = True\n                    _want3 = _want if _want != ['缺少 Bash 工具'] else []\n                    assert check_env(_e3) == _want3, (_e3, check_env(_e3), _want3)"
+      }
+    ],
+    "starter": "MIN_VERSIONS = {'macOS': 13, 'Windows': 1809, 'Linux': 20.04}\nLOGINS = ('pro', 'max', 'team', 'enterprise', 'console')\n\n\ndef check_env(env):\n    # 返回问题列表\n    return []\n\nprint(check_env({'os': 'macOS', 'os_version': 13, 'memory_gb': 8,\n                 'network': True, 'login': 'pro'}))\n"
+  },
+  {
+    "id": "ch29-ex02",
+    "chapter": "chapter-29",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "判断 Claude Code 的协作方式",
+    "prompt": "下面哪些做法与本章一致？（多选）\n\nA. 想先看方案再决定是否动手，可以在终端用 `claude --permission-mode plan` 启动\nB. 长期规则（用什么语言、结果放哪里）应该每次在对话里重复说明\nC. 在 Claude Code 里输入 `/init` 可以生成 `CLAUDE.md` 初稿，再自己检查修改\nD. 给 Claude Code 提需求时，只说「帮我把这个 bug 修好」就够了\nE. 买了 Claude 订阅就会自动给 API 账户充值",
+    "explanation": "A 和 C 出自本章同一节，A 对应计划模式，C 对应 `/init` 生成 `CLAUDE.md` 初稿。\n\nB 恰好是 `CLAUDE.md` 要解决的问题。本章说「有些话，不需要每次都重复。比如使用什么语言、项目用什么技术、结果放在哪里，都可以写进项目根目录的 `CLAUDE.md`」，并且强调「项目规则要具体，能指导实际操作」—— 本章那份内容分发插件的示例里，连「API Key 通过设置页配置，不写死在源码里」这种具体约束都写了进去。\n\nD 是本章特意给出反例的地方。本章给了两个示范需求，一个是「阅读 README 和主要入口文件，告诉我……先给我说明，不修改代码」，另一个是修复问题时把复现方式、预期效果、修改范围和怎么验证都写清楚。作者那句「我更建议从一个明确的小需求开始」就是针对含糊需求说的。\n\nE 出自计费那一段。本章明确说「Claude 订阅和 Console API 余额是两套计费方式，购买订阅不会自动给 API 账户充值」。\n\n另外两个值得记的命令：`claude --permission-mode default` 可以查看各项操作的权限提示；`Shift+Tab` 可以在现有会话里切到 Plan 模式；`/memory` 用来查看记忆设置。\n\n判分边界说明：所选字母必须与参考答案完全一致，选项后面的理由不参与判分。",
+    "reference": "B 与本章相反：长期规则应该写进 `CLAUDE.md` 而不是每次重复。D 与本章的示范写法相反，本章要求说明复现方式、预期效果、修改范围和验证方法。E 与本章相反：订阅和 Console API 余额是两套计费方式。",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C"
+        ],
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "id": "ch29-ex03",
+    "chapter": "chapter-29",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "为一个项目写 CLAUDE.md 协作规则",
+    "prompt": "你要让 Claude Code 在你的项目里干活。请写出你的 `CLAUDE.md` 会包含哪些内容，并说明每一条为什么这样写（而不是笼统地说「写清楚」）。",
+    "explanation": "这道题对应本章那句「项目规则要具体，能指导实际操作」。要求「说清楚为什么」是为了避免交一份泛泛的清单。\n\n核心观察是：**每一条规则都对应一种具体的失败模式**。示例里那几条不是随手列的 —— 「修改前先阅读相关代码」防的是没看代码就改；「使用 API 和主题变量」防的是另起一套不一致的实现；「原始笔记只用于读取」防的是把用户数据覆盖掉；「API Key 不写死」防的是凭据进版本库。每一条都能说出来是为了防什么，这就已经比「写得清楚一点」具体了。\n\n最后一条「每次完成后说明改动、检查结果和仍需手动验证的部分」值得单独想。它把交付物分成了两类：模型自己确认过的，和还需要人验证的。模型做的事情往往看起来都对，但没有外部核验的部分它自己也不知道对不对，所以这条规则实际上是在要求它显式承认不确定性。\n\n这题跑不了真实的 Claude Code 会话，判分靠自查与可选的 AI 评分，参考答案给的是一份可对照的写法。",
+    "reference": "分两块，和本章那个内容分发插件的示例结构一致。\n\n项目说明：这个项目解决什么问题、用什么语言和技术。示例里写的是「这是一个 Obsidian 内容分发助手插件，使用 TypeScript。目标是把 Markdown 笔记转换成不同平台的文案」。写这一块是因为它决定模型对项目的默认理解 —— 语言写错，后面的所有代码建议都会跑偏。\n\n协作要求：① 用什么语言回复；② 改代码之前先读相关代码，不凭空假设；③ 用哪些既有的 API 和约定（示例里是「使用 Obsidian 的 API 和主题变量，保持与应用界面一致」）；④ 原始数据和生成结果的关系（示例里是「原始笔记只用于读取，生成结果放在独立的预览区域」）；⑤ 敏感信息怎么办（示例里是「API Key 通过设置页配置，不写死在源码里」）；⑥ 完成后要汇报什么（示例里是「每次完成后说明改动、检查结果和仍需手动验证的部分」）。\n\n为什么要写得这么具体：这几条各自对应一种真实会出问题的地方。②防止它没读代码就改；③防止它另起一套风格；④防止它覆盖用户的数据；⑤防止凭据泄漏；⑥让你知道哪些还没人验证过 —— 最后一条尤其重要，因为它把「哪些是我已经确认的、哪些还需要人看」明确分开，避免把未验证的结果当成已验证。\n\n补充：文件名按 `CLAUDE.md` 这个大小写写。写完之后可以用 `/init` 生成初稿再改，也可以直接手写；用 `/memory` 查看当前的记忆设置。",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "是否覆盖项目说明与技术栈、协作要求（回复语言、改前先读代码、用什么 API 与主题变量）、结果放哪、敏感信息怎么处理、以及完成后要汇报改动与待人工验证的部分"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

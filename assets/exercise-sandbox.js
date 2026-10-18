@@ -116,6 +116,14 @@
         // Only one timer is ever armed, and which one depends on whether the
         // runtime has announced itself yet.
         let timer = null;
+        // The worker announces `loading` once per run. Recorded rather than
+        // assumed: a replayed `loading` carrying a valid nonce re-enters
+        // armRunTimeout(), which clears the running execution timer and starts
+        // a fresh 15-second budget. Learner code that reached postMessage can
+        // mint that replay, so without this a sandbox could keep resetting its
+        // own execution clock. The nonce is what makes the FIRST one
+        // trustworthy; this is what stops the second one.
+        let loadingSeen = false;
         const finish = value => {
           if (settled) return;
           settled = true;
@@ -148,6 +156,10 @@
           // code posted itself. Either way it is not this run's answer.
           if (data.nonce !== nonce) return;
           if (data.type === 'loading') {
+            // One transition per run. A second `loading` is either a replay or
+            // a worker bug, and honouring it would restart the execution clock.
+            if (loadingSeen) return;
+            loadingSeen = true;
             if (onPhase) onPhase({ phase: 'loading' });
             // The download is over the moment the worker can talk to us; from
             // here on the learner's clock is what matters.

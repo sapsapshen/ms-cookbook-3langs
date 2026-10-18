@@ -26,7 +26,8 @@ def test_chapter_payload_shape_unchanged():
 def test_i18n_editions_still_complete():
     for code in ('en', 'es'):
         raw = (ROOT / 'assets' / 'content-i18n' / f'{code}.js').read_text(encoding='utf-8')
-        assert raw.startswith('window.'), f'{code} edition lost its global'
+        assert 'window.MS_ARTICLE' in raw, f'{code} edition lost its global'
+        assert '"chapter-1"' in raw, f'{code} edition lost chapter data'
         assert len(raw) > 100_000, f'{code} edition looks truncated'
 
 

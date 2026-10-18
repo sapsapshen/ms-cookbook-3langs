@@ -51,16 +51,32 @@
     return { items, earned, total, score: total ? earned / total : 0 };
   }
 
+  /* Keeps every graded check's original position in exercise.checks so the
+     caller-supplied outcomes stay index-aligned after the self-assessed ones
+     are dropped. */
   function gradedChecks(exercise) {
     const checks = exercise && Array.isArray(exercise.checks) ? exercise.checks : [];
-    return checks.filter(check => check && check.kind !== 'self_assessed');
+    return checks
+      .map((check, index) => ({ check, index }))
+      .filter(entry => entry.check && entry.check.kind !== 'self_assessed');
   }
 
+  /* Caller contract: `options.outcomes` is parallel to the FULL exercise.checks
+     array — same length, same order, one entry per check (self_assessed ones
+     included). Only the graded subset is scored, and each of them reads its
+     outcome from its own original index, so filtering can never shift the
+     mapping. Consequences of that contract, all deliberate:
+       - outcomes shorter than checks -> the missing entries fail closed
+         (ok:false) instead of throwing;
+       - outcomes longer than checks -> the surplus entries are ignored;
+       - a non-positive or NaN weight normalises to 1 rather than throwing.
+         The corpus validator is responsible for rejecting bad weights; the
+         grader stays fail-safe so a malformed check never blocks a learner. */
   function grade(exercise, input) {
     const source = exercise && typeof exercise === 'object' ? exercise : {};
     const options = input && typeof input === 'object' ? input : {};
-    const checks = gradedChecks(source);
-    if (!checks.length) {
+    const graded = gradedChecks(source);
+    if (!graded.length) {
       return {
         mode: 'self-assessed',
         passed: false,
@@ -70,7 +86,10 @@
         llm: null,
       };
     }
-    const deterministic = evaluate(checks, options.outcomes);
+    // Re-index the outcomes onto the graded subset using the original positions
+    // so evaluate() sees two equal-length arrays aligned index-for-index.
+    const outcomes = graded.map(entry => (options.outcomes || [])[entry.index]);
+    const deterministic = evaluate(graded.map(entry => entry.check), outcomes);
     const rubric = source.llm_rubric && typeof source.llm_rubric === 'object' ? source.llm_rubric : {};
     const usable = rubric.enabled === true
       && options.llm && typeof options.llm === 'object'

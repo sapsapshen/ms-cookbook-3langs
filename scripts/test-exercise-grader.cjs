@@ -138,6 +138,99 @@ check('grading does not mutate the exercise it receives', () => {
   assert.equal(JSON.stringify(exercise), before);
 });
 
+check('a self-assessed check leading the list does not shift the outcomes', () => {
+  const exercise = {
+    checks: [{ kind: 'self_assessed', weight: 1 }, { kind: 'stdout_equals', weight: 1 }],
+  };
+  const outcome = G.grade(exercise, { outcomes: [false, true] });
+  assert.equal(outcome.mode, 'deterministic');
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.passed, true);
+  assert.equal(outcome.items.length, 1);
+  assert.equal(outcome.items[0].kind, 'stdout_equals');
+  assert.equal(outcome.items[0].ok, true);
+});
+
+check('a self-assessed check in the middle does not shift the outcomes', () => {
+  const exercise = {
+    checks: [{ kind: 'stdout_equals', weight: 1 }, { kind: 'self_assessed', weight: 1 }, { kind: 'stdout_contains', weight: 1 }],
+  };
+  const outcome = G.grade(exercise, { outcomes: [true, false, true] });
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.passed, true);
+  assert.deepEqual(outcome.items.map(item => item.kind), ['stdout_equals', 'stdout_contains']);
+  assert.deepEqual(outcome.items.map(item => item.ok), [true, true]);
+});
+
+check('a self-assessed check trailing the list does not shift the outcomes', () => {
+  const exercise = {
+    checks: [{ kind: 'stdout_equals', weight: 1 }, { kind: 'self_assessed', weight: 1 }],
+  };
+  const outcome = G.grade(exercise, { outcomes: [true, false] });
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.passed, true);
+  assert.equal(outcome.items.length, 1);
+  assert.equal(outcome.items[0].kind, 'stdout_equals');
+  assert.equal(outcome.items[0].ok, true);
+});
+
+check('llm is ignored when the exercise declares no rubric at all', () => {
+  const exercise = { checks: [{ kind: 'stdout_contains', weight: 1 }] };
+  const outcome = G.grade(exercise, { outcomes: [true], llm: { score: 0, feedback: 'nope' } });
+  assert.equal(outcome.mode, 'deterministic');
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.llm, null);
+});
+
+check('a non-boolean rubric enabled flag does not turn on the llm path', () => {
+  const exercise = {
+    checks: [{ kind: 'stdout_contains', weight: 1 }],
+    llm_rubric: { enabled: 1, criteria: 'x' },
+  };
+  const outcome = G.grade(exercise, { outcomes: [true], llm: { score: 0, feedback: 'nope' } });
+  assert.equal(outcome.mode, 'deterministic');
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.llm, null);
+});
+
+check('outcomes shorter than the checks fail closed instead of throwing', () => {
+  const exercise = { checks: [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }, { kind: 'c', weight: 1 }] };
+  let outcome;
+  assert.doesNotThrow(() => { outcome = G.grade(exercise, { outcomes: [true, false] }); });
+  assert.equal(outcome.items.length, 3);
+  assert.deepEqual(outcome.items.map(item => item.ok), [true, false, false]);
+  assert.equal(outcome.score, 1 / 3);
+  assert.equal(outcome.passed, false);
+});
+
+check('outcomes longer than the checks ignore the surplus entries', () => {
+  const exercise = { checks: [{ kind: 'a', weight: 1 }, { kind: 'b', weight: 1 }] };
+  let outcome;
+  assert.doesNotThrow(() => { outcome = G.grade(exercise, { outcomes: [true, true, false, false, true] }); });
+  assert.equal(outcome.items.length, 2);
+  assert.deepEqual(outcome.items.map(item => item.ok), [true, true]);
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.passed, true);
+});
+
+check('a non-positive or NaN weight normalises without throwing', () => {
+  const exercise = {
+    checks: [
+      { kind: 'a', weight: 0 },
+      { kind: 'b', weight: -1 },
+      { kind: 'c', weight: NaN },
+    ],
+  };
+  let outcome;
+  assert.doesNotThrow(() => { outcome = G.grade(exercise, { outcomes: [true, true, true] }); });
+  assert.equal(outcome.items.length, 3);
+  assert.deepEqual(outcome.items.map(item => item.weight), [1, 1, 1]);
+  assert.equal(outcome.score, 1);
+  assert.equal(outcome.passed, true);
+  // Deterministic: same exercise graded twice yields byte-identical items.
+  assert.deepEqual(G.grade(exercise, { outcomes: [true, true, true] }).items, outcome.items);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

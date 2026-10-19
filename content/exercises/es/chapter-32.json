@@ -1,1 +1,102 @@
-[]
+[
+  {
+    "id": "ch32-ex01",
+    "chapter": "chapter-32",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Clasificar una capacidad en una parte del Harness",
+    "prompt": "Este capítulo agrupa el Harness en cinco partes: instrucción y contexto, herramientas, entorno de ejecución, estado y continuidad de la tarea, y verificación y realimentación.\n\nEscribe una función `classify(part)` que clasifique cada nombre de capacidad de abajo en una de esas cinco, devolviendo el nombre de la parte correspondiente:\n\n- `\"\\u6307\\u4ee4\\u4e0e\\u4e0a\\u4e0b\\u6587\"` (instrucción y contexto): `\"\\u7cfb\\u7edf\\u63d0\\u793a\\u8bcd\"` (prompt del sistema), `\"\\u9879\\u76ee\\u89c4\\u5219\"` (reglas del proyecto), `\"\\u4e0a\\u4e0b\\u6587\\u538b\\u7f29\"` (compresión del contexto)\n- `\"\\u5de5\\u5177\"` (herramientas): `\"\\u6587\\u4ef6\\u8bfb\\u53d6\"` (lectura de ficheros), `\"\\u547d\\u4ee4\\u6267\\u884c\"` (ejecución de comandos), `\"\\u5de5\\u5177\\u53c2\\u6570\\u6821\\u9a8c\"` (validación de argumentos)\n- `\"\\u8fd0\\u884c\\u73af\\u5883\"` (entorno de ejecución): `\"sandbox \\u9694\\u79bb\"` (aislamiento en sandbox), `\"\\u4f9d\\u8d56\\u5b89\\u88c5\"` (instalación de dependencias), `\"\\u5de5\\u4f5c\\u76ee\\u5f55\"` (directorio de trabajo)\n- `\"\\u72b6\\u6001\\u4e0e\\u4efb\\u52a1\\u8fde\\u7eed\\u6027\"` (estado y continuidad de la tarea): `\"\\u8fdb\\u5ea6\\u4fdd\\u5b58\"` (guardado de progreso), `\"\\u65ad\\u70b9\\u7eed\\u8dd1\"` (reanudar desde un punto), `\"\\u4efb\\u52a1\\u72b6\\u6001\\u6301\\u4e45\\u5316\"` (persistencia del estado de la tarea)\n- `\"\\u9a8c\\u8bc1\\u4e0e\\u53cd\\u9988\"` (verificación y realimentación): `\"\\u8dd1\\u6d4b\\u8bd5\"` (ejecutar pruebas), `\"\\u7ed3\\u679c\\u6821\\u9a8c\"` (validación del resultado), `\"\\u5931\\u8d25\\u540e\\u56de\\u4f20\\u9519\\u8bef\"` (devolver el error tras un fallo)\n\nLanza `ValueError` con un nombre de capacidad que no esté en la tabla.\n\nLos veinte nombres están en chino y la corrección los compara de forma exacta, así que escríbelos todos con los escapes que se muestran. Los escapes no son otro valor, solo la forma de mantener el código fuente en ASCII.",
+    "explanation": "Este capítulo agrupa el Harness en cinco «partes que trabajan juntas» y da un ejemplo de cada una. Este ejercicio es la forma mecánica de esa tabla.\n\n**Lo que más fácil se clasifica mal es «ejecutar pruebas»**. Suena a ejecución de un comando, así que suele acabar en «herramientas» o «entorno de ejecución», pero la división del capítulo es: las herramientas **proporcionan** las acciones, mientras que la acción de ejecutar las pruebas la invoca el Harness; y el conjunto de «ejecutar pruebas, validar el resultado y devolver el error tras un fallo» pertenece a **verificación y realimentación**, que es justo lo que describe la sección de este capítulo: «tras la ejecución, el Harness puede verificar el resultado mediante pruebas, comprobaciones de reglas y similares, y después realimentar el resultado al Agent». Una comprobación añade una aserción justo para ese elemento.\n\n**«Devolver el error tras un fallo» y «reanudar desde un punto» también son dos partes distintas.** El primero forma parte del bucle de verificación: el capítulo dice que cuando una prueba falla, la información de error se vuelve a proporcionar al Agent, que analiza la causa; el segundo pertenece al estado y la continuidad de la tarea, y resuelve que «si la tarea es larga, tiene que poder continuar».\n\n**Haz coincidir los nombres de capacidad de forma estricta.** Las claves de la tabla son exactamente las cadenas que da el enunciado, así que `'\\u5de5\\u5177 '` con espacio final y `'TOOLS'` tienen que lanzar `ValueError`. El final de la comprobación principal lo verifica uno por uno.\n\nLa comprobación principal recorre las 14 capacidades una a una y comprueba además que **las cinco partes se usan todas y ni una de más**: una implementación que lo meta todo en «herramientas» se delata ahí. Eso está para que el problema de «una tabla de búsqueda o un retorno fijo no cubre nada» no vuelva a aparecer en una tabla de clasificación. Límite honesto: esos 14 nombres de capacidad también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide.",
+    "reference": "RULES = {\n    '\\u7cfb\\u7edf\\u63d0\\u793a\\u8bcd': '\\u6307\\u4ee4\\u4e0e\\u4e0a\\u4e0b\\u6587',\n    '\\u9879\\u76ee\\u89c4\\u5219': '\\u6307\\u4ee4\\u4e0e\\u4e0a\\u4e0b\\u6587',\n    '\\u4e0a\\u4e0b\\u6587\\u538b\\u7f29': '\\u6307\\u4ee4\\u4e0e\\u4e0a\\u4e0b\\u6587',\n    '\\u6587\\u4ef6\\u8bfb\\u53d6': '\\u5de5\\u5177',\n    '\\u547d\\u4ee4\\u6267\\u884c': '\\u5de5\\u5177',\n    '\\u5de5\\u5177\\u53c2\\u6570\\u6821\\u9a8c': '\\u5de5\\u5177',\n    'sandbox \\u9694\\u79bb': '\\u8fd0\\u884c\\u73af\\u5883',\n    '\\u4f9d\\u8d56\\u5b89\\u88c5': '\\u8fd0\\u884c\\u73af\\u5883',\n    '\\u5de5\\u4f5c\\u76ee\\u5f55': '\\u8fd0\\u884c\\u73af\\u5883',\n    '\\u8fdb\\u5ea6\\u4fdd\\u5b58': '\\u72b6\\u6001\\u4e0e\\u4efb\\u52a1\\u8fde\\u7eed\\u6027',\n    '\\u65ad\\u70b9\\u7eed\\u8dd1': '\\u72b6\\u6001\\u4e0e\\u4efb\\u52a1\\u8fde\\u7eed\\u6027',\n    '\\u4efb\\u52a1\\u72b6\\u6001\\u6301\\u4e45\\u5316': '\\u72b6\\u6001\\u4e0e\\u4efb\\u52a1\\u8fde\\u7eed\\u6027',\n    '\\u8dd1\\u6d4b\\u8bd5': '\\u9a8c\\u8bc1\\u4e0e\\u53cd\\u9988',\n    '\\u7ed3\\u679c\\u6821\\u9a8c': '\\u9a8c\\u8bc1\\u4e0e\\u53cd\\u9988',\n    '\\u5931\\u8d25\\u540e\\u56de\\u4f20\\u9519\\u8bef': '\\u9a8c\\u8bc1\\u4e0e\\u53cd\\u9988',\n}\n\n\ndef classify(part):\n    if part not in RULES:\n        raise ValueError('unknown capability: ' + str(part))\n    return RULES[part]\n",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que un Harness y un framework de Agent se preocupan por cosas distintas?"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert classify('系统提示词') == '指令与上下文', classify('系统提示词')"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert classify('文件读取') == '工具' and classify('命令执行') == '工具'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert classify('sandbox 隔离') == '运行环境' and classify('依赖安装') == '运行环境'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert classify('断点续跑') == '状态与任务连续性'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert classify('跑测试') == '验证与反馈', '跑测试属于验证，不属于工具'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "try:\n    classify('模型权重加载')\n    assert False, '未知能力应该抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 26,
+        "code": "_want = {\n    '系统提示词': '指令与上下文', '项目规则': '指令与上下文', '上下文压缩': '指令与上下文',\n    '文件读取': '工具', '命令执行': '工具', '工具参数校验': '工具',\n    'sandbox 隔离': '运行环境', '依赖安装': '运行环境', '工作目录': '运行环境',\n    '进度保存': '状态与任务连续性', '断点续跑': '状态与任务连续性',\n    '任务状态持久化': '状态与任务连续性',\n    '跑测试': '验证与反馈', '结果校验': '验证与反馈', '失败后回传错误': '验证与反馈',\n}\nfor _k, _v in _want.items():\n    assert classify(_k) == _v, (_k, classify(_k), _v)\n_parts = set(_want.values())\nassert len(_parts) == 5, _parts\nassert _parts == {'指令与上下文', '工具', '运行环境', '状态与任务连续性', '验证与反馈'}, _parts\nfor _bad in ('', '随便什么', 'TOOLS', '工具 '):\n    try:\n        classify(_bad)\n        assert False, '未知能力应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass"
+      }
+    ],
+    "starter": "RULES = {\n    '系统提示词': '指令与上下文',\n    '项目规则': '指令与上下文',\n    '上下文压缩': '指令与上下文',\n    '文件读取': '工具',\n    '命令执行': '工具',\n    'sandbox 隔离': '运行环境',\n    '依赖安装': '运行环境',\n    '进度保存': '状态与任务连续性',\n    '断点续跑': '状态与任务连续性',\n    '跑测试': '验证与反馈',\n    '失败后回传错误': '验证与反馈',\n}\n\n\ndef classify(part):\n    # 返回所属的部分名\n    return ''\n"
+  },
+  {
+    "id": "ch32-ex02",
+    "chapter": "chapter-32",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Distinguir modelo, Agent y Harness",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. El modelo grande se ocupa de entender la tarea y decidir la siguiente operación, mientras que el Harness aporta las herramientas y el entorno de ejecución y registra el estado\nB. Lo completo que sea el Harness afecta a qué tipos de tarea puede manejar un Agent, así que el mismo modelo rinde distinto en un Harness distinto\nC. Un framework de Agent y un Harness se preocupan por lo mismo y pueden sustituirse\nD. Un Agent de programación decide que hay que modificar login.py, mientras que «si se puede modificar, de dónde se lee y en qué Sandbox corren las pruebas» lo aporta el mecanismo de ejecución del Harness\nE. La ventana de contexto es finita, así que el Harness puede sencillamente ir añadiendo todo el historial",
+    "explanation": "Este capítulo cierra con una frase resumen: **el modelo grande aporta la inteligencia, el Agent organiza las decisiones, el Harness garantiza la ejecución**. A, B y D son desarrollos de esa frase.\n\nD es el ejemplo de Agent de programación del capítulo, que merece leerse entero: el modelo analiza el código y decide cómo modificar login.py, y eso es para lo que sirve la capacidad de razonamiento; mientras que «si login.py puede modificarse, de dónde se lee el fichero, con qué herramienta se modifica, en qué Sandbox se ejecuta la orden de pruebas, cómo se guarda el progreso de la modificación, cómo se comprueba el resultado de las pruebas y cómo continuar tras un fallo» son cosa del Harness. La relación de «apoyo a la decisión y a la ejecución» del capítulo cae exactamente aquí.\n\nB es la frase de esa sección que se pasa por alto y que importa. El capítulo dice que lo completo que sea el Harness afecta a los tipos de tarea que un Agent puede manejar: un Harness simple solo puede hacer tareas de pocos pasos, mientras que uno completo ofrece gestión de contexto, aislamiento del entorno, persistencia del estado, control de permisos, verificación automática, recuperación ante fallos y aprobación humana, y solo así puede sostener tareas más largas y complejas. **El mismo modelo rinde distinto en un Harness distinto**, y por eso el capítulo 33 construye un Agent de inspección de línea de producción con un Harness.\n\nC es lo contrario de lo que afirma este capítulo. Los dos se solapan (ambos tocan llamada a herramientas, gestión de contexto y gestión de estado), pero el foco es distinto, y el capítulo dice expresamente que «en la implementación concreta no existe un límite funcional absoluto»: eso es «los límites se están fundiendo», no «son lo mismo».\n\nE es lo contrario de la sección de contexto. El capítulo dice que «como la ventana de contexto del modelo es limitada, el Harness normalmente también tiene que seleccionar, comprimir y reorganizar el contexto para que el modelo reciba la información que de verdad necesita para la tarea actual, en lugar de simplemente ir añadiendo todo el historial una y otra vez».\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen.",
+    "reference": "C es lo contrario de lo que dice este capítulo: un framework de Agent se inclina hacia la capacidad de desarrollo para construir Agents y organizar tareas, mientras que el Harness se centra en los mecanismos de soporte y control que se construyen alrededor de ejecutar un Agent, así que su foco es distinto; el capítulo también dice que, a medida que evolucionan los frameworks y los SDK, no existe un límite funcional absoluto entre ellos, pero eso no es «lo mismo y sustituible». E también es lo contrario: el Harness tiene que seleccionar, comprimir y reorganizar el contexto.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "id": "ch32-ex03",
+    "chapter": "chapter-32",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Completar los mecanismos del Harness para una tarea larga",
+    "prompt": "Tienes un Agent corrigiendo bugs en un proyecto grande durante varias horas. La tarea atraviesa decenas de llamadas a herramientas y por el camino puede fallar, necesitar reintentos o verse interrumpida. Siguiendo las cinco partes de este capítulo, escribe qué mecanismos añadirías y qué problema concreto resuelve cada uno.",
+    "explanation": "Este ejercicio es la frase del capítulo de que «lo completo que sea el Harness afecta a los tipos de tarea que un Agent puede manejar». El escenario que da el enunciado es «varias horas, decenas de llamadas a herramientas, posibles fallos e interrupciones», y cada mecanismo tiene que responder a un riesgo concreto de ese escenario.\n\nEl segundo punto, compresión del contexto frente a reanudación desde un punto, es el que más se confunde. Lo que el capítulo dice del contexto es cómo se selecciona y comprime la información **que se le enseña al modelo**; lo que dice del estado es **hasta dónde ha llegado la tarea en sí**. La compresión conserva las conclusiones clave dentro de una ventana limitada, y la persistencia permite que una ejecución interrumpida continúe: una suelta el historial y la otra guarda el progreso, y actúan sobre cosas distintas.\n\nEl bucle cerrado del quinto punto merece explicarse bien. Lo que el capítulo describe es un ciclo: el Agent decide, el Harness ejecuta, se verifica el resultado, la realimentación vuelve al Agent y este vuelve a decidir. Si falta el paso de realimentar, el Agent nunca sabe si el paso anterior funcionó y solo puede adivinar; por eso la información de error hay que ordenarla en una forma que el modelo pueda leer en lugar de limitarse a lanzar una excepción.\n\nEl último punto ata el ejercicio entero: estos mecanismos no son extras opcionales, son las condiciones de entrada para una tarea larga. Sin control de permisos, una operación equivocada en una ejecución larga puede causar daño real; sin persistencia del estado, una sola interrupción tras horas tira todo a la basura; sin verificación y realimentación, el Agent reintenta en dirección equivocada.\n\nEste ejercicio no puede ejecutar un Agent real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una lista de mecanismos con la que comparar.",
+    "reference": "Instrucción y contexto: escribe las reglas del proyecto en un fichero tipo `AGENTS.md` para que el Agent conozca la estructura de directorios, cómo hacer las pruebas y qué zonas no puede tocar. El contexto no deja de crecer en una tarea larga, así que hace falta una estrategia de compresión: el capítulo dice que puedes «comprimir el proceso temprano y conservar solo las conclusiones clave, el estado de la tarea y la información que aún haga falta después», en lugar de ir añadiendo todo el historial indefinidamente. También ayuda la carga por capas: leer primero la descripción general del proyecto y, al entrar en un módulo, cargar las reglas locales de ese módulo.\n\nHerramientas: cubre lectura y edición de ficheros, búsqueda, shell, Git y pruebas. El capítulo subraya que esta capa no es solo mantener una lista, sino también tratar la descripción de la herramienta, cómo se organizan los argumentos, el enrutado de las llamadas, la devolución de resultados y el manejo de errores; en concreto, «ordenar la salida estándar, los mensajes de error y el estado de salida antes de devolverlos al modelo», porque si no el modelo recibe algo que no puede parsear y no podrá decidir el siguiente paso. Las herramientas de riesgo (borrar ficheros, acceder a la red, ejecutar órdenes del sistema) hay que limitarlas por nivel de riesgo y con confirmación humana cuando haga falta.\n\nEntorno de ejecución: aislamiento en sandbox, para que mientras el Agent cambia código no toque el sistema real ni otros procesos; directorio de trabajo fijo; dependencias instaladas automáticamente. Una tarea que dura horas no es reproducible si alguien cambia el entorno o se desvía la versión de una dependencia.\n\nEstado y continuidad de la tarea: guardado de progreso, persistencia del estado de la tarea y reanudación desde un punto. Esto responde a la escala de «varias horas»: tras una interrupción no se puede empezar de cero, hay que poder seguir desde donde estaba, conservando además las conclusiones ya obtenidas. Es una cosa distinta de la compresión del contexto: la compresión decide «qué se le enseña al modelo» y la persistencia decide «hasta dónde ha llegado la tarea en sí».\n\nVerificación y realimentación: ejecutar pruebas, validar el resultado y devolver el error al Agent cuando falla. El bucle que describe este capítulo es «una vez terminada la ejecución, el Harness puede verificar el resultado mediante pruebas, comprobaciones de reglas y similares, y después realimentar el resultado al Agent. El Agent, a partir del nuevo estado y de la realimentación, sigue juzgando la siguiente operación, y así sucesivamente». Añade además un límite al número de reintentos automáticos, o el bucle de fallo consumirá tokens indefinidamente.\n\nUn juicio global al final: todo este conjunto de mecanismos es la condición previa para «que una tarea larga pueda seguir corriendo». El capítulo dice que solo un Harness más completo permite que un Agent siga ejecutando tareas más largas y complejas; el mecanismo que falte es justo donde la tarea larga se rompe.\n",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Da un mecanismo por parte, distingue la compresión del contexto del reanudar desde un punto, menciona el control de permisos y la aprobación humana para operaciones de riesgo, y explica cómo un fallo de verificación vuelve al Agent formando un bucle?"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

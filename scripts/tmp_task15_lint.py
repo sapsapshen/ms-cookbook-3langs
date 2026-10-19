@@ -97,7 +97,7 @@ CAPS_GLUE = re.compile(r'[a-z]{2}[A-Z][a-zA-Z]+')
 CAMEL_OK = {
     'elScope', 'alScope', 'inHash', 'imHash', 'vaScript', 'enAI',
     'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO', 'niMax', 'niCoder', 'niMoonshot',
-    'ffSynth', 'ffUsers', 'meError', 'meError.',
+    'ffSynth', 'ffUsers', 'meError', 'meError.', 'utSchema', 'meDict',
 }
 
 # An English function word fused onto the end of a Spanish word, and the

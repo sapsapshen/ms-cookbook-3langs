@@ -1,1 +1,107 @@
-[]
+[
+  {
+    "id": "ch27-ex01",
+    "chapter": "chapter-27",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Validate tool call arguments against inputSchema",
+    "prompt": "MCP tools describe their arguments with `inputSchema`: the top level has `type` and `properties`, each entry in `properties` has its own `type`, and `required` lists the mandatory argument names.\n\nWrite a function `validate(schema, args)` that returns a list of length 2, `[passed, problem]`:\n\nCheck in this order and **return on the first problem**:\n\n1. a key in `args` that is not in `properties` -> `\"unknown-key:<key>\"`\n2. a key in `required` that is missing from `args` -> `\"missing:<key>\"`\n3. a parameter whose type does not match (`\"string\"` maps to `str`, `\"number\"` to `int` and `float`, `\"boolean\"` to `bool`) -> `\"type:<key>\"`\n\nReturn `[True, \"\"]` when everything passes.",
+    "starter": "def validate(schema, args):\n    # 返回 [是否通过, 问题说明]\n    return [True, '']\n\nprint(validate({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']},\n               {'order_id': 'A123'}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {'order_id': 'A123'}) == [True, ''], validate(_s, {'order_id': 'A123'})",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {}) == [False, 'missing:order_id'], validate(_s, {})",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {'order_id': 'A1', 'extra': 1}) == [False, 'unknown-key:extra'], '未知键优先于缺失检查'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'n': {'type': 'number'}}, 'required': ['n']}\nassert validate(_s, {'n': 3}) == [True, ''] and validate(_s, {'n': 3.5}) == [True, '']\nassert validate(_s, {'n': '3'}) == [False, 'type:n']",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}\nassert validate(_s, {'b': True}) == [True, '']\nassert validate(_s, {'b': 1}) == [False, 'type:b'], '布尔不能接受数字'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'a': {'type': 'string'}, 'b': {'type': 'string'}}, 'required': ['a', 'b']}\nassert validate(_s, {'a': 'x', 'b': 'y', 'c': 'z', 'd': 1}) == [False, 'unknown-key:c'], '多个未知键时报告字典顺序里的第一个'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {}, 'required': []}\nassert validate(_s, {}) == [True, '']\nassert validate(_s, {'x': 1}) == [False, 'unknown-key:x']",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "_TYPES = {'string': str, 'number': (int, float), 'boolean': bool}\n_SHAPES = [\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {'order_id': 'A1'}),\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {}),\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {'order_id': 'A1', 'x': 1}),\n    ({'properties': {'n': {'type': 'number'}}, 'required': ['n']}, {'n': 1}),\n    ({'properties': {'n': {'type': 'number'}}, 'required': ['n']}, {'n': 'x'}),\n    ({'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}, {'b': True}),\n    ({'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}, {'b': 0}),\n    ({'properties': {'a': {'type': 'string'}, 'b': {'type': 'string'}}, 'required': ['a', 'b']}, {'a': 'x', 'b': 'y', 'c': 1}),\n    ({'properties': {}, 'required': []}, {}),\n    ({'properties': {}, 'required': []}, {'z': 1}),\n    ({'properties': {'a': {'type': 'string'}}, 'required': []}, {'a': 'x'}),\n    ({'properties': {'a': {'type': 'string'}}, 'required': []}, {'b': 'x'}),\n]\nfor _sch, _arg in _SHAPES:\n    _extra = [k for k in _arg if k not in _sch['properties']]\n    if _extra:\n        _want = [False, 'unknown-key:' + _extra[0]]\n    else:\n        _miss = [k for k in _sch['required'] if k not in _arg]\n        if _miss:\n            _want = [False, 'missing:' + _miss[0]]\n        else:\n            _bad = [k for k in _sch['required']\n                    if not isinstance(_arg[k], _TYPES[_sch['properties'][k]['type']])]\n            _want = [False, 'type:' + _bad[0]] if _bad else [True, '']\n    assert validate(_sch, _arg) == _want, (_sch, _arg, validate(_sch, _arg), _want)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that an MCP tool description is the contract between the model and an external capability?"
+    },
+    "reference": "TYPES = {\n    'string': str,\n    'number': (int, float),\n    'boolean': bool,\n}\n\n\ndef validate(schema, args):\n    props = schema['properties']\n    for key in args:\n        if key not in props:\n            return [False, 'unknown-key:' + key]\n    for key in schema['required']:\n        if key not in args:\n            return [False, 'missing:' + key]\n    for key, spec in props.items():\n        if key in args and not isinstance(args[key], TYPES[spec['type']]):\n            return [False, 'type:' + key]\n    return [True, '']\n\nprint(validate({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']},\n               {'order_id': 'A123'}))",
+    "explanation": "This chapter says MCP lets a large model \"not have to understand a variety of complicated interfaces directly, and only needs to call according to the tool descriptions MCP provides\". This function is the validating end of that contract: `inputSchema` says what may be passed, and the validator decides whether this call is legal.\n\n**The check order is fixed by the prompt, and the order changes the answer.** When a key `extra` that the schema does not declare is passed, the result is `unknown-key:extra` rather than a missing-key or type error: unknown keys are checked first, so a surplus argument fails immediately instead of being discovered later. Two input groups measure this, one with a single unknown key and one with two.\n\n**`required` is reported in the order of the `required` list**, not the order of `properties`. When several mandatory keys are missing, report the first one that appears in `required`.\n\n**A boolean does not accept a number.** In Python `isinstance(True, int)` is `True`, because `bool` subclasses `int`, so an implementation that treats \"number and boolean\" as both numeric lets `{'b': 1}` through when the prompt requires `type:b`. That is exactly what one of the checks measures. In the other direction `{'n': 3}` and `{'n': 3.5}` are both numbers and both have to be accepted.\n\n**An empty `required` list, with optional arguments, has to work too.** `{'properties': {'a': ...}, 'required': []}` with `{'a': 'x'}` should pass -- the last two groups of the main check measure the optional argument being present and being absent.\n\nThe main check recomputes the expected result for each of 12 \"schema x arguments\" combinations under the order \"unknown key -> missing -> type\" -- it is there to stop answer-lookup. Honest boundary: those 12 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch27-ex02",
+    "chapter": "chapter-27",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge MCP layer responsibilities and transport choice",
+    "prompt": "Which of these statements match this chapter? (multi-select)\n\nA. The Host is the coordinator, so even if a Server declares a high risk capability like deleting files, the Host can choose not to expose that tool\nB. One MCP Client normally corresponds to one Server, while a Host can create several Clients at once\nC. Once you adopt MCP, the business APIs your program used to call should be retired\nD. Local tools, command line programs or desktop applications suit stdio, while cloud services shared by a team suit Streamable HTTP\nE. What an MCP Server can reach is decided automatically by the protocol; the Server has no say",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "C is the opposite of what this chapter says: \"the existing APIs do not need to be retired because MCP has been adopted\", because an MCP Server calls those APIs internally. C mistakes \"a layer added on the outside\" for \"the inside was replaced\". E is wrong because permissions are decided by what the Host passes, what system permissions the Server's runtime has, and which account token it uses -- not granted automatically by the protocol.",
+    "explanation": "A, B and D correspond to the three passages this chapter has about the Host, the Client and the transport.\n\nA is a line worth remembering from this chapter: even when \"a given MCP Server declares that it has high risk capabilities such as deleting files, the Host can still choose not to expose that tool to the model, or require the user to confirm again before the action actually runs\". In other words **a declared capability is not an available one** -- the Server declares it and the Host decides whether the model gets to see it.\n\nB is why the \"one Client, one Server\" boundary exists in the first place. The chapter says the Host decides what information may pass between these connections, \"rather than letting several Servers share the whole context by themselves\" -- that boundary is what stops permissions and context getting mixed together.\n\nD comes from the passage on transports. The chapter says stdio suits local scenarios and is simple to deploy, but you have to watch the local runtime environment and the range of file access; Streamable HTTP suits remote or shared services better, but then HTTPS, authentication and access permissions become the focus.\n\nC is the line in this section worth stopping at. The chapter says \"APIs and MCP are not two technologies that replace each other\" and that \"the existing APIs do not need to be retired because MCP has been adopted\", and it even gives a selection rule: if a service only needs to call one fixed API and does not need the model to discover tools or choose operations by task, using the API directly is simpler.\n\nE is from the same section. The chapter lists three factors that decide what a Server can finally do: what information the Host actually passes it, what system permissions its runtime environment has, and what account or token it uses when connecting to an external system. What MCP itself provides is a standardised connection mechanism, and it \"does not automatically widen the Server's permission scope\".\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch27-ex03",
+    "chapter": "chapter-27",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Design an MCP adoption plan for a set of systems",
+    "prompt": "Your company has three existing systems -- order lookup, approval submission and an internal knowledge base -- all plain APIs or database interfaces, and you want an Agent to be able to use them. Write down: how you would split the Servers, what tools each Server exposes, how you set permissions, and in which cases you would advise **against** MCP and using the APIs directly instead.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it split along the \"one Client, one Server\" boundary, does it write out the name / description / inputSchema triple for each tool, does it cover permissions and a confirmation step for high risk operations, and does it state clearly when MCP is the wrong choice?"
+    },
+    "reference": "Splitting: following this chapter's principle that \"one Client normally corresponds to one Server\", open three Servers -- an order Server, an approval Server and a knowledge base Server, and create three Clients on the Host side. The chapter specifically warns that the Host has to decide what information may pass between these connections rather than letting the Servers share the whole context -- so the order Server must not automatically see the approval Server's context.\n\nWhat each Server exposes: follow this chapter's order lookup example. An existing \"look up an order's status by order number\" API becomes the tool `query_order`, whose `description` reads \"look up the order status and estimated shipping time by order number\", with `order_id` as a string in `inputSchema` and listed in `required`. The approval Server exposes `submit_approval` (needs the approval id and the conclusion), and the knowledge base Server exposes `search_docs` (needs the query) and `get_doc` (needs the document id). Each tool does one thing only, because tools are what the model picks from and a mixed-up job makes it choose wrongly.\n\nPermissions: (1) the Host side decides what is exposed -- a high risk tool such as submitting an approval or a delete can simply not be exposed, or exposed with a requirement that the user confirm again before it runs, which is exactly this chapter's \"delete a file\" example; (2) the Server side reaches external systems with a least privilege account or token and does not reuse admin credentials; (3) what a Server can reach is decided by three factors -- what the Host passes it, what system permissions the runtime has, and which account token is used -- so all three have to be tightened.\n\nWhen not to use MCP: if a program only needs to call one fixed API and does not need the model to discover tools or pick operations by task, using the API directly is simpler. The value of MCP is that it \"lets the model understand the capability\", and if the model never has to understand anything, you should not pay that design cost. In the other direction, when there are many tools, the model has to pick by task, or one set of capabilities has to serve several different Agents, MCP's benefit starts to show.",
+    "explanation": "This exercise is the chapter's core claim: MCP adds a layer of \"something the model can understand\" around an existing capability, it does not replace the existing interface.\n\nThe key to the first question is **what boundary you cut on**. The principle this chapter gives is \"one Client normally corresponds to one Server\", and the reason is to keep the boundary clean -- mix them and you end up in a situation where \"several Servers share the whole context by themselves\". The chapter also puts the decision about passing context squarely with the Host, and when you write the plan that has to become a concrete action: which information may cross between Servers is Host policy.\n\nThe `description` in the second question is not optional. The chapter's example writes \"look up the order status and estimated shipping time by order number\" in far more detail than the tool name, precisely because the model uses that text to decide which tool to call. The name `query_order` tells a developer; the description tells the model.\n\nThe third question is the part most likely to be skipped, and this chapter spends a passage on permissions: what a Server can reach is **not decided by the protocol** but by what the Host passes, what system permissions the runtime has, and which account token is used. So \"adopting MCP means the capability is now open\" is a misreading.\n\nThe last question asks the opposite, when not to use it. The chapter puts it plainly: if a service only needs to call one fixed API, using the API directly is simpler. That is the practical meaning of \"APIs and MCP are not two technologies that replace each other\" -- the test is **whether the model has to understand and choose**, not which technology is newer.\n\nThis exercise cannot run a real MCP server; grading rests on self-assessment plus an optional AI score, and the reference answer gives a plan you can compare against."
+  }
+]

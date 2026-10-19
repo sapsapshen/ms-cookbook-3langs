@@ -1,1 +1,107 @@
-[]
+[
+  {
+    "id": "ch27-ex01",
+    "chapter": "chapter-27",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Validar argumentos según inputSchema",
+    "prompt": "Las herramientas MCP describen sus argumentos con `inputSchema`: el nivel superior tiene `type` y `properties`, cada entrada de `properties` tiene su propio `type`, y `required` enumera los nombres de los argumentos obligatorios.\n\nEscribe una función `validate(schema, args)` que devuelva una lista de longitud 2, `[correcto, problema]`:\n\nComprueba en este orden y **devuelve en cuanto encuentres el primer problema**:\n\n1. una clave de `args` que no esté en `properties` -> `\"unknown-key:<clave>\"`\n2. una clave de `required` que falte en `args` -> `\"missing:<clave>\"`\n3. un parámetro cuyo tipo no cuadre (`\"string\"` corresponde a `str`, `\"number\"` a `int` y `float`, `\"boolean\"` a `bool`) -> `\"type:<clave>\"`\n\nDevuelve `[True, \"\"]` cuando todo pasa.",
+    "starter": "def validate(schema, args):\n    # 返回 [是否通过, 问题说明]\n    return [True, '']\n\nprint(validate({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']},\n               {'order_id': 'A123'}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {'order_id': 'A123'}) == [True, ''], validate(_s, {'order_id': 'A123'})",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {}) == [False, 'missing:order_id'], validate(_s, {})",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}\nassert validate(_s, {'order_id': 'A1', 'extra': 1}) == [False, 'unknown-key:extra'], '未知键优先于缺失检查'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'n': {'type': 'number'}}, 'required': ['n']}\nassert validate(_s, {'n': 3}) == [True, ''] and validate(_s, {'n': 3.5}) == [True, '']\nassert validate(_s, {'n': '3'}) == [False, 'type:n']",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}\nassert validate(_s, {'b': True}) == [True, '']\nassert validate(_s, {'b': 1}) == [False, 'type:b'], '布尔不能接受数字'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {'a': {'type': 'string'}, 'b': {'type': 'string'}}, 'required': ['a', 'b']}\nassert validate(_s, {'a': 'x', 'b': 'y', 'c': 'z', 'd': 1}) == [False, 'unknown-key:c'], '多个未知键时报告字典顺序里的第一个'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "_s = {'properties': {}, 'required': []}\nassert validate(_s, {}) == [True, '']\nassert validate(_s, {'x': 1}) == [False, 'unknown-key:x']",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "_TYPES = {'string': str, 'number': (int, float), 'boolean': bool}\n_SHAPES = [\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {'order_id': 'A1'}),\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {}),\n    ({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']}, {'order_id': 'A1', 'x': 1}),\n    ({'properties': {'n': {'type': 'number'}}, 'required': ['n']}, {'n': 1}),\n    ({'properties': {'n': {'type': 'number'}}, 'required': ['n']}, {'n': 'x'}),\n    ({'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}, {'b': True}),\n    ({'properties': {'b': {'type': 'boolean'}}, 'required': ['b']}, {'b': 0}),\n    ({'properties': {'a': {'type': 'string'}, 'b': {'type': 'string'}}, 'required': ['a', 'b']}, {'a': 'x', 'b': 'y', 'c': 1}),\n    ({'properties': {}, 'required': []}, {}),\n    ({'properties': {}, 'required': []}, {'z': 1}),\n    ({'properties': {'a': {'type': 'string'}}, 'required': []}, {'a': 'x'}),\n    ({'properties': {'a': {'type': 'string'}}, 'required': []}, {'b': 'x'}),\n]\nfor _sch, _arg in _SHAPES:\n    _extra = [k for k in _arg if k not in _sch['properties']]\n    if _extra:\n        _want = [False, 'unknown-key:' + _extra[0]]\n    else:\n        _miss = [k for k in _sch['required'] if k not in _arg]\n        if _miss:\n            _want = [False, 'missing:' + _miss[0]]\n        else:\n            _bad = [k for k in _sch['required']\n                    if not isinstance(_arg[k], _TYPES[_sch['properties'][k]['type']])]\n            _want = [False, 'type:' + _bad[0]] if _bad else [True, '']\n    assert validate(_sch, _arg) == _want, (_sch, _arg, validate(_sch, _arg), _want)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que la descripción de una herramienta MCP es el contrato entre el modelo y una capacidad externa?"
+    },
+    "reference": "TYPES = {\n    'string': str,\n    'number': (int, float),\n    'boolean': bool,\n}\n\n\ndef validate(schema, args):\n    props = schema['properties']\n    for key in args:\n        if key not in props:\n            return [False, 'unknown-key:' + key]\n    for key in schema['required']:\n        if key not in args:\n            return [False, 'missing:' + key]\n    for key, spec in props.items():\n        if key in args and not isinstance(args[key], TYPES[spec['type']]):\n            return [False, 'type:' + key]\n    return [True, '']\n\nprint(validate({'properties': {'order_id': {'type': 'string'}}, 'required': ['order_id']},\n               {'order_id': 'A123'}))",
+    "explanation": "Este capítulo dice que MCP permite que un modelo grande «no tenga que entender directamente interfaces complejas diversas, y solo tenga que llamar siguiendo las descripciones de herramientas que MCP proporciona». Esta función es el extremo que valida ese contrato: `inputSchema` dice qué se puede pasar, y el validador decide si esta llamada es legal.\n\n**El orden de comprobación lo fija el enunciado, y el orden cambia el resultado.** Cuando se pasa una clave `extra` que el schema no declara, el resultado es `unknown-key:extra` y no un fallo de clave ausente o de tipo: las claves desconocidas se comprueban primero, así que un argumento de sobra falla de inmediato en vez de descubrirse más tarde. Dos grupos de entradas lo miden, uno con una sola clave desconocida y otro con dos.\n\n**`required` se informa en el orden de la lista `required`**, no en el orden de `properties`. Cuando faltan varias claves obligatorias, se informa la primera que aparezca en `required`.\n\n**Un booleano no acepta un número.** En Python `isinstance(True, int)` es `True`, porque `bool` hereda de `int`, así que una implementación que trate «número y booleano» como ambos numéricos deja pasar `{'b': 1}` cuando el enunciado pide `type:b`. Eso es justo lo que mide una de las comprobaciones. En el sentido contrario, `{'n': 3}` y `{'n': 3.5}` son ambos números y hay que aceptar los dos.\n\n**Una lista `required` vacía, con argumentos opcionales, también tiene que funcionar.** `{'properties': {'a': ...}, 'required': []}` con `{'a': 'x'}` debería pasar; los dos últimos grupos de la comprobación principal miden el argumento opcional presente y ausente.\n\nLa comprobación principal recalcula el resultado esperado para cada una de las 12 combinaciones de «schema x argumentos» con el orden «clave desconocida -> ausente -> tipo»: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas 12 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch27-ex02",
+    "chapter": "chapter-27",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar responsabilidades y transporte de MCP",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. El Host es el coordinador, así que aunque un Server declare una capacidad de riesgo alto como borrar archivos, el Host puede decidir no exponer esa herramienta\nB. Un MCP Client suele corresponder a un solo Server, mientras que un Host puede crear varios Clients a la vez\nC. En cuanto adoptas MCP, las APIs de negocio a las que llamaba tu programa deberían retirarse\nD. Las herramientas locales, los programas de línea de comandos o las aplicaciones de escritorio encajan con stdio, mientras que los servicios en la nube compartidos por un equipo encajan con Streamable HTTP\nE. Lo que un MCP Server alcanza lo decide el protocolo automáticamente; el Server no tiene voz",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "C es lo contrario de lo que dice este capítulo: «las APIs existentes no hace falta cancelarlas porque se haya adoptado MCP», ya que un MCP Server llama a esas APIs por dentro. C confunde «una capa añadida por fuera» con «haber cambiado lo de dentro». E falla porque los permisos los deciden qué le pasa el Host, qué permisos de sistema tiene el entorno del Server y qué token de cuenta se use, y no se otorgan solos por el protocolo.",
+    "explanation": "A, B y D corresponden a los tres pasajes que este capítulo dedica al Host, al Client y al transporte.\n\nA es una frase de este capítulo que conviene recordar: aunque «un determinado MCP Server declare que posee capacidades de alto riesgo como borrar archivos, el Host puede optar por no exponer esa herramienta al modelo, o exigir al usuario que vuelva a confirmar antes de ejecutar la operación». Es decir, **una capacidad declarada no es una capacidad disponible**: el Server la declara y el Host decide si el modelo llega a verla.\n\nB es justamente para eso que existe la frontera de «un Client, un Server». El capítulo dice que el Host decide qué información puede pasar entre esas conexiones, «en lugar de dejar que varios Servers compartan por su cuenta todo el contexto»; esa frontera es la que evita que los permisos y el contexto se mezclen.\n\nD sale del pasaje sobre transportes. El capítulo dice que stdio encaja con escenarios locales y es sencillo de desplegar, pero hay que vigilar el entorno de ejecución local y el alcance del acceso a ficheros; Streamable HTTP encaja mejor con servicios remotos o compartidos, pero entonces pasan a primer plano HTTPS, la autenticación y los permisos de acceso.\n\nC es la línea de esta sección en merece la pena detenerse. El capítulo dice que «las APIs y MCP no son dos tecnologías que se sustituyen la una a la otra» y que «las APIs existentes no hace falta cancelarlas porque se haya adoptado MCP», e incluso da un criterio de selección: si a un servicio solo le hace falta llamar a una API fija y no necesita que el modelo descubra herramientas o elija operaciones según la tarea, usar la API directamente es más sencillo.\n\nE sale de la misma sección. El capítulo enumera tres factores que deciden lo que un Server puede hacer realmente: qué información le pasa el Host de verdad, qué permisos de sistema tiene su entorno de ejecución y qué cuenta o token usa al conectarse a un sistema externo. Lo que MCP aporta es un mecanismo de conexión estandarizado, y «no amplía automáticamente el alcance de permisos del Server».\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch27-ex03",
+    "chapter": "chapter-27",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Diseñar un plan de adopción de MCP",
+    "prompt": "En tu empresa hay tres sistemas ya existentes: consulta de pedidos, envío de aprobaciones y una base de conocimiento interna, todos APIs normales o interfaces de base de datos, y quieres que un Agent pueda usarlos. Escribe: cómo cortarías los Servers, qué herramientas expondría cada Server, cómo fijarías los permisos y en qué casos recomendarías **no** usar MCP y llamar directamente a las APIs.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Corta por la frontera de «un Client, un Server», escribe el trío name / description / inputSchema de cada herramienta, cubre los permisos y el mecanismo de confirmación de las operaciones de riesgo, y explica con claridad cuándo MCP no es la opción adecuada?"
+    },
+    "reference": "Corte: siguiendo el principio de este capítulo de que «un Client normalmente corresponde a un Server», abrir tres Servers: un Server de pedidos, uno de aprobaciones y uno de base de conocimiento, y crear tres Clients en el lado del Host. El capítulo advierte especialmente de que el Host tiene que decidir qué información puede pasar entre esas conexiones en lugar de dejar que los Servers compartan todo el contexto entre ellos; por ejemplo, el Server de pedidos no debería ver automáticamente el contexto del Server de aprobaciones.\n\nQué expone cada Server: seguir el ejemplo de consulta de pedidos de este capítulo. Una API existente de «consultar el estado de un pedido por número» se convierte en la herramienta `query_order`, cuya `description` dice «consulta el estado del pedido y la fecha estimada de envío por número de pedido», con `order_id` como string en el `inputSchema` y listado en `required`. El Server de aprobaciones expone `submit_approval` (necesita el número de aprobación y la conclusión) y el de base de conocimiento expone `search_docs` (necesita la consulta) y `get_doc` (necesita el identificador del documento). Cada herramienta hace una sola cosa, porque las herramientas son lo que elige el modelo y un trabajo mezclado hace que elija mal.\n\nPermisos: (1) el lado del Host decide qué se expone: una herramienta de riesgo como enviar una aprobación o borrar puede no exponerse, o exponerse exigiendo que el usuario confirme otra vez antes de ejecutarla, que es justo el ejemplo de «borrar un archivo» del capítulo; (2) el lado del Server accede a los sistemas externos con una cuenta o token de mínimo privilegio y no reutiliza credenciales de administrador; (3) lo que un Server puede alcanzar lo deciden tres factores, qué le pasa el Host, qué permisos de sistema tiene el entorno y qué token de cuenta se usa, así que los tres hay que cerrarlos.\n\nCuándo no usar MCP: si un programa solo necesita llamar a una API fija y no necesita que el modelo descubra herramientas o elija operaciones según la tarea, usar la API directamente es más sencillo. El valor de MCP está en que «permite que el modelo entienda la capacidad», y si el modelo no tiene que entender nada, no hay que pagar ese coste de diseño. En el sentido contrario, cuando hay muchas herramientas, el modelo tiene que elegir según la tarea, o un mismo conjunto de capacidades tiene que servir a varios Agents distintos, es cuando se ve el beneficio de MCP.",
+    "explanation": "Este ejercicio es la afirmación central del capítulo: MCP añade por fuera una capa de «algo que el modelo puede entender» alrededor de una capacidad que ya existe, no sustituye la interfaz original.\n\nLa clave de la primera pregunta es **por dónde cortas**. El principio que da el capítulo es «un Client normalmente corresponde a un Server», y el motivo es mantener la frontera limpia: si se mezclan se llega a una situación en la que «varios Servers comparten por su cuenta todo el contexto». El capítulo además deja expresamente en el Host la decisión sobre pasar contexto, y eso al escribir el plan tiene que traducirse en acciones concretas: qué información puede pasar entre Servers es política del Host.\n\nEl `description` de la segunda pregunta no es opcional. El ejemplo del capítulo escribe «consulta el estado del pedido y la fecha estimada de envío por número de pedido» con mucho más detalle que el nombre de la herramienta, precisamente porque el modelo usa ese texto para decidir a qué herramienta llamar. El nombre `query_order` le habla al desarrollador; la descripción le habla al modelo.\n\nLa tercera pregunta es la parte que más se pasa por alto, y este capítulo dedica un párrafo a los permisos: lo que un Server puede alcanzar **no lo decide el protocolo**, sino qué le pasa el Host, qué permisos de sistema tiene el entorno y qué token de cuenta se usa. Así que «adoptar MCP es abrir la capacidad» es una mala lectura.\n\nLa última pregunta va al revés, cuándo no usarlo. El capítulo lo dice sin rodeos: si a un servicio solo le hace falta llamar a una API fija, usar la API directamente es más sencillo. Ese es el sentido práctico de que «las APIs y MCP no son dos tecnologías que se sustituyen»: el criterio es **si el modelo tiene que entender y elegir**, no cuál tecnología es más reciente.\n\nEste ejercicio no puede ejecutar un servidor MCP real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un plan con el que comparar."
+  }
+]

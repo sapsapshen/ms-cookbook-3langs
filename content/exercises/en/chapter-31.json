@@ -1,1 +1,91 @@
-[]
+[
+  {
+    "id": "ch31-ex01",
+    "chapter": "chapter-31",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Pick the right Harness preset for a purpose",
+    "prompt": "DeepSeek Harness has four preset modes. Write a function `pick_mode(use)` that returns the mode name from the table below:\n\n| `use` | mode |\n|---|---|\n| `\"first\"` | `\"\\u6807\\u51c6\\u6a21\\u5f0f\"` (standard mode; pick it on a first run) |\n| `\"batch\"` | `\"PTC \\u6a21\\u5f0f\"` (PTC mode; batch processing and automated flows) |\n| `\"bench\"` | `\"\\u6781\\u7b80\\u6a21\\u5f0f\"` (minimal mode; minimal environment and model benchmarks) |\n| `\"harness\"` | `\"\\u521b\\u9020\\u6a21\\u5f0f\"` (creation mode; hacking on the Harness, building new templates) |\n\nRaise `ValueError` for any value outside those four.\n\nThe four mode names are Chinese and the grader compares them exactly, so write them with the backslash-u escapes shown. The escapes are not a different value, only a way of keeping the source ASCII.",
+    "explanation": "This chapter gives a paragraph on each of the four presets, and this exercise is the one-to-one mapping from purpose to mode.\n\n**What separates the four modes is how much runtime machinery they provide**, not which model they use. Standard mode is a complete coding Agent, with file editing, a shell, file and web search, Skills, planning, goals, sub-Agents and workflows -- the chapter says \"if it is your first run, pick it straight away\". PTC mode adds a Code Mode SDK on top of that, letting the model compose multi-step operations as TypeScript programs, which is why it suits batch processing and automation. Minimal mode keeps only a persistent Bash and `str_replace_editor`, which suits minimal environments and model benchmarks. Creation mode adds runtime checks, plugin experiments and custom preset authoring on top of standard mode, for hacking on the Harness itself.\n\nThat thread lines up with the five parts of the Harness in chapter 32: standard mode has all five, minimal mode is little more than \"tools\", and creation mode adds runtime checks and extension capability from \"verification and feedback\".\n\n**Match `use` strictly.** The prompt fixes the four accepted values, so `'STANDARD'`, `'first '` with a trailing space, `'\\u6807\\u51c6'`, and the non-strings `None` and `1` all have to raise `ValueError`. An implementation that normalises with `use.lower()` or `str(use)` fails there -- and that is not grading being harsh, the prompt asks for exactly those four values.\n\nThe checks have three parts: four single-point assertions each pinning one use (`pick_mode('first')` must be standard mode, `pick_mode('batch')` PTC, `pick_mode('bench')` minimal, `pick_mode('harness')` creation); one group verifying the exception on six invalid inputs; and a final main check that walks all four uses while additionally requiring the four results to differ from each other -- an implementation that \"returns the same thing in every case\" (standard mode for everything, say) shows up there.\n\nHonest boundary note on grading: the four single-point assertions carry 8/80 = 10% each, below the 20% threshold for P1, which means an implementation that \"gets three uses right and fills in the fourth with anything\" could theoretically pass. What really covers that case is the main check at 28/80: it verifies all four uses one by one, so getting any one wrong costs 35% of the score and it fails solidly. The invalid input group is 20/80 = 25%, above the P1 threshold on its own, and it is the only check guarding \"raise ValueError\" -- swap those six invalid inputs for a looser validation (accepting `'STANDARD'`, say) and the grading would no longer catch it, which is the weakest part here.",
+    "reference": "MODES = {\n    'first': '\\u6807\\u51c6\\u6a21\\u5f0f',\n    'batch': 'PTC \\u6a21\\u5f0f',\n    'bench': '\\u6781\\u7b80\\u6a21\\u5f0f',\n    'harness': '\\u521b\\u9020\\u6a21\\u5f0f',\n}\n\n\ndef pick_mode(use):\n    if use not in MODES:\n        raise ValueError('unknown use: ' + str(use))\n    return MODES[use]\n",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the modes differ in how much runtime machinery they provide?"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('first') == '标准模式', pick_mode('first')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('batch') == 'PTC 模式', pick_mode('batch')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('bench') == '极简模式', pick_mode('bench')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('harness') == '创造模式', pick_mode('harness')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('STANDARD', 'first ', '标准', None, 1, 'BATCH'):\n    try:\n        pick_mode(_bad)\n        assert False, '非法的 use 应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 20
+      },
+      {
+        "kind": "assert_python",
+        "code": "_want = {'first': '标准模式', 'batch': 'PTC 模式', 'bench': '极简模式', 'harness': '创造模式'}\nfor _k, _v in _want.items():\n    assert pick_mode(_k) == _v, (_k, pick_mode(_k), _v)\n_got = [pick_mode(_k) for _k in ('first', 'batch', 'bench', 'harness')]\nassert len(set(_got)) == 4, _got",
+        "weight": 28
+      }
+    ],
+    "starter": "MODES = {\n    'first': '标准模式',\n    'batch': 'PTC 模式',\n    'bench': '极简模式',\n    'harness': '创造模式',\n}\n\n\ndef pick_mode(use):\n    # 返回模式名\n    return ''\n"
+  },
+  {
+    "id": "ch31-ex02",
+    "chapter": "chapter-31",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Understand DeepSeek Harness's plugin design",
+    "prompt": "Which of these statements match this chapter? (multi-select)\n\nA. The model, tools, skills, sessions, sandbox, storage, loop, scheduler and UI of DeepSeek Harness are all plugins\nB. Minimal mode keeps the full capability and merely hides it by default\nC. The session log is append-only, and the system prompt, tool calls, sub-Agent scheduling and context all go into one event stream\nD. Switching Harness does not affect the same model's execution ability and stability on complex tasks\nE. \"Everything is a plugin\" means DeepSeek Harness is just DeepSeek's version of Codex",
+    "explanation": "A and C both come from the section where this chapter describes what makes DeepSeek Harness distinctive.\n\nA is that \"everything is a plugin\" spelled out: the model, tools, skills, sessions, sandbox, storage, loop, scheduler and UI are all plugins, so you can swap the model, install external tools, attach Skills, adjust permissions, turn on search, change the interface, call sub-Agents and even recombine the run modes. The chapter also points out that this is not a slogan: the plugin list in the settings really does contain a long series of entries -- model, session, credentials, sandbox, permissions, Skills, goals, sub-Agents, workflows, web search, workspace, Trajectory -- plus a batch of UI components.\n\nC is about what the session log buys you. Being append-only, the log puts the system prompt, tool calls, sub-Agent scheduling and context injection into one event stream, which enables four things: resume, fork, search and replay. Forking is especially useful for Agent experiments, since you can branch two paths from the same node and compare them.\n\nB, D and E all reverse the chapter or take it too far. Minimal really does have less capability (only a persistent Bash and `str_replace_editor`); how complete the Harness is does affect the same model's performance (chapter 32's line is that \"even using the same large model, different Harnesses provide different runtime conditions, and an Agent's execution ability and stability on complex tasks can differ noticeably\"); and the chapter's own positioning is \"more an Agent foundation a developer can keep hacking on, rather than simply a DeepSeek version of Codex\".\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded.",
+    "reference": "B is the opposite of what this chapter says: minimal mode keeps only a persistent Bash and `str_replace_editor`, so it has less capability rather than more hidden. D is the opposite too: the same model on a different Harness gets different runtime conditions, and its execution ability and stability on complex tasks differ noticeably. E is the opposite as well: the chapter positions it as \"more an Agent foundation a developer can keep hacking on, rather than simply a DeepSeek version of Codex\".",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C"
+        ],
+        "weight": 3
+      }
+    ]
+  },
+  {
+    "id": "ch31-ex03",
+    "chapter": "chapter-31",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Choose a Harness mode for a team",
+    "prompt": "Your team wants to use DeepSeek Harness for one specific job. Write down: which mode you would pick, which plugins you would enable, how small a task you would use to try it out first, and what signal would tell you it does not suit this scenario.",
+    "explanation": "This exercise is the chapter's line \"use one minimal task to confirm it really can work\" -- the chapter puts that right after installation and startup, and it is very practical advice.\n\nThere is an easily missed requirement in the third question, how small a task: the task has to be **verifiable**. This chapter gives a positive contrast on the Claude Code side -- a good requirement description contains the reproduction steps, the expected result and the scope of the change, and says how to verify it. That is not about wording: if a task has no clear acceptance criterion, you cannot tell after the Agent finishes whether it got it right, and the \"verification\" collapses.\n\nThe fourth question is the most valuable part. Saying vaguely \"if the results are bad, switch\" has no action value, while the chapter's four paragraphs each give a decidable boundary: standard for routine work, PTC for batch, minimal for benchmarks, creation for modifying the Harness. Mapping those four boundaries onto concrete signals makes the choice something other than a hunch.\n\nThe last point follows from this chapter's line that \"DeepSeek Harness is not just a fixed coding Agent, but more like a costume system for putting capabilities on an Agent\": since the capability is assembled out of plugins, failing to do something usually means a missing plugin or mechanism rather than the need for a completely different tool. That lines up with the five part model in chapter 32.\n\nThis exercise cannot run a real Agent; grading rests on self-assessment plus an optional AI score, and the reference answer gives a basis for the choice you can compare against.",
+    "reference": "Choosing the mode: on a first run go straight to standard mode -- that is what this chapter says about it, \"if it is your first run, pick it straight away\", and it has the most complete capability (file editing, shell, file and web search, Skills, planning, goals, sub-Agents, workflows). Only afterwards consider PTC (batch processing and automated flows), minimal (minimal environment or running model benchmarks) or creation (hacking on the Harness) as needed.\n\nEnabling plugins: switch on what this task actually needs rather than everything up front. A typical combination is the model plugin (choosing a model), the session plugin, the sandbox plugin (isolating the execution environment), the permissions plugin (restricting high risk operations), the Skills plugin (if the task's method is stable) and the web search plugin (if external material is needed). The chapter says you can go through them one by one under \"Settings -> Plugins -> Plugin list\".\n\nFirst validation: use a task that is very small and whose result is unambiguous. The path this chapter gives is itself \"use one minimal task to confirm it really can work\" -- reading the project and describing its structure, or fixing one small bug where you can state the expected result. The key is being able to **tell right from wrong**: when fixing a bug, write down the reproduction steps, the expected result and how to verify it, otherwise you have no way of knowing whether it got it right.\n\nSignals it does not suit: (1) the task has many steps and an uncertain path, and standard mode goes round in circles -- then you have to break the task down first, or work out why the Harness's context management is not keeping up; (2) you need high frequency batch processing, where PTC composing multi-step operations in Code Mode fits better and standard mode calling one step at a time is slow; (3) you need to run benchmarks in a minimal environment, where standard mode's many plugins pollute the results; (4) high risk operations are blocked by the permissions plugin and there is no way round, which means the permission boundary of this task has not been thought through; (5) a job that runs for hours has to restart from scratch when interrupted, which means state persistence is not configured rather than the mode being wrong.\n\nOne last piece of experience: picking the wrong mode is usually not the main problem. This chapter says what decides the kinds of task you can handle is how complete the Harness is (chapter 32's line is that the same model performs differently on a different Harness), so when something will not work, first look at which kind of mechanism is missing.",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it pick a mode and give the reason, does it mention enabling plugins on demand rather than all at once, does it validate with a small task, and does it give concrete signals for \"does not suit\" rather than a vague \"the results were not good\"?"
+    },
+    "checks": []
+  }
+]

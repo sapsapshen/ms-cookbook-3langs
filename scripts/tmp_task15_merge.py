@@ -66,6 +66,17 @@ def merge(lang, number):
     out = []
     for item in zh:
         src = sheet[item['id']]
+        # Every prose field the zh item has must be present in the sheet. A
+        # missing one is a KeyError three lines below, which is a confusing way
+        # to find out that a translator forgot a field. `criteria` is only
+        # required when the rubric is switched on, because an empty criteria is
+        # not written at all.
+        required = set(PROSE)
+        if (item.get('llm_rubric') or {}).get('criteria'):
+            required.add('criteria')
+        absent = required - src.keys()
+        assert not absent, (
+            f'{lang} {item["id"]}: sheet is missing {sorted(absent)}')
         twin = {}
         for key, value in item.items():
             if key in PROSE:

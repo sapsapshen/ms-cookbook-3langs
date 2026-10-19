@@ -1,1 +1,91 @@
-[]
+[
+  {
+    "id": "ch31-ex01",
+    "chapter": "chapter-31",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Elegir el preset de Harness adecuado",
+    "prompt": "DeepSeek Harness tiene cuatro modos predefinidos. Escribe una función `pick_mode(use)` que devuelva el nombre del modo según la tabla:\n\n| `use` | modo |\n|---|---|\n| `\"first\"` | `\"\\u6807\\u51c6\\u6a21\\u5f0f\"` (modo estándar; elígelo la primera vez) |\n| `\"batch\"` | `\"PTC \\u6a21\\u5f0f\"` (modo PTC; procesamiento por lotes y flujos automatizados) |\n| `\"bench\"` | `\"\\u6781\\u7b80\\u6a21\\u5f0f\"` (modo mínimo; entorno mínimo y pruebas de referencia del modelo) |\n| `\"harness\"` | `\"\\u521b\\u9020\\u6a21\\u5f0f\"` (modo creación; modificar el Harness y crear plantillas nuevas) |\n\nLanza `ValueError` con cualquier valor fuera de esos cuatro.\n\nLos cuatro nombres de modo están en chino y la corrección los compara de forma exacta, así que escríbelos con los escapes que se muestran. Los escapes no son otro valor, solo la forma de mantener el código fuente en ASCII.",
+    "explanation": "Este capítulo dedica un párrafo a cada uno de los cuatro preajustes, y este ejercicio es la correspondencia uno a uno entre uso y modo.\n\n**Lo que separa a los cuatro modos es cuántos mecanismos de ejecución ofrecen**, no qué modelo usen. El modo estándar es un Agent de programación completo, con edición de ficheros, shell, búsqueda de ficheros y web, Skills, planificación, objetivos, subagentes y flujos de trabajo; el capítulo dice «si es tu primera vez, elige este». El modo PTC añade encima un Code Mode SDK que deja al modelo componer operaciones de varios pasos como programas de TypeScript, y por eso encaja con el procesamiento por lotes y la automatización. El modo mínimo conserva solo un Bash persistente y `str_replace_editor`, lo que encaja con entornos mínimos y pruebas de referencia del modelo. El modo creación añade comprobaciones en tiempo de ejecución, experimentos de plugins y creación de preajustes personalizados sobre el modo estándar, para modificar el Harness.\n\nEse hilo encaja con las cinco partes del Harness del capítulo 32: el modo estándar tiene las cinco, el modo mínimo es apenas «herramientas», y el modo creación añade las comprobaciones en tiempo de ejecución y la capacidad de extender desde «verificación y realimentación».\n\n**Haz coincidir `use` de forma estricta.** El enunciado fija los cuatro valores aceptados, así que `'STANDARD'`, `'first '` con espacio final, `'\\u6807\\u51c6'` y los no-cadenas `None` y `1` tienen que lanzar `ValueError`. Una implementación que normalice con `use.lower()` o `str(use)` falla ahí, y no es que la corrección sea dura: el enunciado pide exactamente esos cuatro valores.\n\nLas comprobaciones tienen tres partes: cuatro aserciones de un solo punto, cada una fijando un uso (`pick_mode('first')` debe ser el modo estándar, `pick_mode('batch')` PTC, `pick_mode('bench')` mínimo, `pick_mode('harness')` creación); un grupo que verifica la excepción con seis entradas no válidas; y una comprobación principal final que recorre los cuatro usos exigiendo además que los cuatro resultados sean distintos entre sí, de modo que una implementación que «devuelve lo mismo siempre» se delata ahí.\n\nNota honesta sobre la corrección: las cuatro aserciones de un solo punto valen 8/80 = 10% cada una, por debajo del umbral del 20% para P1, así que en teoría una implementación que «acierta tres usos y en el cuarto pone lo que sea» podría pasar. Lo que de verdad cubre ese caso es la comprobación principal, con 28/80: verifica los cuatro usos uno a uno, así que fallar en cualquiera de ellos resta un 35% de la nota y suspende con holgura. El grupo de entradas no válidas es 20/80 = 25%, por encima del umbral de P1 por sí solo, y es la única comprobación que vigila el «lanzar ValueError»: si se cambiaran esas seis entradas por una validación más permisiva (por ejemplo, aceptar `'STANDARD'`), la corrección ya no lo detectaría, y esa es la parte más débil.",
+    "reference": "MODES = {\n    'first': '\\u6807\\u51c6\\u6a21\\u5f0f',\n    'batch': 'PTC \\u6a21\\u5f0f',\n    'bench': '\\u6781\\u7b80\\u6a21\\u5f0f',\n    'harness': '\\u521b\\u9020\\u6a21\\u5f0f',\n}\n\n\ndef pick_mode(use):\n    if use not in MODES:\n        raise ValueError('unknown use: ' + str(use))\n    return MODES[use]\n",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que los modos se diferencian en cuántos mecanismos de ejecución ofrecen?"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('first') == '标准模式', pick_mode('first')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('batch') == 'PTC 模式', pick_mode('batch')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('bench') == '极简模式', pick_mode('bench')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_mode('harness') == '创造模式', pick_mode('harness')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('STANDARD', 'first ', '标准', None, 1, 'BATCH'):\n    try:\n        pick_mode(_bad)\n        assert False, '非法的 use 应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 20
+      },
+      {
+        "kind": "assert_python",
+        "code": "_want = {'first': '标准模式', 'batch': 'PTC 模式', 'bench': '极简模式', 'harness': '创造模式'}\nfor _k, _v in _want.items():\n    assert pick_mode(_k) == _v, (_k, pick_mode(_k), _v)\n_got = [pick_mode(_k) for _k in ('first', 'batch', 'bench', 'harness')]\nassert len(set(_got)) == 4, _got",
+        "weight": 28
+      }
+    ],
+    "starter": "MODES = {\n    'first': '标准模式',\n    'batch': 'PTC 模式',\n    'bench': '极简模式',\n    'harness': '创造模式',\n}\n\n\ndef pick_mode(use):\n    # 返回模式名\n    return ''\n"
+  },
+  {
+    "id": "ch31-ex02",
+    "chapter": "chapter-31",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Entender el diseño de plugins de DeepSeek Harness",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. El modelo, las herramientas, las habilidades, las sesiones, el sandbox, el almacenamiento, el bucle, el planificador y la UI de DeepSeek Harness son todos plugins\nB. El modo mínimo conserva toda la capacidad y solo la oculta por defecto\nC. El registro de sesión es de solo anexado, y el prompt del sistema, las llamadas a herramientas, la programación de subagentes y el contexto van al mismo flujo de eventos\nD. Cambiar de Harness no afecta a la capacidad de ejecución ni a la estabilidad del mismo modelo en tareas complejas\nE. «Todo es un plugin» significa que DeepSeek Harness es solo la versión de DeepSeek de Codex",
+    "explanation": "A y C salen de la sección en la que este capítulo describe qué hace distinto a DeepSeek Harness.\n\nA es el desarrollo de ese «todo es un plugin»: el modelo, las herramientas, las habilidades, las sesiones, el sandbox, el almacenamiento, el bucle, el planificador y la UI son todos plugins, así que puedes cambiar el modelo, instalar herramientas externas, conectar Skills, ajustar permisos, activar la búsqueda, cambiar la interfaz, llamar a subagentes e incluso recombinar los modos de ejecución. El capítulo señala que esto no es una frase publicitaria: la lista de plugins de los ajustes incluye de verdad una larga serie, con modelo, sesión, credenciales, sandbox, permisos, Skills, objetivos, subagentes, flujos de trabajo, búsqueda web, espacio de trabajo y Trajectory, más un montón de componentes de UI.\n\nC trata de lo que aporta el registro de sesión. Al ser de solo anexado, el registro mete el prompt del sistema, las llamadas a herramientas, la programación de subagentes y la inyección de contexto en un mismo flujo de eventos, lo que habilita cuatro cosas: reanudar, bifurcar, buscar y reproducir. Bifurcar es especialmente útil para experimentos con Agents, porque permite sacar dos caminos desde el mismo nodo y compararlos.\n\nB, D y E invierten el capítulo o se pasan de la raya. El modo mínimo tiene de verdad menos capacidad (solo un Bash persistente y `str_replace_editor`); lo completo que sea el Harness sí afecta al rendimiento del mismo modelo (la frase del capítulo 32 es que «incluso usando el mismo modelo grande, distintos Harness ofrecen distintas condiciones de ejecución, y la capacidad de ejecución y la estabilidad del Agent en tareas complejas pueden variar de forma notable»); y la propia posicionamiento del capítulo es «más una base de Agent que un desarrollador puede ir modificando, que una simple versión de Codex de DeepSeek».\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen.",
+    "reference": "B es lo contrario de lo que dice este capítulo: el modo mínimo solo conserva un Bash persistente y `str_replace_editor`, así que tiene menos capacidad y no más oculta. D también es lo contrario: el mismo modelo sobre un Harness distinto recibe condiciones de ejecución distintas, y su capacidad de ejecución y estabilidad en tareas complejas difieren de forma notable. E también: el capítulo lo presenta como «más una base de Agent que un desarrollador puede ir modificando, que una simple versión de Codex de DeepSeek».",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C"
+        ],
+        "weight": 3
+      }
+    ]
+  },
+  {
+    "id": "ch31-ex03",
+    "chapter": "chapter-31",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Elegir un modo de Harness para un equipo",
+    "prompt": "Tu equipo quiere usar DeepSeek Harness para una cosa concreta. Escribe: qué modo elegirías, qué plugins activarías, con qué tarea tan pequeña lo pondrías a prueba la primera vez y con qué señal juzgarías que no encaja en este escenario.",
+    "explanation": "Este ejercicio es la frase del capítulo de que «usa una tarea mínima para comprobar que de verdad sabe trabajar»; el capítulo la pone justo después de la instalación y el arranque, y es un consejo muy práctico.\n\nEn la tercera pregunta, con qué tarea tan pequeña, hay un requisito que se pasa por alto: la tarea tiene que ser **verificable**. Este capítulo da un ejemplo positivo en la parte de Claude Code, donde una buena descripción de la necesidad incluye el modo de reproducción, el resultado esperado y el alcance del cambio, además de decir cómo verificarlo. Eso no es cuestión de redacción: si una tarea no tiene un criterio de aceptación claro, cuando el Agent termine no puedes saber si la hizo bien, y la «verificación» se queda en el aire.\n\nLa cuarta pregunta es la más valiosa. Decir de forma vaga «si el resultado no es bueno, cambio» no tiene valor de acción, mientras que los cuatro párrafos del capítulo dan cada uno un límite decidible: el modo estándar para el trabajo corriente, PTC para el trabajo por lotes, el mínimo para las pruebas de referencia y el de creación para modificar el Harness. Al volcar esos cuatro límites a señales concretas, la elección deja de ser una corazonada.\n\nEl último punto se deduce de la frase del capítulo de que «DeepSeek Harness no es solo un Agent de programación fijo, sino más bien un sistema de vestuario para ponerle capacidades a un Agent»: como la capacidad se monta por plugins, que algo no se pueda hacer suele significar que falta algún plugin o algún mecanismo, y no que haga falta una herramienta completamente distinta. Eso encaja con el modelo de cinco partes del capítulo 32.\n\nEste ejercicio no puede ejecutar un Agent real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una base para la elección con la que comparar.",
+    "reference": "Elegir el modo: la primera vez, ve directo al modo estándar, que es lo que este capítulo dice de él, «si es tu primera vez, elige este», y es el que tiene la capacidad más completa (edición de ficheros, shell, búsqueda de ficheros y web, Skills, planificación, objetivos, subagentes, flujos de trabajo). Ya después, según necesidad, considera PTC (procesamiento por lotes y flujos automatizados), mínimo (entorno mínimo o pruebas de referencia del modelo) o creación (si vas a modificar el Harness).\n\nActivar plugins: enciende solo lo que esta tarea necesite de verdad, no todo de golpe. Una combinación típica es el plugin de modelo (elegir modelo), el de sesión, el de sandbox (aislar el entorno de ejecución), el de permisos (restringir operaciones de riesgo), el de Skills (si el método de la tarea es estable) y el de búsqueda web (si hace falta material externo). El capítulo dice que puedes revisarlos uno a uno en «Ajustes -> Plugins -> Lista de plugins».\n\nPrimera validación: usa una tarea muy pequeña y cuyo resultado sea inequívoco. El camino que da el propio capítulo es «usa una tarea mínima para comprobar que de verdad sabe trabajar», por ejemplo entender el proyecto y explicar su estructura, o arreglar un fallo pequeño del que puedas decir con claridad el resultado esperado. La clave es poder **distinguir lo bien de lo mal**: al corregir un fallo hay que escribir el modo de reproducción, el resultado esperado y cómo verificarlo; si no, no tienes forma de saber si lo ha hecho bien.\n\nSeñales de que no encaja: (1) la tarea tiene muchos pasos y un camino incierto, y el modo estándar se da vueltas; entonces hay que descomponerla primero, o averiguar por qué la gestión de contexto del Harness no llega; (2) hace falta procesamiento por lotes muy frecuente, donde componer operaciones de varios pasos en Code Mode de PTC encaja mejor y el modo estándar llamando paso a paso va lento; (3) hay que correr pruebas de referencia en un entorno mínimo, donde los muchos plugins del modo estándar contaminan los resultados; (4) las operaciones de riesgo las bloquea el plugin de permisos y no hay forma de rodearlo, lo que significa que el límite de permisos de esta tarea no está pensado; (5) una tarea que dura horas tiene que empezar de cero al interrumpirse, y eso significa que la persistencia de estado no está bien configurada, no que el modo sea el equivocado.\n\nUna última experiencia: elegir mal el modo normalmente no es el problema principal. Este capítulo dice que lo que decide qué tipos de tarea puedes resolver es lo completo que sea el Harness (la frase del capítulo 32 es que el mismo modelo rinde distinto en un Harness distinto), así que cuando algo no cuadre, mira primero qué clase de mecanismo falta.",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Elige un modo y explica el motivo, menciona activar plugins según haga falta en lugar de todos a la vez, valida con una tarea pequeña y da señales concretas de «no encaja» en lugar de un vago «el resultado no fue bueno»?"
+    },
+    "checks": []
+  }
+]

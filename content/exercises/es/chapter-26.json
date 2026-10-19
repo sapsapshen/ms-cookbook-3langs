@@ -1,1 +1,108 @@
-[]
+[
+  {
+    "id": "ch26-ex01",
+    "chapter": "chapter-26",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Escribir un ejecutor del bucle ReAct",
+    "prompt": "El patrón ReAct avanza con un bucle Pensamiento -> Acción -> Observación: el modelo mira lo que tiene hasta el momento y decide el siguiente paso, y el resultado de la acción vuelve como información nueva.\n\nEscribe una función `run_react(steps, observe)`: `steps` es una lista de cadenas con «qué hacer después de pensar», y `observe(action)` es una función que recibe una cadena de acción y devuelve la cadena de observación de esa acción. Las reglas:\n\n- Ejecuta el primer paso y obtén su observación; a partir de ahí cada paso se decide a partir de **todas las observaciones hasta el momento**, pero aquí el comportamiento del modelo está dado, así que basta con ejecutar en orden.\n- En cuanto la observación de un paso sea `\"stop\"`, termina de inmediato y no ejecutes los pasos posteriores.\n- Devuelve una lista de longitud 2: la lista con todas las observaciones y el número de pasos realmente ejecutados.\n\nLanza `ValueError` cuando `observe` devuelva `None` o lance una excepción.",
+    "starter": "def run_react(steps, observe):\n    # 返回 [观察结果列表, 执行步数]\n    return [], 0\n\nprint(run_react(['搜索获奖名单', '查询出生日期', '比较年龄'],\n               lambda a: 'stop' if a == '比较年龄' else 'ok'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a', 'b'], lambda x: 'r' + x)\nassert out == [['ra', 'rb'], 2], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a', 'b', 'c'], lambda x: 'stop' if x == 'b' else 'ok')\nassert out == [['ok', 'stop'], 2], '遇到 stop 立刻结束，后面的步骤不执行'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a'], lambda x: 'stop')\nassert out == [['stop'], 1], '第一步就 stop 要执行 1 步'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "calls = []\nrun_react(['a', 'b', 'c'], lambda x: calls.append(x) or ('stop' if x == 'b' else 'ok'))\nassert calls == ['a', 'b'], 'stop 之后不能再调用 observe'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    run_react(['a'], lambda x: None)\n    assert False, 'observe 返回 None 应该抛 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "def boom(x):\n    raise RuntimeError('tool failed')\ntry:\n    run_react(['a'], boom)\n    assert False, 'observe 抛异常应该转成 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react([], lambda x: 'ok')\nassert out == [[], 0], '空步骤列表返回空结果'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 7):\n    for _stop_at in [None] + list(range(_n)):\n        _steps = ['s%d' % i for i in range(_n)]\n        _seen = []\n        def _obs(action):\n            _seen.append(action)\n            _idx = int(action[1:])\n            return 'stop' if _stop_at is not None and _idx == _stop_at else 'ok'\n        _out = run_react(_steps, _obs)\n        if _stop_at is None:\n            _want_obs = ['ok'] * _n\n            _want_n = _n\n        else:\n            _want_obs = ['ok'] * _stop_at + ['stop']\n            _want_n = _stop_at + 1\n        assert _out == [_want_obs, _want_n], (_n, _stop_at, _out, _want_obs, _want_n)\n        assert _seen == _steps[:_want_n], ('stop 之后不应再调用', _n, _stop_at, _seen)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que el núcleo de ReAct es «el resultado de la acción vuelve y decide el siguiente paso»?"
+    },
+    "reference": "def run_react(steps, observe):\n    results = []\n    for action in steps:\n        try:\n            got = observe(action)\n        except Exception as error:\n            raise ValueError('observe failed: ' + str(error))\n        if got is None:\n            raise ValueError('observe returned None')\n        results.append(got)\n        if got == 'stop':\n            return [results, len(results)]\n    return [results, len(results)]\n\nprint(run_react(['\\u641c\\u7d22\\u83b7\\u5956\\u540d\\u5355', '\\u67e5\\u8be2\\u51fa\\u751f\\u65e5\\u671f', '\\u6bd4\\u8f83\\u5e74\\u9f84'],\n               lambda a: 'stop' if a == '\\u6bd4\\u8f83\\u5e74\\u9f84' else 'ok'))",
+    "explanation": "Este capítulo dice que el proceso ReAct es un bucle Pensamiento -> Acción -> Observación que corre hasta terminar la tarea. Esta función extrae la **lógica de control** de ese bucle, y los pasos dados sustituyen el comportamiento del modelo.\n\n**Al encontrar `stop` se termina, y `observe` no se llama ni una vez más.** Eso es lo más fácil de dejar fuera: si se escribe «recoger primero todas las observaciones y después decidir si parar», los pasos posteriores al stop se ejecutan igualmente una vez. Una comprobación lo verifica con un `observe` que registra la secuencia de llamadas: para `run_react(['a','b','c'])` donde `'b'` devuelve `'stop'`, la secuencia que recibe `observe` tiene que ser exactamente `['a', 'b']`.\n\n**Si el primer paso devuelve `stop`, los pasos ejecutados son 1 y no 0.** Un stop es una observación, y eso significa que ese paso ya se ejecutó. Una comprobación cubre ese grupo por separado.\n\n**Tanto una excepción como `None` se convierten en `ValueError`.** `observe` representa una llamada a una herramienta, y que una herramienta falle o devuelva nada es algo que ocurre de verdad. Este capítulo dice que ReAct encaja con «tareas que necesitan interactuar continuamente con el entorno externo, como búsqueda, consulta y llamadas a herramientas», y el entorno externo falla, así que aquí eso se convierte en un error explícito en lugar de dejar que el programa muera con un RuntimeError.\n\n**Una lista de pasos vacía devuelve `([], 0)`.** Una comprobación cubre ese grupo por separado.\n\nLa comprobación principal extiende de 0 a 6 pasos contra una posición de parada (incluyendo el caso de «nunca para») en un lote de entradas, recalculando grupo por grupo la secuencia de observaciones esperada, el número de pasos y la secuencia real de llamadas: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch26-ex02",
+    "chapter": "chapter-26",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Elegir un patrón de Agent según la tarea",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. ReAct encaja con tareas como búsqueda, consulta y llamadas a herramientas, que necesitan interactuar continuamente con el entorno externo\nB. Usar ReAct en una tarea compleja de muchos pasos puede provocar que se omitan pasos o que el camino de ejecución se repita\nC. Plan-and-Execute encaja con tareas de muchos pasos, objetivo claro y que se pueden descomponer por adelantado\nD. Reflection encaja con tareas como generar informes o escribir código, donde la calidad del resultado importa mucho\nE. Cuantos más Agent mejor; la colaboración entre varios Agents siempre facilita el problema",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "E es lo contrario de lo que dice este capítulo: afirma que «el número de Agents no es que más mejor», porque cuantos más Agents haya, más complejo se vuelve el reparto de tareas, el paso de información y la coordinación de resultados, y además aumentan las llamadas al modelo y el coste de ejecución.",
+    "explanation": "Este capítulo explica los cuatro patrones con claridad, y las cuatro afirmaciones correctas se corresponden con A a D.\n\nA y B son las dos caras del mismo párrafo. El capítulo dice que ReAct «no fija todos los pasos de ejecución al principio de la tarea, sino que decide la siguiente acción según lo que devuelve cada llamada a una herramienta», así que encaja con tareas que interactúan con el entorno; justo después viene el coste: en tareas complejas de muchos pasos puede omitir pasos o repetir el mismo camino.\n\nC es el posicionamiento de la sección de Plan-and-Execute: «comparado con ReAct, Plan-and-Execute hace más énfasis en construir un plan global antes de ejecutar, por lo que encaja con tareas de muchos pasos, con un objetivo claro y que se pueden descomponer por adelantado». El ejemplo del capítulo, «analizar tres empresas de vehículos eléctricos nuevos», es exactamente una tarea así.\n\nD es la sección de Reflection. El capítulo dice que este patrón «encaja con tareas donde la calidad del resultado importa mucho, como generar informes, escribir código y hacer análisis complejos», avisando del coste: revisar y modificar varias veces aumenta las llamadas al modelo y el tiempo de ejecución, así que hay que fijar una condición de fin.\n\nE es justo lo contrario de ese recordatorio final. Las palabras del capítulo son que «para una tarea que un solo Agent puede completar, normalmente no hace falta introducir Agents adicionales»: el beneficio de varios Agents viene de dividir el trabajo para bajar la dificultad de cada punto, y el coste es que sube la complejidad de coordinación, así que hay que mirar los dos juntos.\n\nUn dato de fondo para cerrar: estos patrones no son excluyentes. El capítulo dice que se puede planificar primero con Plan-and-Execute, ejecutar un paso con ReAct y comprobar el resultado con Reflection, y delegar a escala mayor en la colaboración entre varios Agents.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch26-ex03",
+    "chapter": "chapter-26",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Diseñar un plan de ejecución con Agent",
+    "prompt": "Tienes un Agent que debe completar «buscar los datos de los informes anuales de tres empresas y convertirlos en un informe comparativo». Escribe: qué patrón de ejecución (o qué combinación) usarías, en qué orden, qué conecta un paso con el siguiente y qué condiciones de fin necesitas fijar.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Planifica los pasos con Plan-and-Execute, ejecuta con ReAct para las llamadas a herramientas, comprueba con Reflection, contempla que el plan se pueda ajustar y fija condiciones de fin como un número máximo de rondas o de comprobaciones?"
+    },
+    "reference": "Combinación: Plan-and-Execute para planificar, ReAct para ejecutar cada paso y Reflection para comprobar el resultado.\n\nPrimero, Plan-and-Execute: descompón la tarea en pasos, decidir qué tres empresas comparar, recoger los datos del último año de cada una, organizar las métricas clave, hacer el análisis comparativo y generar el informe. Es la misma descomposición que el ejemplo del capítulo (analizar tres empresas de vehículos eléctricos nuevos usa el mismo reparto). El plan no queda fijado de una vez: el capítulo dice que se puede ajustar cuando en la ejecución se descubre que el plan original no puede seguir adelante o aparece una necesidad nueva, así que el resultado de este paso tiene que ser editable.\n\nSegundo, ReAct para ejecutar cada paso: recoger los datos implica consultar varias fuentes, y el modelo no sabe cuáles consultar hasta ver los resultados de la búsqueda, que es justo donde encaja ReAct. Organizar las métricas y ordenar los datos siguen un camino conocido, así que ahí basta con el plan.\n\nTercero, Reflection para comprobar el resultado: verificar que estén las tres empresas, que las cifras coincidan con las fuentes originales y que no falte ninguna dimensión de comparación. El capítulo dice que este tipo de tarea «tiene requisitos altos de calidad de resultado» y encaja con esta etapa. Ojo con que los informes anuales de cada empresa tienen una estructura distinta, así que la comprobación de «coincide con las fuentes originales» puede obligar a volver a la etapa de ReAct a consultar de nuevo.\n\nCómo se conectan los pasos: el resultado de un paso es la entrada del siguiente. La salida de organizar las métricas es la entrada del análisis comparativo, y la salida del análisis es el borrador del informe. Ese es el caso de «dependencias entre pasos» que describe el capítulo, donde el resultado de una fase se puede pasar a la siguiente.\n\nCondiciones de fin: (1) en la fase de recogida de datos, si tras buscar tres veces una fuente no aparece la métrica clave, marcarla como ausente y seguir adelante en vez de atascarse; (2) Reflection como máximo tres rondas, y si siguen los problemas, salida con «qué partes no se han podido verificar» en lugar de seguir revisando; (3) el informe se genera una vez. El capítulo dice que Reflection «aumenta el número de llamadas al modelo y el tiempo de ejecución, así que en la práctica normalmente hay que fijar una condición de fin», lo que hace que estas condiciones sean necesarias y no opcionales.",
+    "explanation": "Este ejercicio es la frase final del capítulo, que «estos modos de ejecución de tareas no son independientes entre sí y en la práctica se pueden combinar según lo que necesite la tarea», y la combinación que da el propio capítulo es Plan-and-Execute -> ReAct -> Reflection, así que la respuesta es, básicamente, eso aplicado a una tarea concreta.\n\nLa segunda pregunta, cómo se conectan los pasos, merece un comentario. El capítulo distingue tres casos al hablar de colaboración entre varios Agents: lo que se puede descomponer de forma independiente se trata por separado y luego se agrega, lo que tiene dependencias se va pasando como resultados, y lo que necesita discusión repetida se resuelve mediante mensajes. El cuerpo de esta tarea tiene **dependencias** (recoger -> organizar -> comparar -> redactar), así que «entregar el producto de una etapa a la siguiente» es la opción natural; solo dentro de la recogida de datos de varias empresas se puede paralelizar.\n\nLa tercera pregunta es el verdadero punto del ejercicio. El capítulo advierte específicamente del coste de Reflection: «revisar y modificar varias veces también aumenta el número de llamadas al modelo y el tiempo de ejecución, así que en la práctica normalmente hay que fijar una condición de fin».Muchos diseños de Agent no fracasan porque no sepan refletir, sino porque no tienen regla de parada: revisar hasta quedar uno mismo satisfecho hace que el coste y la latencia sean impredecibles.\n\nEste ejercicio no puede ejecutar un Agent real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un plan con el que comparar."
+  }
+]

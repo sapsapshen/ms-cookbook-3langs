@@ -96,7 +96,8 @@ CAPS_GLUE = re.compile(r'[a-z]{2}[A-Z][a-zA-Z]+')
 # was confirmed to be a legitimate product or library name, not a splice.
 CAMEL_OK = {
     'elScope', 'alScope', 'inHash', 'imHash', 'vaScript', 'enAI',
-    'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO', 'niMax', 'niCoder', 'niMoonshot', 'ffSynth', 'ffUsers',
+    'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO', 'niMax', 'niCoder', 'niMoonshot',
+    'ffSynth', 'ffUsers', 'meError', 'meError.',
 }
 
 # An English function word fused onto the end of a Spanish word, and the
@@ -123,6 +124,7 @@ MIXED_SCRIPT = re.compile(r'[A-Za-z][一-鿿]|[一-鿿][A-Za-z]')
 # markdown bold, so neither is reported.
 FUSED_ASTERISK = re.compile(r'[A-Za-zÁ-ÿ]\*[A-Za-zÁ-ÿ]')
 
+HYPHENATED = re.compile(r'[A-Za-z]+(?:-[A-Za-z]+)+')
 CODE_SPAN = re.compile(r'`[^`]*`|```[\s\S]*?```|^\s{4,}\S.*$', re.MULTILINE)
 # A reference that is a whole program rather than prose. Nothing in it is
 # natural language, so the word checks do not apply at all -- Python keywords
@@ -153,9 +155,16 @@ def foreign_words(lang, value):
     """Words of the other language that appear in `lang` prose."""
     other = ENGLISH_WORDS if lang == 'es' else SPANISH_WORDS
     hits = []
+    # Hyphenated compounds keep their name verbatim: "Plan-and-Execute" is an
+    # algorithm this corpus spells that way in every language.
+    # Each PART of a hyphenated compound is protected, because WORD
+    # tokenises them apart and would otherwise report the fragments.
+    protected = set()
+    for match in HYPHENATED.finditer(strip_code(value)):
+        protected.update(match.group(0).split('-'))
     for word in WORD.findall(strip_code(value)):
         low = word.lower()
-        if low in other and low not in SHARED:
+        if low in other and low not in SHARED and word not in protected:
             hits.append(word)
     return sorted(set(hits))
 

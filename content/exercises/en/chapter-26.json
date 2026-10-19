@@ -1,1 +1,108 @@
-[]
+[
+  {
+    "id": "ch26-ex01",
+    "chapter": "chapter-26",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Write a ReAct loop executor",
+    "prompt": "The ReAct pattern advances as a Thought -> Action -> Observation loop: the model looks at what it has so far and decides the next step, and the result of the action comes back as new information.\n\nWrite a function `run_react(steps, observe)`: `steps` is a list of \"what to do after thinking\" as strings, and `observe(action)` is a function that takes an action string and returns the observation string for that action. The rules:\n\n- Execute the first step and get its observation; after that every step is decided from **all the observations so far**, but here the model's behaviour is given, so executing in order is enough.\n- As soon as a step's observation is `\"stop\"`, end immediately and do not execute the later steps.\n- Return a list of length 2: the list of all observations, and the number of steps actually executed.\n\nRaise `ValueError` when `observe` returns `None` or raises.",
+    "starter": "def run_react(steps, observe):\n    # 返回 [观察结果列表, 执行步数]\n    return [], 0\n\nprint(run_react(['搜索获奖名单', '查询出生日期', '比较年龄'],\n               lambda a: 'stop' if a == '比较年龄' else 'ok'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a', 'b'], lambda x: 'r' + x)\nassert out == [['ra', 'rb'], 2], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a', 'b', 'c'], lambda x: 'stop' if x == 'b' else 'ok')\nassert out == [['ok', 'stop'], 2], '遇到 stop 立刻结束，后面的步骤不执行'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react(['a'], lambda x: 'stop')\nassert out == [['stop'], 1], '第一步就 stop 要执行 1 步'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "calls = []\nrun_react(['a', 'b', 'c'], lambda x: calls.append(x) or ('stop' if x == 'b' else 'ok'))\nassert calls == ['a', 'b'], 'stop 之后不能再调用 observe'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    run_react(['a'], lambda x: None)\n    assert False, 'observe 返回 None 应该抛 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "def boom(x):\n    raise RuntimeError('tool failed')\ntry:\n    run_react(['a'], boom)\n    assert False, 'observe 抛异常应该转成 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = run_react([], lambda x: 'ok')\nassert out == [[], 0], '空步骤列表返回空结果'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 7):\n    for _stop_at in [None] + list(range(_n)):\n        _steps = ['s%d' % i for i in range(_n)]\n        _seen = []\n        def _obs(action):\n            _seen.append(action)\n            _idx = int(action[1:])\n            return 'stop' if _stop_at is not None and _idx == _stop_at else 'ok'\n        _out = run_react(_steps, _obs)\n        if _stop_at is None:\n            _want_obs = ['ok'] * _n\n            _want_n = _n\n        else:\n            _want_obs = ['ok'] * _stop_at + ['stop']\n            _want_n = _stop_at + 1\n        assert _out == [_want_obs, _want_n], (_n, _stop_at, _out, _want_obs, _want_n)\n        assert _seen == _steps[:_want_n], ('stop 之后不应再调用', _n, _stop_at, _seen)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the core of ReAct is \"the action's result comes back and decides the next step\"?"
+    },
+    "reference": "def run_react(steps, observe):\n    results = []\n    for action in steps:\n        try:\n            got = observe(action)\n        except Exception as error:\n            raise ValueError('observe failed: ' + str(error))\n        if got is None:\n            raise ValueError('observe returned None')\n        results.append(got)\n        if got == 'stop':\n            return [results, len(results)]\n    return [results, len(results)]\n\nprint(run_react(['\\u641c\\u7d22\\u83b7\\u5956\\u540d\\u5355', '\\u67e5\\u8be2\\u51fa\\u751f\\u65e5\\u671f', '\\u6bd4\\u8f83\\u5e74\\u9f84'],\n               lambda a: 'stop' if a == '\\u6bd4\\u8f83\\u5e74\\u9f84' else 'ok'))",
+    "explanation": "This chapter says the ReAct process is a Thought -> Action -> Observation loop that runs until the task is done. This function pulls out the **control logic** of that loop, with the given steps standing in for the model's own behaviour.\n\n**Stop ends it at once, and `observe` must not be called one extra time.** That is the easiest thing to leave out -- written as \"collect all the observations first, then decide whether to stop\", the steps after the stop still run once. One check verifies it with an `observe` that records the call sequence: for `run_react(['a','b','c'])` where `'b'` returns `'stop'`, the call sequence `observe` receives must be exactly `['a', 'b']`.\n\n**When the first step returns `stop`, the step count is 1, not 0.** A stop is an observation, which means that step already ran. One check covers that group on its own.\n\n**Both an exception and `None` become `ValueError`.** `observe` stands in for a tool call, and a tool crashing or returning nothing is a real thing that happens. This chapter says ReAct suits \"tasks that need to interact with the external environment, such as search, query and tool calls\", and the external environment does fail, so this turns it into an explicit error instead of letting the program die on a RuntimeError.\n\n**An empty step list returns `([], 0)`.** One check covers that group on its own.\n\nThe main check lays out step counts of 0 to 6 against a stop position (including the \"never stops\" case) into a batch of inputs, recomputing the expected observation sequence, step count and actual call sequence group by group -- it is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch26-ex02",
+    "chapter": "chapter-26",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Pick an Agent pattern to match the task",
+    "prompt": "Which of these statements match this chapter? (multi-select)\n\nA. ReAct suits tasks like search, query and tool calls that need to keep interacting with the external environment\nB. Using ReAct for a complex task with many steps can lead to missing steps or repeating the same execution path\nC. Plan-and-Execute suits tasks with many steps, a clear goal and a task that can be broken down in advance\nD. Reflection suits tasks such as report writing and code generation where the quality of the result matters a lot\nE. The more Agents the better; multi-Agent collaboration always makes the problem easier",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "E is the opposite of what this chapter says: it states that \"the number of Agents is not the more the better\", because more Agents make task allocation, information passing and result coordination more complex, and raise the number of model calls and the execution cost.",
+    "explanation": "This chapter explains all four patterns clearly, and the four correct statements map onto A through D.\n\nA and B are two sides of the same paragraph. The chapter says ReAct \"does not fix all the execution steps at the start of the task, but decides the next action based on what each tool call returned\", so it suits tasks that interact with the environment; immediately after that comes the cost -- for complex tasks with many steps, it can miss steps or repeat the same path.\n\nC is the positioning of the Plan-and-Execute section: \"compared with ReAct, Plan-and-Execute puts more emphasis on building the overall plan before executing, so it suits tasks with many steps, a clear objective and a task that can be broken down in advance\". The chapter's example of \"analysing three new energy vehicle companies\" is exactly such a task.\n\nD is the Reflection section. The chapter says this pattern \"suits tasks where the quality of the result matters a great deal, such as report generation, code writing and complex analysis\", while warning about the cost: repeated checking and revising raises the number of model calls and the execution time, so you have to set an end condition.\n\nE is the direct opposite of that section's closing note. The chapter's own words are that \"for a task a single Agent can complete, there is usually no need to bring in extra Agents\" -- the benefit of multiple Agents comes from dividing work to lower the difficulty of any one point, and the cost is rising coordination complexity, so you have to weigh both together.\n\nOne piece of background to close with: these patterns are not mutually exclusive. The chapter says you can plan with Plan-and-Execute first, execute one step with ReAct, then check the result with Reflection, and hand the larger scale to multi-Agent collaboration.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch26-ex03",
+    "chapter": "chapter-26",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Design an Agent execution plan for a task",
+    "prompt": "You have an Agent complete \"look up three companies' annual report figures and turn them into a comparison report\". Write down: which execution pattern (or combination) you would use, in what order, what connects one step to the next, and which end conditions you need to set.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it plan the steps with Plan-and-Execute first, execute with ReAct for the tool calls, check the result with Reflection, does it allow the plan to be revised, and does it set end conditions such as a maximum number of rounds or checks?"
+    },
+    "reference": "Combination: Plan-and-Execute to plan, ReAct to execute each step, Reflection to check the result.\n\nFirst, Plan-and-Execute: break the task into steps -- decide which three companies to compare, collect each one's most recent year of data, organise the key metrics, run the comparison, produce the report. This is the same breakdown as the chapter's own example (analysing three new energy vehicle companies uses the same split). The plan is not fixed once and for all: this chapter says the plan can be adjusted when execution finds the original plan cannot continue or a new need appears, so this step's output has to be revisable.\n\nSecond, ReAct to execute each step: collecting the data means querying several sources, and the model does not know which ones to query until it sees the search results, which is exactly where ReAct fits. Organising the metrics and tidying the data follow a known path, so the plan is enough there.\n\nThird, Reflection to check the result: verify that all three companies are covered, that the figures match the original sources, and that no comparison dimension is missing. This chapter says this kind of task \"has high requirements on result quality\" and suits this stage. Note that each company's annual report is structured differently, so the \"matches the original sources\" check may have to go back to the ReAct stage and query again.\n\nHow the steps connect: one step's output is the next step's input. The output of organising the metrics is the input to the comparison, and the output of the comparison is the report draft. That is the \"dependencies between steps\" case the chapter describes, where one stage's result can be passed to the next.\n\nEnd conditions: (1) in the data collection step, if a source has been searched three times without getting the key metric, mark it missing and carry on rather than grinding at it; (2) Reflection checks at most three rounds, and if problems remain, output \"which parts could not be verified\" instead of revising again; (3) the report is generated once. The chapter says Reflection \"raises the number of model calls and the execution time, so in practice an end condition usually has to be set\", which makes these necessary rather than optional.",
+    "explanation": "This exercise is the chapter's closing line, that \"these task execution patterns are not independent of each other and can be combined in practice according to the needs of the task\" -- and the combination the chapter itself gives is Plan-and-Execute -> ReAct -> Reflection, so the answer is largely that applied to a concrete task.\n\nThe second question, how the steps connect, is worth a word. The chapter splits multi-Agent collaboration into three cases: independently divisible work handled separately and then aggregated, dependent work passed along as results, and work needing repeated discussion handled through messages. The body of this task is **dependent** (collect -> organise -> compare -> write), so \"hand each stage's output to the next\" is the natural choice; only the part collecting several companies' data can run in parallel internally.\n\nThe third question is the real point of this exercise. The chapter specifically warns about the cost of Reflection: \"repeated checking and revising also raises the number of model calls and the execution time, so in practice an end condition usually has to be set\". Plenty of Agent designs fail not because they cannot reflect, but because they have no stopping rule -- checking again until satisfied makes both cost and latency unpredictable.\n\nThis exercise cannot run a real Agent; grading rests on self-assessment plus an optional AI score, and the reference answer gives a plan you can compare against."
+  }
+]

@@ -34,7 +34,7 @@
 
   function buildHomeContents() {
     const copy = [
-      ["认识开源模型", "了解开源模型的基本概念、生态与 ModelScope 平台"],
+      ["认识开源模型", "了解开源模型的基本概念、生态与社区平台"],
       ["从问题出发", "找到合适场景，选择模型并建立评测基线"],
       ["让模型工作起来", "从环境搭建到模型运行，快速跑通示例"],
       ["微调与评测", "数据构建、轻量微调、偏好对齐与效果评测"],
@@ -70,7 +70,7 @@
     document.body.classList.add("is-home");
     homePage.hidden = false;
     document.querySelector(".site-shell").hidden = true;
-    document.title = `${data.title}｜从开源模型到业务实践`;
+    document.title = `${data.title}｜把开源模型用起来`;
     closeMenu();
     closeViewer();
     if (headingObserver) headingObserver.disconnect();

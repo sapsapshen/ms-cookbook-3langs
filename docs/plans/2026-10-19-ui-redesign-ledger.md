@@ -79,3 +79,20 @@ reading.css 后者居上 shadow（唯一独有存活值：`--sidebar-width:270px
 - B2（T4+T5）：reader-tools + 其余 9 文件
 - B3（T6+T7）：analytics + 品牌更名
 - B4（T8）：验证 + 一致性门 + 机械证明
+
+## 进度记录
+
+- **B1 完成（commit 50a041a）**：token 基座 + styles.css + reading.css。三处 :root 归一，
+  紫名 token 退役，焦点环改 --brand-ink，footer 落地暗色 band。
+- **B2 完成**：paper.css 主体（125 处）、reader-tools.css（52）、exercise.css、
+  review.css、discussion.css、wishes.css、navigation.css、homepage.css、
+  wall.css、i18n.css、analytics.css（独立 token 副本 + 图表双色改琥珀/绿）、
+  死文件 community.css/home.css（无加载方，仍迁移保持一致，不删）。
+  关键上下文修正：黄按钮上的白字 → --on-brand（discussion-primary / run 按钮 /
+  range-buttons.active）；所有焦点环 → --brand-ink；analytics 的渐变 lifetime
+  卡片改平（AI 光泽）；第三套紫 :root（analytics）替换为共享 token。
+- **插画暖化**：review/paper 的 6 张 webp + 3 张 mascot PNG + seedling，
+  薰衣草区间(190–290°)线性重映射到琥珀(30–50°)，84% 像素重着色，白纸部分
+  （低饱和）不动所以高光仍是白的。seedling 是绿的所以不动（正确）。
+- **机械证明**：全站 CSS（katex 除外）token 块之外 hex = 0。
+- 验证：116 pytest + check-site PASS。

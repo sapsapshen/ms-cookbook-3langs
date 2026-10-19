@@ -158,7 +158,7 @@ def import_snapshot(snapshot, date):
         entries.append({'number': number, 'title': c['title'], 'partIndex': c['partIndex'], 'file': file, 'status': status})
         reports.append({'number': number, 'revision': doc['revision_id'], 'sourceXmlSha256': digest(doc['content'].encode()), 'sourceMarkdownSha256': digest(md['content'].encode()), 'chapterFileSha256': digest(source_html.encode()), 'headings': len(expected_headings), 'codeBlocks': len(expected_code), 'formulas': len(expected_math), 'images': len(list(original.iter('img'))), 'attachments': len(list(original.iter('source'))), 'embeddedSheets': sheet_evidence, 'proseVerified': True, 'headingOrderVerified': True, 'codeVerified': True, 'formulasVerified': True})
         print(f'Imported {number:02d}: revision {doc["revision_id"]}; prose, headings, code and math verified')
-    manifest = {'title': '魔搭紫皮书', 'sourceUpdated': date, 'parts': [{'title': p['title'], 'shortTitle': SHORT_PARTS[i]} for i,p in enumerate(catalog['parts'])], 'chapters': entries}
+    manifest = {'title': '超智学习空间', 'sourceUpdated': date, 'parts': [{'title': p['title'], 'shortTitle': SHORT_PARTS[i]} for i,p in enumerate(catalog['parts'])], 'chapters': entries}
     (CONTENT / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
     (CONTENT / 'sync-report.json').write_text(json.dumps({'syncedAt': date, 'method': 'Feishu XML and embedded sheet values; no prose rewriting', 'chapters': reports}, ensure_ascii=False, indent=2) + '\n')
 

@@ -506,7 +506,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         return {'id':u['id'],'name':u['name'],'moderator':u['sub'] in admins} if u else None
     def require_user(request):
         u=user(request)
-        if not u: raise HTTPException(401,'请先使用魔搭账号登录')
+        if not u: raise HTTPException(401,'请先登录')
         csrf=request.headers.get('x-csrf-token','')
         if request.headers.get('origin') != base or not csrf or not secrets.compare_digest(csrf, request.session.get('csrf','')):
             raise HTTPException(403,'页面已过期，请刷新后重试')
@@ -651,7 +651,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
 
     @app.get('/auth/login')
     async def login(request: Request, return_to: str = '#home'):
-        if not enabled: raise HTTPException(503,'魔搭登录尚未配置')
+        if not enabled: raise HTTPException(503,'登录尚未配置')
         # Only a local chapter/home hash can be used as the return destination.
         import re
         request.session['return_to'] = return_to if re.fullmatch(r'#[a-zA-Z0-9_/?=&%-]{1,180}', return_to) else '#home'
@@ -659,7 +659,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
 
     @app.get('/auth/callback')
     async def callback(request: Request):
-        if not enabled: raise HTTPException(503,'魔搭登录尚未配置')
+        if not enabled: raise HTTPException(503,'登录尚未配置')
         try:
             token = await oauth.modelscope.authorize_access_token(request)
             info = token.get('userinfo')
@@ -667,7 +667,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         except (OAuthError, ValueError):
             return RedirectResponse('/?login=failed#home',status_code=303)
         sub=str(info['sub'])
-        name=str(info.get('name') or info.get('preferred_username') or '魔搭读者')[:100]
+        name=str(info.get('name') or info.get('preferred_username') or '学习空间读者')[:100]
         now=int(time.time()); sid=secrets.token_urlsafe(32)
         with db() as conn:
             conn.execute('INSERT INTO users VALUES (?,?,?) ON CONFLICT(sub) DO UPDATE SET name=excluded.name',(secrets.token_hex(16),sub,name))

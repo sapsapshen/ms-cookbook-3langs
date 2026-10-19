@@ -64,7 +64,7 @@ def test_tracking_validates_origin_page_and_visitor(analytics_site):
 def test_analytics_range_and_page(analytics_site):
     _,client=analytics_site
     assert client.get('/analytics').status_code==200
-    assert '<title>访问统计｜魔搭紫皮书</title>' in client.get('/analytics').text
+    assert '<title>访问统计｜超智学习空间</title>' in client.get('/analytics').text
     today=datetime.now(ZoneInfo('Asia/Shanghai')).date()
     start=(today-timedelta(days=6)).isoformat()
     response=client.get(f'/api/analytics/summary?start={start}&end={today.isoformat()}')

@@ -92,7 +92,7 @@
   let searchIndex = buildSearchIndex();
 
   function renderProjectLinks() {
-    const markup = `<a href="https://github.com/modelscope/ms-cookbook" target="_blank" rel="noopener noreferrer">${t('links.github')}</a><a href="https://modelscope.cn/spotlight" target="_blank" rel="noopener noreferrer">${t('links.modelscope')}</a><a href="#contribute">${t('links.contribute')}</a>`;
+    const markup = `<a href="https://github.com/sapsapshen/ms-cookbook-3langs" target="_blank" rel="noopener noreferrer">${t('links.github')}</a><a href="#contribute">${t('links.contribute')}</a>`;
     $$('.project-links').forEach(el=>{el.innerHTML=markup;});
     $$('.quiet-footer').forEach(el=>{if(!el.querySelector('.project-links'))el.insertAdjacentHTML('beforeend',`<div class="project-links">${markup}</div>`);});
   }

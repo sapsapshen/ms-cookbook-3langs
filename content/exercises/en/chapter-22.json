@@ -1,1 +1,81 @@
-[]
+[
+  {
+    "id": "ch22-ex01",
+    "chapter": "chapter-22",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Pick a LoRA type and its training data by goal",
+    "prompt": "Before training an image LoRA you have to be clear about what you want the model to learn. Write a function `plan(goal)`:\n\n`goal` is one of `\"style\"`, `\"character\"`, `\"product\"` or `\"concept\"`. Return a list of length 2, `[type name, training data requirement]`:\n\n- `\"style\"` -> `\"\\u98ce\\u683c LoRA\"` (style LoRA), data requirement `\"\\u540c\\u4e00\\u753b\\u98ce\\uff0c\\u5185\\u5bb9\\u53ef\\u4e0d\\u540c\"` (same visual style, content may differ)\n- `\"character\"` -> `\"\\u4eba\\u7269 LoRA\"` (character LoRA), data requirement `\"\\u540c\\u4e00\\u4eba\\u7269\\uff0c\\u591a\\u89d2\\u5ea6\\u591a\\u8868\\u60c5\"` (the same character, from several angles and expressions)\n- `\"product\"` -> `\"\\u5546\\u54c1 LoRA\"` (product LoRA), data requirement `\"\\u540c\\u4e00\\u5546\\u54c1\\uff0c\\u591a\\u89d2\\u5ea6\\u591a\\u5149\\u7167\"` (the same product, from several angles and lighting conditions)\n- `\"concept\"` -> `\"\\u6982\\u5ff5 LoRA\"` (concept LoRA), data requirement `\"\\u8be5\\u6982\\u5ff5\\u7684\\u591a\\u79cd\\u8868\\u73b0\"` (several manifestations of the concept)\n\nAll eight labels are Chinese, and the grader compares them exactly, so write every one of them with the backslash-u escapes shown. The escapes are not a different value, only a way of keeping the source ASCII.\n\nRaise `ValueError` for any value outside those four.",
+    "starter": "def plan(goal):\n    # 返回 [类型名, 训练数据要求]\n    return []\n\nprint(plan('character'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert plan('style') == ['风格 LoRA', '同一画风，内容可不同'], plan('style')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan('character') == ['人物 LoRA', '同一人物，多角度多表情'], plan('character')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan('product') == ['商品 LoRA', '同一商品，多角度多光照'], plan('product')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan('concept') == ['概念 LoRA', '该概念的多种表现'], plan('concept')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('', 'style ', 'Style', 'styles', 'object', '人物'):\n    try:\n        plan(_bad)\n        assert False, '未知目标应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 22
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(plan('style'), list) and len(plan('style')) == 2",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "_PAIRS = {\n    'style': ('风格 LoRA', '同一画风，内容可不同'),\n    'character': ('人物 LoRA', '同一人物，多角度多表情'),\n    'product': ('商品 LoRA', '同一商品，多角度多光照'),\n    'concept': ('概念 LoRA', '该概念的多种表现'),\n}\nfor _g in sorted(_PAIRS):\n    _out = plan(_g)\n    assert _out == [_PAIRS[_g][0], _PAIRS[_g][1]], (_g, _out)\n    assert _out[0] != _PAIRS[_g][1], '类型名和数据要求不能混'\n_seen = set()\nfor _g in _PAIRS:\n    _seen.add(tuple(plan(_g)))\nassert len(_seen) == 4, '四种目标要给出四组不同结果'",
+        "weight": 18
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the four LoRA types differ in what they learn rather than in how they are trained?"
+    },
+    "reference": "PAIRS = {\n    'style': ('\\u98ce\\u683c LoRA', '\\u540c\\u4e00\\u753b\\u98ce\\uff0c\\u5185\\u5bb9\\u53ef\\u4e0d\\u540c'),\n    'character': ('\\u4eba\\u7269 LoRA', '\\u540c\\u4e00\\u4eba\\u7269\\uff0c\\u591a\\u89d2\\u5ea6\\u591a\\u8868\\u60c5'),\n    'product': ('\\u5546\\u54c1 LoRA', '\\u540c\\u4e00\\u5546\\u54c1\\uff0c\\u591a\\u89d2\\u5ea6\\u591a\\u5149\\u7167'),\n    'concept': ('\\u6982\\u5ff5 LoRA', '\\u8be5\\u6982\\u5ff5\\u7684\\u591a\\u79cd\\u8868\\u73b0'),\n}\n\n\ndef plan(goal):\n    if goal not in PAIRS:\n        raise ValueError('unknown goal: ' + str(goal))\n    return list(PAIRS[goal])\n\nprint(plan('character'))",
+    "explanation": "This chapter splits image LoRA into style, character, product and concept, and **what separates them is what you want the model to learn**, not anything about the training method -- they all use the same LoRA pipeline. So this function is a \"goal -> type + data requirement\" lookup table.\n\n**Of the four, only the style one allows the content to differ.** A style LoRA learns overall visual qualities such as colour, line and composition, so the training set only has to share a style; the content can be people, animals or landscapes. The other three all learn the appearance of one specific object, so they have to guarantee it is the *same* object: a character needs the same person from several angles and expressions, a product needs the same product from several angles and lighting conditions. That mapping is the core of this exercise.\n\n**A character LoRA is meant to be reused across scenes.** This chapter says that once training is done you can \"have this character appear in different settings through the prompt -- an office, a street, a snowy mountain\" -- so the backgrounds and clothing in the training set need to vary, otherwise the model never learns which parts belong to the character and which to the scene. A product LoRA needs several backgrounds and lighting conditions for the same reason.\n\n**Return a list, not a tuple, and the four results must differ from each other.** The main check verifies both, so an implementation returning four tuples with identical contents fails.\n\n**Match strictly, with no case or whitespace tolerance.** The prompt fixes the four accepted values, so `'Style'`, `'style '` with a trailing space and `'styles'` all have to raise `ValueError`. An implementation using `goal.lower()` or `goal.strip()` fails there -- and that is not grading being harsh, the prompt asks for exactly those four values.\n\nThe final check walks all four goals one by one while also confirming that the four results differ from each other -- it is there to stop an implementation that \"returns the same thing in every case\". Honest boundary: those four values are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch22-ex02",
+    "chapter": "chapter-22",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Match training parameters to their jobs",
+    "prompt": "LoRA training in DiffSynth has a batch of parameters. Which of these statements match the parameter descriptions in this chapter? (multi-select)\n\nA. `lora_rank` affects how many parameters are trainable\nB. `use_gradient_checkpointing` reduces how much VRAM training takes\nC. `max_pixels` caps the maximum number of pixels a training image may have\nD. `dataset_repeat` decides how many epochs the training runs for\nE. `learning_rate` controls which directory the model weights are saved to",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D is wrong because this chapter says `dataset_repeat` is \"how many times the dataset is reused in each epoch\", and the number of epochs is `num_epochs`. E is wrong because the save directory is `output_path`.",
+    "explanation": "This question tests whether you can match a parameter name to its job. D and E are the two easiest groups to mix up in the table this chapter gives.\n\n**`dataset_repeat` and `num_epochs` are an easy pair to confuse.** The chapter is explicit: `dataset_repeat` is \"how many times the dataset is reused within each epoch\", and `num_epochs` is the \"number of training epochs\". The first decides how many passes over the data one epoch makes, the second how many epochs there are in total -- with a small dataset you raise the repeat to fill out an epoch, and too few epochs means it never learns properly.\n\n**`output_path` is the save directory**, described as \"where the LoRA weights are saved\". E assigns that job to `learning_rate`.\n\nA few more groups are worth remembering the same way: `dataset_base_path` is the training data directory, `dataset_metadata_path` is the metadata file, `lora_target_modules` names the model modules that get the LoRA, and `dataset_num_workers` is the number of processes used to load data.\n\nThis chapter also explains how to think about tuning: `learning_rate`, `num_epochs`, `dataset_repeat`, `lora_rank` and `max_pixels` can be adjusted according to the training data and the GPU's VRAM -- note that those five are exactly the main levers on memory use and on training quality.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

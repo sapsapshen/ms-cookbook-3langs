@@ -5,9 +5,9 @@
     "type": "build",
     "difficulty": 2,
     "minutes": 10,
-    "objective": "Ensamblar los argumentos de un ajuste fino con ms-swift",
-    "prompt": "Construye un diccionario de argumentos llamado `args` para una ejecución `swift sft`: `model` = `Qwen/Qwen2.5-0.5B`, `dataset` = `['alpaca-gpt4-data.json']`, `output` = `output/v0-5b-lora`, `train_type` = `lora`, `max_length` = 2048. Después une `args` en una cadena de línea de comandos llamada `cmd` e imprime `cmd`.",
-    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# únelo en una cadena de comando llamada cmd\n",
+    "objective": "Ensamblar los argumentos de una orden de ajuste",
+    "prompt": "Escribe el diccionario de argumentos (guardado en la variable `args`) de una ejecución con `swift sft`, que contenga: `model` con valor `Qwen/Qwen2.5-0.5B`, `dataset` con valor `['alpaca-gpt4-data.json']`, `output` con valor `output/v0-5b-lora`, `train_type` con valor `lora` y `max_length` con valor 2048. Después une `args` en una cadena de línea de comandos guardada en `cmd`, e imprime `cmd`.",
+    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# 拼成命令行字符串存为 cmd\n",
     "checks": [
       {
         "kind": "assert_python",
@@ -52,10 +52,10 @@
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "¿Entiende que dataset es una lista y max_length es un entero?"
+      "criteria": "¿Entiende que dataset es una lista mientras que max_length es un entero?"
     },
     "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
-    "explanation": "ms-swift usa guiones en la línea de comandos (--train-type) mientras que el diccionario usa guiones bajos (train_type); convertirlo es parte del ejercicio. dataset debe ser una lista aunque tenga un solo archivo. Los cinco argumentos tienen que llegar también a la línea de comandos que se imprime: si falta uno, el comando no se ejecutará, así que la corrección mira tanto las cinco claves del diccionario como el comando renderizado."
+    "explanation": "ms-swift usa guiones en la línea de comandos (--train-type) mientras que el diccionario usa guiones bajos (train_type), y convertirlo es parte del ejercicio. dataset tiene que ser una lista aunque solo haya un archivo. Los cinco argumentos tienen que aparecer además en la línea de comandos impresa: si falta uno, la orden no arranca, así que la corrección mira a la vez las cinco claves del diccionario y la línea de comandos renderizada, y las dos cosas tienen que estar bien."
   },
   {
     "id": "ch13-ex02",
@@ -63,9 +63,9 @@
     "type": "code",
     "difficulty": 3,
     "minutes": 12,
-    "objective": "Separar un conjunto de datos en entrenamiento y validación",
-    "prompt": "Dado un total de muestras `total` y una proporción de validación `val_ratio` (decimal entre 0 y 1), calcula el tamaño de validación `val_size` y el de entrenamiento `train_size`. Usa división entera y haz que los dos sumen exactamente `total`, sin perder ninguna muestra.",
-    "starter": "def split(total, val_ratio):\n    # devuelve (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
+    "objective": "Partir un dataset en entrenamiento y validación",
+    "prompt": "Dado un número de muestras `total` y una proporción de validación `val_ratio` (un decimal entre 0 y 1), calcula el tamaño de validación `val_size` y el de entrenamiento `train_size`. Usa división entera hacia abajo y haz que los dos sumen exactamente `total`, sin perder ni una muestra.",
+    "starter": "def split(total, val_ratio):\n    # 返回 (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
     "checks": [
       {
         "kind": "assert_python",
@@ -105,10 +105,10 @@
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "¿Trató el resto de la división entera en lugar de redondear?"
+      "criteria": "¿Ha resuelto el resto de la división entera en vez de redondear?"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size usa int() para truncar y train_size se obtiene por resta en lugar de una segunda división, así la suma es exactamente total sin perder muestras. Cuidado con el redondeo: en split(7, 0.5) tienes 7 x 0,5 = 3,5, que al truncar da 3, así que la respuesta es (4, 3); round(3.5) da 4 y la respuesta pasa a ser (3, 4): no se pierde ninguna muestra, pero el conjunto de validación ganó una. Truncar ambos lados es peor: split(3, 0.9) da (0, 2) y split(999, 0.0625) da (936, 62), falta una muestra en cada caso. La corrección evalúa por separado la tupla (4, 3) y la afirmación «el conjunto de validación tiene exactamente 3 elementos», así que aunque una de las dos cambie de peso más adelante, una implementación con round() seguirá sin pasar. Una última comprobación recorre 96 puntos de entrada: todos los totales del 1 al 24 contra las proporciones 0,1, 0,25, 0,5 y 0,9, exigiendo que el tamaño de validación sea int(total × proporción), que el de entrenamiento sea el total menos ese, y que ambos sumen el total. Esa comprobación existe para impedir la consulta de una tabla: ninguna tabla ni retorno fijo cubre 96 entradas. Límite honesto: esas 96 entradas forman parte del corpus público, así que todavía se pueden copiar; esto aumenta el coste de copiar, no lo impide."
+    "explanation": "val_size usa int() para truncar hacia abajo, y train_size sale por resta en lugar de una segunda división: así se garantiza que los dos suman exactamente total sin perder muestras. Cuidado con el redondeo: en split(7, 0.5) tenemos 7 x 0.5 = 3.5, que al truncar da 3, así que la respuesta es (4, 3); round(3.5) da 4 y la respuesta pasa a ser (3, 4): no se pierde ninguna muestra, pero el conjunto de validación ha ganado una. Truncar por los dos lados es peor: split(3, 0.9) da (0, 2) y split(999, 0.0625) da (936, 62), con una muestra de menos en cada caso. La corrección evalúa por separado la tupla (4, 3) y la afirmación «el conjunto de validación tiene exactamente 3», así que, aunque una de las dos llegara a ponderarse de otro modo, una implementación basada en round() seguiría sin pasar. Una comprobación final recorre 96 puntos de entrada: todos los totales de 1 a 24 frente a las proporciones 0.1, 0.25, 0.5 y 0.9, y exige que la validación sea exactamente int(total * ratio), que el entrenamiento sea el total menos eso y que los dos sumen el total. Esa comprobación existe para impedir que te aprendas la respuesta: una tabla o un retorno fijo no cubren 96 entradas. Límite honesto: esas 96 entradas forman parte del corpus público, así que igual se pueden copiar; esto eleva el coste de copiar, no lo impide."
   },
   {
     "id": "ch13-ex03",
@@ -116,8 +116,8 @@
     "type": "reflect",
     "difficulty": 2,
     "minutes": 6,
-    "objective": "Decidir qué hiperparámetro de LoRA cambiar",
-    "prompt": "Tras el ajuste fino el modelo se repite y se atasca en una misma frase. ¿Qué cambiarías primero: `lora_rank`, `learning_rate` o `num_epochs`? Escribe tu elección y el motivo.",
+    "objective": "Decidir qué hiperparámetro tocar primero",
+    "prompt": "Tras el ajuste fino el modelo se repite y se queda atascado en una misma frase. ¿Cuál cambiarías primero entre `lora_rank`, `learning_rate` y `num_epochs`? ¿Por qué? Escribe tu juicio y tu razonamiento.",
     "checks": [
       {
         "kind": "self_assessed",
@@ -126,9 +126,9 @@
     ],
     "llm_rubric": {
       "enabled": true,
-      "criteria": "¿La respuesta identifica una tasa de aprendizaje demasiado alta o demasiadas épocas como causa probable, e indica la dirección del cambio y una alternativa?"
+      "criteria": "¿La respuesta identifica una tasa de aprendizaje demasiado alta o demasiadas épocas como la causa probable, y expone tanto la dirección del cambio como una alternativa?"
     },
-    "reference": "Baja primero la tasa de aprendizaje (1e-4 -> 5e-5) y después reduce las épocas. lora_rank controla sobre todo capacidad y memoria, así que es una palanca débil aquí. Si la repetición persiste, deduplica los datos o usa repetition_penalty.",
-    "explanation": "La repetición indica sobreajuste o una tasa de aprendizaje excesiva, no falta de capacidad. Este ejercicio no se puede ajustar de verdad en el navegador: lo importante es escribir el «por qué», no solo el «qué»."
+    "reference": "Baja primero la tasa de aprendizaje (1e-4 -> 5e-5) y después reduce las épocas. lora_rank controla sobre todo la capacidad y la memoria, así que aquí es una palanca floja. Si la repetición persiste, deduplica los datos o añade repetition_penalty.",
+    "explanation": "La repetición suele indicar sobreajuste o una tasa de aprendizaje excesiva, no falta de capacidad. Esto no se puede ajustar de verdad en un navegador: lo importante es escribir el «por qué», no solo el «qué»."
   }
 ]

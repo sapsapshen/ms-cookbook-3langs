@@ -1,1 +1,155 @@
-[]
+[
+  {
+    "id": "ch12-ex01",
+    "chapter": "chapter-12",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Limpiar el texto de las FAQ como este capítulo",
+    "prompt": "Escribe un `clean_text(text)` siguiendo las reglas de limpieza de este capítulo, haciendo cuatro cosas en este orden: quitar las etiquetas HTML del tipo `<p>` (la etiqueta se va junto con sus ángulos), sustituir el espacio duro `\\xa0` por un espacio normal, agrupar las rachas de espacios en un solo espacio y quitar los espacios de los extremos. Devuelve `\"\"` tanto para la cadena vacía como para `None`. Devuelve el texto limpio.",
+    "starter": "def clean_text(text):\n    # 四步清洗，返回结果字符串\n    return text\n\nprint(clean_text('<p>  客服电话为 400-123-4567\\xa0 </p>'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('<p>进入个人中心</p>') == '进入个人中心', 'HTML 标签连尖括号一起去掉'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('客服电话为 400-123-4567\\xa0') == '客服电话为 400-123-4567', '不换行空格要换成普通空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('点击\\n\\n按照提示操作。') == '点击 按照提示操作。', '连续空白合并成一个空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('  如何修改登录密码？  ') == '如何修改登录密码？', '最后要去掉首尾空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('') == '' and clean_text(None) == ''",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('<p>客服电话为 400-123-4567\\xa0 </p>') == '客服电话为 400-123-4567', '四步要按顺序一起生效'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('a  b') == 'a b' and clean_text('\\t\\tx') == 'x' and clean_text('  ') == ''",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in (None, '', '  ', 'x', ' x ', 'a  b', 'a\\nb', 'a\\xa0b', '<p>a</p>', ' <b>c</b> d ', '<p></p>', 'a\\t\\t\\tb'):\n    _r = clean_text(_t)\n    assert isinstance(_r, str), (_t, _r)\n    if not _t:\n        assert _r == '', (_t, _r)\n    else:\n        _expect = ' '.join(_t.replace('\\xa0', ' ').split())\n        while '<' in _expect and '>' in _expect:\n            _i = _expect.index('<')\n            _j = _expect.index('>', _i)\n            _expect = _expect[:_i] + _expect[_j + 1:]\n            _expect = ' '.join(_expect.split())\n        assert _r == _expect.strip(), (_t, _r, _expect)",
+        "weight": 24
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que limpiar no significa borrar todo el contenido especial?"
+    },
+    "reference": "import re\n\n\ndef clean_text(text):\n    if not text:\n        return \"\"\n    text = re.sub(r'<[^>]+>', '', text)\n    text = text.replace('\\xa0', ' ')\n    text = re.sub(r'\\s+', ' ', text)\n    return text.strip()\n\nprint(clean_text('<p>  \\u5ba2\\u670d\\u7535\\u8bdd\\u4e3a 400-123-4567\\xa0 </p>'))",
+    "explanation": "El orden de estos cuatro pasos se puede copiar tal cual, pero hay una cosa que conviene decir: **no todos los órdenes dan el mismo resultado.**\n\nEl resultado medido es que mover «agrupar los espacios» antes de «quitar las etiquetas» produce exactamente la misma salida, porque `strip()` se ejecuta al final y los espacios de más dentro de las etiquetas se agrupan igual. Así que las comprobaciones no hacen del orden un punto evaluado.\n\nIgual con `\\xa0` (el espacio duro): en el `re` de Python sí coincide con `\\s`, así que incluso omitiendo el paso de «sustituir por un espacio normal», la agrupación posterior de espacios lo convierte en un espacio normal, con el mismo resultado. Esa entrada de comprobación confirma que la respuesta es correcta; no distingue entre las dos formas de escribirlo.\n\nDos cosas sí cambian el resultado: **`if not text` tiene que ir lo primero** (`None` y `''` devuelven `\"\"` directamente, si no, llamar a `re.sub` sobre `None` lanza una excepción) y **el `strip()` del final** (agrupar espacios sin quitarlos deja `'  \\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f  '` con los dos extremos intactos). Las comprobaciones fijan esas dos con `clean_text(None)` y con una entrada que lleva espacios al principio y al final.\n\nEste capítulo tiene además una frase que fácil se lee como sobrante: **limpiar no es borrar todo el contenido especial.** El código, las fórmulas, las unidades y la puntuación pueden ser en sí mismos parte de los datos de entrenamiento. Este ejercicio solo hace los cuatro pasos que pide el enunciado, así que contenido como `x=1` o `5kg` no debe tocarse, y las comprobaciones lo muestran al agrupar `'a  b'` en `'a b'` y dejar todo lo demás igual.\n\nLa última comprobación recorre las 12 entradas, y para una de ellas calcula el valor esperado con un **algoritmo distinto** (pelando las etiquetas carácter a carácter y luego separando por espacios) en lugar de reutilizar el enfoque que se está evaluando. Está ahí para impedir que te aprenses la respuesta. Límite honesto: esas 12 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch12-ex02",
+    "chapter": "chapter-12",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Eliminar duplicados exactos de las FAQ",
+    "prompt": "Al unir datos de fuentes distintas aparecen muestras idénticas. Escribe una función `dedupe(rows)`: concatena la `question` y la `answer` de cada registro **directamente**, sin ningún separador entre ellas, para obtener un texto; si ese texto concatenado ya apareció antes, descarta el registro actual; si no, consérvalo y apunta el texto. Devuelve la lista conservada, en el mismo orden que la entrada.",
+    "starter": "def dedupe(rows):\n    # 返回去重后的列表\n    return rows\n\ndata = [\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n    {'question': '忘记密码怎么办？', 'answer': '点击忘记密码。'},\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n]\nprint(dedupe(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1'}, {'question': 'q1', 'answer': 'a1'}]\nout = dedupe(rows)\nassert len(out) == 1 and out[0]['question'] == 'q1', out",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1'}, {'question': 'q1', 'answer': 'a2'}]\nassert len(dedupe(rows)) == 2, '答案不同就不能算重复'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a'}, {'question': 'q', 'answer': '1a'}]\nassert len(dedupe(rows)) == 1, '拼接时中间不加分隔符：q1+a 和 q+1a 都是 q1a，算重复'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'b', 'answer': 'a'}, {'question': 'a', 'answer': 'b'}]\nassert len(dedupe(rows)) == 2, '只按拼接结果比对，不比较字段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = [{'question': 'q1', 'answer': 'a1'}]\nsnapshot = [dict(r) for r in src]\ndedupe(src)\nassert src == snapshot, 'dedupe 不应该改动传入的字典'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q3', 'answer': 'a3'}, {'question': 'q1', 'answer': 'a1'}, {'question': 'q3', 'answer': 'a3'}, {'question': 'q2', 'answer': 'a2'}]\nout = dedupe(rows)\nassert [r['question'] for r in out] == ['q3', 'q1', 'q2'], '保留第一次出现的，顺序按输入'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1', 'tag': 'first'}, {'question': 'q1', 'answer': 'a1', 'tag': 'second'}, {'question': 'q1', 'answer': 'a2', 'tag': 'third'}]\nout = dedupe(rows)\nassert [r['tag'] for r in out] == ['first', 'third'], ('重复项保留的是第一次出现的那一条，不是最后一次', out)",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _i in range(1, 9):\n    _rows = [{'question': f'Q{_i}', 'answer': '0'}, {'question': 'Q', 'answer': f'{_i}0'}]\n    assert len(dedupe(_rows)) == 1, ('拼接时加分隔符会把本该合并的两条拆开', _i, dedupe(_rows))",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _i in range(4):\n    _rows = [{'question': f'Q{_i}', 'answer': 'a', 'tag': _t}\n             for _t in ('first', 'second', 'third')]\n    assert [r['tag'] for r in dedupe(_rows)] == ['first'], (_i, dedupe(_rows))",
+        "weight": 18
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 7):\n    for _dups in range(0, 4):\n        _rows = []\n        for _i in range(_n):\n            _q = f'问题{_i % max(1, _n - _dups)}'\n            _rows.append({'question': _q, 'answer': f'答案{_i}'})\n        _seen = set()\n        _want = []\n        for _r in _rows:\n            _key = _r['question'] + _r['answer']\n            if _key not in _seen:\n                _seen.add(_key)\n                _want.append(_r)\n        _before = [dict(_r) for _r in _rows]\n        assert dedupe(_rows) == _want, (_n, _dups, dedupe(_rows), _want)\n        assert _rows == _before, ('dedupe 不应该就地改写传入的字典', _n, _dups, _rows)",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que esto es deduplicación exacta y que quitar los casi duplicados es otro método?"
+    },
+    "reference": "def dedupe(rows):\n    seen = set()\n    result = []\n    for item in rows:\n        text = item['question'] + item['answer']\n        if text not in seen:\n            seen.add(text)\n            result.append(item)\n    return result\n\ndata = [\n    {'question': '\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f', 'answer': '\\u8fdb\\u5165\\u4e2a\\u4eba\\u4e2d\\u5fc3\\u3002'},\n    {'question': '\\u5fd8\\u8bb0\\u5bc6\\u7801\\u600e\\u4e48\\u529e\\uff1f', 'answer': '\\u70b9\\u51fb\\u5fd8\\u8bb0\\u5bc6\\u7801\\u3002'},\n    {'question': '\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f', 'answer': '\\u8fdb\\u5165\\u4e2a\\u4eba\\u4e2d\\u5fc3\\u3002'},\n]\nprint(dedupe(data))",
+    "explanation": "Este capítulo divide la deduplicación en dos clases: la exacta (contenido idéntico carácter a carácter, con coincidencia de texto o hash) y la de casi duplicados (las palabras difieren pero el contenido es muy parecido, con MinHash, SimHash o similitud de vectores). Este ejercicio hace la **primera**: solo pregunta si el texto es idéntico, así que «\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f» y «\\u767b\\u5f55\\u5bc6\\u7801\\u600e\\u4e48\\u4fee\\u6539\\uff1f» no se eliminan con esta función; eso es trabajo de la segunda clase.\n\nHay dos detalles en cómo se concatena, y cada uno lo vigila una comprobación:\n\n**Sin separador en medio.** El ejemplo del capítulo es `item[\"question\"] + item[\"answer\"]`. Así que `'q1' + 'a'` y `'q' + '1a'` dan los dos `'q1a'` y se consideran duplicados: la comprobación que afirma `len(dedupe(rows)) == 1` fija justo ese comportamiento, con `{q:'q1', a:'a'}` y `{q:'q', a:'1a'}` fusionados en una sola fila. Si añades un espacio o una barra vertical como separador, la conclusión cambia.\n\n**Solo se compara el resultado concatenado, no los dos campos por separado.** `{q:'b', a:'a'}` y `{q:'a', a:'b'}` dan los dos `'ba'`, así que se consideran duplicados y solo sobrevive una: la comprobación está escrita al revés, afirmando `len(dedupe(rows)) == 2`, lo que significa que esas dos filas **deben** fusionarse. Una implementación que compare campo a campo (buscando `question` y `answer` por separado en `seen`) llega a otra conclusión.\n\nLo que se conserva es la **primera** aparición, no la última. Una comprobación usa un grupo «q1/a1, q1/a1, q1/a2» con un `tag` en cada fila para distinguirlas: la primera y la segunda tienen `question` y `answer` idénticos y solo cambia el `tag`, así que la salida correcta es `['first', 'third']`. Una implementación que recoge primero todas las claves y busca los valores al final conservaría la última (`['second', 'third']`) y suspendería ahí.\n\n**No reescribas en el sitio los diccionarios que te pasan.** `dedupe` solo lee `question` y `answer` y no debe escribir ninguna clave en el diccionario recibido. Dos comprobaciones lo vigilan juntas: una comprobación dedicada compara una instantánea tomada antes y después de la llamada, y la comprobación principal hace la misma comparación en cada grupo de entradas; juntas suman 32/144, alrededor del 22%, que supera el umbral del 20% para P1, así que una implementación que escriba la clave de deduplicación de vuelta en el diccionario original suspende (mide un 77.8%, por debajo del 80% de la nota de corte; cuando solo la vigilaba la comprobación dedicada, sacaba 91.7% y se colaba).\n\nLa comprobación principal recorre de 0 a 6 filas contra niveles de duplicado de 0 a 3, 28 grupos de entradas en total (de los cuales 19 son distintos tras deduplicar, porque con `_n` pequeño los distintos niveles generan las mismas filas), recalculando el resultado esperado con un conjunto en cada caso: está ahí para impedir que te aprenses la respuesta, porque una tabla de búsqueda no cubre esas 19 entradas distintas. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch12-ex03",
+    "chapter": "chapter-12",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Valorar si un pipeline encaja con el capítulo",
+    "prompt": "Tienes que convertir unos datos de FAQ de varias fuentes en un conjunto de datos entrenable. ¿Cuáles de estas prácticas coinciden con este capítulo? (selección múltiple)\n\nA. Fuentes distintas pueden estructurar los datos de forma diferente, así que primero hay que unificar los nombres de los campos\nB. Al limpiar, borrar todos los caracteres especiales y la puntuación, porque queda más limpio\nC. Primero hacer una deduplicación unificada sobre los datos unidos y solo después pensar en la anonimización\nD. La información de formato fijo, como teléfonos y números de documento, se puede reconocer con expresiones regulares; los nombres y las direcciones encajan mejor con un modelo de reconocimiento\nE. En los datos sintéticos se pueden filtrar las muestras muy parecidas y conservar las representativas",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C, D y E. B falla porque este capítulo dice claramente que «limpiar los datos no es borrar todo el contenido especial»: el código, las fórmulas, las unidades y la puntuación pueden ser en sí mismos parte de los datos de entrenamiento.",
+    "explanation": "Este capítulo ordena todo el proceso como una cadena: **recolección -> limpieza -> deduplicación -> anonimización**. A cae en el primer paso y C en los dos del centro.\n\nB es una intuición que este capítulo dedica un párrafo a corregir. Limpiar significa quitar etiquetas HTML, convertir espacios especiales en normales, agrupar rachas de espacios y borrar registros vacíos, no borrar todos los signos de puntuación y caracteres especiales, porque el propio contenido de entrenamiento puede contenerlos.\n\nD son las dos rutas del capítulo, expresiones regulares y modelos. Lo dice claramente: las expresiones regulares dependen de rasgos de formato y funcionan bien con información de estructura fija, mientras que los nombres y las direcciones hay que interpretarlos con contexto y solo con expresiones regulares cuesta identificarlos con precisión, de ahí los modelos de reconocimiento de información sensible.\n\nE es la sección de datos sintéticos: «\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f» y «\\u767b\\u5f55\\u5bc6\\u7801\\u600e\\u4e48\\u4fee\\u6539\\uff1f» dicen cosas distintas pero significan casi lo mismo, y demasiadas muestras así reducen la información efectiva del conjunto de datos, así que hay que filtrar los duplicados exactos y controlar cuántas muestras muy parecidas quedan.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  }
+]

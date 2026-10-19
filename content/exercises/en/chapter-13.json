@@ -5,9 +5,9 @@
     "type": "build",
     "difficulty": 2,
     "minutes": 10,
-    "objective": "Assemble the arguments of an ms-swift fine-tuning command",
-    "prompt": "Build an argument dictionary stored as `args` for a `swift sft` run: `model` = `Qwen/Qwen2.5-0.5B`, `dataset` = `['alpaca-gpt4-data.json']`, `output` = `output/v0-5b-lora`, `train_type` = `lora`, `max_length` = 2048. Then join `args` into a command-line string stored as `cmd`, and print `cmd`.",
-    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# join into a command string stored as cmd\n",
+    "objective": "Assemble the arguments of a fine-tuning command",
+    "prompt": "Write the argument dictionary (stored in a variable `args`) for a `swift sft` run, containing: `model` set to `Qwen/Qwen2.5-0.5B`, `dataset` set to `['alpaca-gpt4-data.json']`, `output` set to `output/v0-5b-lora`, `train_type` set to `lora` and `max_length` set to 2048. Then join `args` into a command line string stored in `cmd`, and print `cmd`.",
+    "starter": "args = {\n    \"model\": \"\",\n    \"dataset\": [],\n    \"output\": \"\",\n    \"train_type\": \"\",\n    \"max_length\": 0,\n}\n# 拼成命令行字符串存为 cmd\n",
     "checks": [
       {
         "kind": "assert_python",
@@ -52,10 +52,10 @@
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "Does the learner understand dataset is a list while max_length is an integer?"
+      "criteria": "Does it understand that dataset is a list while max_length is an integer?"
     },
     "reference": "args = {\n    \"model\": \"Qwen/Qwen2.5-0.5B\",\n    \"dataset\": [\"alpaca-gpt4-data.json\"],\n    \"output\": \"output/v0-5b-lora\",\n    \"train_type\": \"lora\",\n    \"max_length\": 2048,\n}\nparts = \" \".join(f\"--{k.replace('_','-')} {v}\" for k, v in args.items())\ncmd = f\"swift sft {parts}\"\nprint(cmd)",
-    "explanation": "ms-swift uses hyphens on the command line (--train-type) while the Python dict uses underscores (train_type); converting is part of the task. dataset must be a list even with a single file. All five arguments have to reach the printed command line too -- leave one out and the command will not run, so grading looks at both the five keys in the dictionary and the rendered command."
+    "explanation": "ms-swift uses hyphens on the command line (--train-type) while the Python dict uses underscores (train_type), so converting between them is part of the task. dataset has to be a list even with a single file. All five arguments also have to make it onto the printed command line: leave one out and the command will not run, so grading looks both at the five keys in the dictionary and at the rendered command line, and both have to be right."
   },
   {
     "id": "ch13-ex02",
@@ -63,9 +63,9 @@
     "type": "code",
     "difficulty": 3,
     "minutes": 12,
-    "objective": "Split a dataset into train and validation parts",
+    "objective": "Split a dataset into training and validation parts",
     "prompt": "Given a sample count `total` and a validation ratio `val_ratio` (a decimal between 0 and 1), compute the validation size `val_size` and the training size `train_size`. Use floor division, and make the two add up to exactly `total` so that no sample is dropped.",
-    "starter": "def split(total, val_ratio):\n    # return (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
+    "starter": "def split(total, val_ratio):\n    # 返回 (train_size, val_size)\n    pass\n\ntrain_size, val_size = split(1000, 0.1)\n",
     "checks": [
       {
         "kind": "assert_python",
@@ -105,10 +105,10 @@
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "Did the learner handle the remainder from floor division instead of rounding?"
+      "criteria": "Does it handle the remainder from floor division instead of rounding?"
     },
     "reference": "def split(total, val_ratio):\n    val_size = int(total * val_ratio)\n    return total - val_size, val_size",
-    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than a second floor -- so the two always sum to exactly total without dropping samples. Watch out for rounding: in split(7, 0.5) you have 7 x 0.5 = 3.5, which floors to 3, so the answer is (4, 3); round(3.5) gives 4 and the answer becomes (3, 4) -- no sample is lost, but the validation set gained one. Flooring both sides is worse still: split(3, 0.9) then gives (0, 2) and split(999, 0.0625) gives (936, 62) -- one sample short in each case. Grading checks the tuple (4, 3) and the statement \"the validation set is exactly 3\" separately, so even if one of them is ever reweighted a round()-based implementation still cannot pass. A final check runs 96 input points -- every total from 1 to 24 against the ratios 0.1, 0.25, 0.5 and 0.9 -- and requires the validation size to equal int(total * ratio), the training size to be total minus that, and the two to sum to total. That check exists to stop answer-lookup: a table or a hardcoded return cannot cover 96 inputs. Honest boundary: those 96 inputs ship in the public corpus, so they can still be copied -- this raises the cost of copying, it does not prevent it."
+    "explanation": "val_size uses int() to floor, and train_size is derived by subtraction rather than by flooring a second time -- that is what guarantees the two sum to exactly total without dropping samples. Watch out for rounding: in split(7, 0.5) you have 7 x 0.5 = 3.5, which floors to 3, so the answer is (4, 3); round(3.5) gives 4 and the answer becomes (3, 4) -- no sample is lost, but the validation set has gained one. Flooring both sides is worse still: split(3, 0.9) then gives (0, 2) and split(999, 0.0625) gives (936, 62) -- one sample short in each case. Grading checks the tuple (4, 3) and the statement \"the validation set is exactly 3\" separately, so even if one of them is ever reweighted a round()-based implementation still cannot pass. A final check runs 96 input points -- every total from 1 to 24 against the ratios 0.1, 0.25, 0.5 and 0.9 -- and requires the validation size to equal int(total * ratio), the training size to be total minus that, and the two to sum to total. That check exists to stop answer-lookup: a table or a hardcoded return cannot cover 96 inputs. Honest boundary: those 96 inputs ship in the public corpus, so they can still be copied -- this raises the cost of copying, it does not prevent it."
   },
   {
     "id": "ch13-ex03",
@@ -116,8 +116,8 @@
     "type": "reflect",
     "difficulty": 2,
     "minutes": 6,
-    "objective": "Decide which LoRA hyperparameter to change",
-    "prompt": "After fine-tuning the model repeats itself and gets stuck in one sentence. Which would you change first: `lora_rank`, `learning_rate` or `num_epochs`? Write down your choice and why.",
+    "objective": "Decide which hyperparameter to turn first",
+    "prompt": "After fine-tuning, the model repeats itself and gets stuck in one sentence. Which would you change first among `lora_rank`, `learning_rate` and `num_epochs`? Why? Write down your judgement and your reasoning.",
     "checks": [
       {
         "kind": "self_assessed",
@@ -126,9 +126,9 @@
     ],
     "llm_rubric": {
       "enabled": true,
-      "criteria": "Does the answer identify a too-high learning rate or too many epochs as the likely cause, and state both the direction of the change and an alternative?"
+      "criteria": "Does the answer identify too high a learning rate or too many epochs as the likely cause, and state both the direction of the change and an alternative?"
     },
-    "reference": "Lower the learning rate first (1e-4 -> 5e-5), then cut epochs. lora_rank mostly controls capacity and memory, so it is a weak lever here. If repetition persists, dedupe the data or add repetition_penalty.",
+    "reference": "Lower the learning rate first (1e-4 -> 5e-5), then cut the epochs. lora_rank mostly controls capacity and memory, so it is a weak lever here. If repetition persists, dedupe the data or add repetition_penalty.",
     "explanation": "Repetition signals overfitting or an excessive learning rate, not insufficient capacity. This one cannot actually be fine-tuned in a browser -- what matters is writing the \"why\", not just the \"what\"."
   }
 ]

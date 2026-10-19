@@ -1,1 +1,155 @@
-[]
+[
+  {
+    "id": "ch12-ex01",
+    "chapter": "chapter-12",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Clean FAQ text the way this chapter does",
+    "prompt": "Write a `clean_text(text)` following this chapter's cleaning rules, doing four things in order: strip HTML tags of the form `<p>` (the tag goes away together with its angle brackets), replace the non-breaking space `\\xa0` with an ordinary space, collapse runs of whitespace into a single space, and strip leading and trailing spaces. Return `\"\"` for both the empty string and `None`. Return the cleaned text.",
+    "starter": "def clean_text(text):\n    # 四步清洗，返回结果字符串\n    return text\n\nprint(clean_text('<p>  客服电话为 400-123-4567\\xa0 </p>'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('<p>进入个人中心</p>') == '进入个人中心', 'HTML 标签连尖括号一起去掉'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('客服电话为 400-123-4567\\xa0') == '客服电话为 400-123-4567', '不换行空格要换成普通空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('点击\\n\\n按照提示操作。') == '点击 按照提示操作。', '连续空白合并成一个空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('  如何修改登录密码？  ') == '如何修改登录密码？', '最后要去掉首尾空格'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('') == '' and clean_text(None) == ''",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('<p>客服电话为 400-123-4567\\xa0 </p>') == '客服电话为 400-123-4567', '四步要按顺序一起生效'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert clean_text('a  b') == 'a b' and clean_text('\\t\\tx') == 'x' and clean_text('  ') == ''",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in (None, '', '  ', 'x', ' x ', 'a  b', 'a\\nb', 'a\\xa0b', '<p>a</p>', ' <b>c</b> d ', '<p></p>', 'a\\t\\t\\tb'):\n    _r = clean_text(_t)\n    assert isinstance(_r, str), (_t, _r)\n    if not _t:\n        assert _r == '', (_t, _r)\n    else:\n        _expect = ' '.join(_t.replace('\\xa0', ' ').split())\n        while '<' in _expect and '>' in _expect:\n            _i = _expect.index('<')\n            _j = _expect.index('>', _i)\n            _expect = _expect[:_i] + _expect[_j + 1:]\n            _expect = ' '.join(_expect.split())\n        assert _r == _expect.strip(), (_t, _r, _expect)",
+        "weight": 24
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that cleaning does not mean deleting all special content?"
+    },
+    "reference": "import re\n\n\ndef clean_text(text):\n    if not text:\n        return \"\"\n    text = re.sub(r'<[^>]+>', '', text)\n    text = text.replace('\\xa0', ' ')\n    text = re.sub(r'\\s+', ' ', text)\n    return text.strip()\n\nprint(clean_text('<p>  \\u5ba2\\u670d\\u7535\\u8bdd\\u4e3a 400-123-4567\\xa0 </p>'))",
+    "explanation": "The order of these four steps can simply be copied, but one thing is worth stating: **not every ordering of the steps gives the same result.**\n\nThe measured result is that moving \"collapse the whitespace\" before \"strip the tags\" produces exactly the same output -- because `strip()` runs last, and the extra spaces inside the tags get collapsed anyway. So the checks do not make the order a graded point.\n\nLikewise, `\\xa0` (the non-breaking space) does match `\\s` in Python's `re`, so even omitting the \"replace with an ordinary space\" step leaves the later whitespace collapse turning it into an ordinary space, with the same result. That check input confirms the answer is right; it does not distinguish the two spellings.\n\nTwo things genuinely change the result: **`if not text` has to come first** (`None` and `''` return `\"\"` straight away, otherwise calling `re.sub` on `None` raises), and **the `strip()` at the end** (collapsing whitespace without stripping leaves `'  \\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f  '` with both ends intact). The checks pin those two with `clean_text(None)` and with an input that has leading and trailing spaces.\n\nThis chapter also has a line that is easy to read as redundant: **cleaning does not mean deleting all special content.** Code, formulas, units and punctuation may themselves be part of the training data. This exercise does only the four steps the prompt lists, so content like `x=1` or `5kg` should be left alone -- the checks show this by collapsing `'a  b'` into `'a b'` while leaving everything else untouched.\n\nThe final check runs all 12 inputs, and for one of them it computes the expected value with a **different algorithm** (peeling the tags character by character and then splitting) rather than reusing the approach under test. It is there to stop answer-lookup. Honest boundary: those 12 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch12-ex02",
+    "chapter": "chapter-12",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Remove exact duplicates from merged FAQ data",
+    "prompt": "Once data from different sources is merged, samples that are exactly identical show up. Write a function `dedupe(rows)`: concatenate each record's `question` and `answer` **directly**, with no separator between them, to get one text; if that concatenated text has appeared before, drop the current record, otherwise keep it and remember the text. Return the kept list, in the same order as the input.",
+    "starter": "def dedupe(rows):\n    # 返回去重后的列表\n    return rows\n\ndata = [\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n    {'question': '忘记密码怎么办？', 'answer': '点击忘记密码。'},\n    {'question': '如何修改登录密码？', 'answer': '进入个人中心。'},\n]\nprint(dedupe(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1'}, {'question': 'q1', 'answer': 'a1'}]\nout = dedupe(rows)\nassert len(out) == 1 and out[0]['question'] == 'q1', out",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1'}, {'question': 'q1', 'answer': 'a2'}]\nassert len(dedupe(rows)) == 2, '答案不同就不能算重复'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a'}, {'question': 'q', 'answer': '1a'}]\nassert len(dedupe(rows)) == 1, '拼接时中间不加分隔符：q1+a 和 q+1a 都是 q1a，算重复'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'b', 'answer': 'a'}, {'question': 'a', 'answer': 'b'}]\nassert len(dedupe(rows)) == 2, '只按拼接结果比对，不比较字段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = [{'question': 'q1', 'answer': 'a1'}]\nsnapshot = [dict(r) for r in src]\ndedupe(src)\nassert src == snapshot, 'dedupe 不应该改动传入的字典'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q3', 'answer': 'a3'}, {'question': 'q1', 'answer': 'a1'}, {'question': 'q3', 'answer': 'a3'}, {'question': 'q2', 'answer': 'a2'}]\nout = dedupe(rows)\nassert [r['question'] for r in out] == ['q3', 'q1', 'q2'], '保留第一次出现的，顺序按输入'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "rows = [{'question': 'q1', 'answer': 'a1', 'tag': 'first'}, {'question': 'q1', 'answer': 'a1', 'tag': 'second'}, {'question': 'q1', 'answer': 'a2', 'tag': 'third'}]\nout = dedupe(rows)\nassert [r['tag'] for r in out] == ['first', 'third'], ('重复项保留的是第一次出现的那一条，不是最后一次', out)",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _i in range(1, 9):\n    _rows = [{'question': f'Q{_i}', 'answer': '0'}, {'question': 'Q', 'answer': f'{_i}0'}]\n    assert len(dedupe(_rows)) == 1, ('拼接时加分隔符会把本该合并的两条拆开', _i, dedupe(_rows))",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _i in range(4):\n    _rows = [{'question': f'Q{_i}', 'answer': 'a', 'tag': _t}\n             for _t in ('first', 'second', 'third')]\n    assert [r['tag'] for r in dedupe(_rows)] == ['first'], (_i, dedupe(_rows))",
+        "weight": 18
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 7):\n    for _dups in range(0, 4):\n        _rows = []\n        for _i in range(_n):\n            _q = f'问题{_i % max(1, _n - _dups)}'\n            _rows.append({'question': _q, 'answer': f'答案{_i}'})\n        _seen = set()\n        _want = []\n        for _r in _rows:\n            _key = _r['question'] + _r['answer']\n            if _key not in _seen:\n                _seen.add(_key)\n                _want.append(_r)\n        _before = [dict(_r) for _r in _rows]\n        assert dedupe(_rows) == _want, (_n, _dups, dedupe(_rows), _want)\n        assert _rows == _before, ('dedupe 不应该就地改写传入的字典', _n, _dups, _rows)",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand this is exact deduplication, and that near-duplicate removal is a different method?"
+    },
+    "reference": "def dedupe(rows):\n    seen = set()\n    result = []\n    for item in rows:\n        text = item['question'] + item['answer']\n        if text not in seen:\n            seen.add(text)\n            result.append(item)\n    return result\n\ndata = [\n    {'question': '\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f', 'answer': '\\u8fdb\\u5165\\u4e2a\\u4eba\\u4e2d\\u5fc3\\u3002'},\n    {'question': '\\u5fd8\\u8bb0\\u5bc6\\u7801\\u600e\\u4e48\\u529e\\uff1f', 'answer': '\\u70b9\\u51fb\\u5fd8\\u8bb0\\u5bc6\\u7801\\u3002'},\n    {'question': '\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f', 'answer': '\\u8fdb\\u5165\\u4e2a\\u4eba\\u4e2d\\u5fc3\\u3002'},\n]\nprint(dedupe(data))",
+    "explanation": "This chapter splits deduplication into two kinds: exact deduplication (content byte for byte the same, using text matching or a hash) and near-duplicate removal (wording differs but the content is very close, using MinHash, SimHash or vector similarity). This exercise does the **first** kind -- it only asks whether the text is identical, so \"\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f\" and \"\\u767b\\u5f55\\u5bc6\\u7801\\u600e\\u4e48\\u4fee\\u6539\\uff1f\" are not removed by this function; that is the second kind's job.\n\nTwo details in how the concatenation works are each watched by a check:\n\n**No separator in the middle.** This chapter's example is `item[\"question\"] + item[\"answer\"]`. So `'q1' + 'a'` and `'q' + '1a'` both produce `'q1a'` and are treated as duplicates -- the check asserting `len(dedupe(rows)) == 1` pins exactly that behaviour: `{q:'q1', a:'a'}` and `{q:'q', a:'1a'}` are merged into one row. Add a space or a pipe as a separator and the conclusion changes.\n\n**Only the concatenated result is compared, not the two fields separately.** `{q:'b', a:'a'}` and `{q:'a', a:'b'}` both produce `'ba'`, so they are treated as duplicates and only one survives -- the check is written the other way round, asserting `len(dedupe(rows)) == 2`, which means those two rows **must** be merged. An implementation that compares field by field (looking up `question` and `answer` in `seen` separately) reaches a different conclusion.\n\nWhat is kept is the **first** occurrence, not the last. One check uses a set of \"q1/a1, q1/a1, q1/a2\" with a `tag` on each to tell them apart: the first and second rows have identical `question` and `answer` and differ only in `tag`, so the correct output is `['first', 'third']`. An implementation that collects all the keys first and looks the values up at the end keeps the last one (`['second', 'third']`) and fails there.\n\n**Do not rewrite the caller's dicts in place.** `dedupe` only reads `question` and `answer` and must not write any key back into the dict it was handed. Two checks guard this together: one dedicated check compares a snapshot taken before and after the call, and the main check does the same snapshot comparison on every input group -- together 32/144, about 22%, which clears the 20% threshold for P1, so an implementation that writes the dedupe key back into the original dict fails (it measures 77.8%, below the 80% pass mark; back when only the dedicated check guarded it, it scored 91.7% and got through).\n\nThe main check runs row counts 0 through 6 against duplicate levels 0 through 3, 28 input groups in total (of which 19 are distinct after deduplication, because at small `_n` the different levels generate the same rows), recomputing the expected result with a set for each group -- it is there to stop answer-lookup: a lookup table cannot cover those 19 distinct inputs. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch12-ex03",
+    "chapter": "chapter-12",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Judge whether a data pipeline matches this chapter",
+    "prompt": "You have to turn FAQ data from several sources into a trainable dataset. Which of these practices match this chapter? (multi-select)\n\nA. Sources may structure their data differently, so unify the field names first before going further\nB. While cleaning, delete all special characters and punctuation, since that is cleaner\nC. Do unified deduplication on the merged data first, and only then think about masking personal data\nD. Fixed-format information such as phone numbers and ID numbers can be recognised with regular expressions, while names and addresses suit a recognition model better\nE. In synthetic data, filter out highly similar samples and keep the representative ones",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C, D and E. B is wrong because this chapter says outright that \"data cleaning does not mean deleting all special content\" -- code, formulas, units and punctuation may themselves be part of the training data.",
+    "explanation": "This chapter lays the whole pipeline out as a chain: **data collection -> data cleaning -> deduplication -> masking**. A lands on the first step and C on the two in the middle.\n\nB is an intuition the chapter spends a paragraph correcting. Cleaning means removing HTML tags, converting special spaces to ordinary ones, collapsing runs of whitespace and dropping empty records -- not clearing out every punctuation mark and special character, because the training content itself may contain them.\n\nD is the chapter's two routes, regular expressions and models. It puts it clearly: regular expressions rely on format features and work well on information with a fixed structure, while names and addresses need context to interpret and are hard to pin down with a regular expression alone, which is what the dedicated sensitive information models are for.\n\nE is the synthetic data section: \"\\u5982\\u4f55\\u4fee\\u6539\\u767b\\u5f55\\u5bc6\\u7801\\uff1f\" and \"\\u767b\\u5f55\\u5bc6\\u7801\\u600e\\u4e48\\u4fee\\u6539\\uff1f\" say different things but mean nearly the same, and too many samples like that lower the effective information content of the dataset, so you filter out exact duplicates and control how many highly similar samples remain.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

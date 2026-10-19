@@ -1,1 +1,145 @@
-[]
+[
+  {
+    "id": "ch09-ex01",
+    "chapter": "chapter-9",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Build the Ollama serve and run commands",
+    "prompt": "Running a local model with Ollama takes two commands: first start the resident service `ollama serve` in a terminal, then run the model. Write a function `ollama_cmds(model)` that returns a list of length 2: the first element is the command string that starts the service, and the second is the command string that loads the model (with the model name put in as it is). Then print each of the two commands on its own line.",
+    "starter": "def ollama_cmds(model):\n    # 返回 ['ollama serve', 'ollama run <model>']\n    return []\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "cmds = ollama_cmds('qwen3.5:2b')\nassert isinstance(cmds, list) and len(cmds) == 2, cmds",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert ollama_cmds('qwen3.5:2b')[0].strip() == 'ollama serve', '第一条是常驻服务，不能带上模型名'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert ollama_cmds('qwen3.5:2b')[1].split()[:2] == ['ollama', 'run'], '第二条是 ollama run <model>'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'qwen3.5:2b' in ollama_cmds('qwen3.5:2b')[1], '第二条必须带上模型名'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'qwen3.5:2b' not in ollama_cmds('qwen3.5:2b')[0], '服务命令里不该出现模型名'",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "^\\s*ollama\\s+serve",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "ollama\\s+run[\\s=]+['\"]?qwen3\\.5:2b",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('qwen3.5:2b', 'modelscope.cn/unsloth/Qwen3-4B-GGUF', 'llama3:8b'):\n    _c = ollama_cmds(_m)\n    assert len(_c) == 2, (_m, _c)\n    assert _c[0].strip() == 'ollama serve', (_m, _c)\n    assert _c[1].split()[:2] == ['ollama', 'run'], (_m, _c)\n    assert _m in _c[1], (_m, _c)\n    assert _m not in _c[0], (_m, _c)",
+        "weight": 24
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that serve is a resident service, so the service has to be up before the model is run?"
+    },
+    "reference": "def ollama_cmds(model):\n    return ['ollama serve', f'ollama run {model}']\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)",
+    "explanation": "Ollama loads a model in two steps: `ollama serve` starts the resident service, and `ollama run <model>` then runs the model. This chapter also gives the reason for that order -- the service is resident, while a single Jupyter kernel can only execute one cell at a time, so `ollama serve` has to be run in a terminal and cannot share a code cell with `ollama run`.\n\nThe way this chapter starts the service from ModelScope is `ollama run modelscope.cn/unsloth/Qwen3-4B-GGUF`, where the model name carries the repository prefix, so the model name in the second command goes in **exactly as it is** and must not be truncated. One of the checks uses precisely that prefixed name.\n\nThe first command must not carry a model name: `ollama serve qwen3.5:2b` is wrong, because the service and the model are two separate calls. The main check runs three model names and verifies line by line that \"the service command is clean and the model command carries the name\" -- it is there to stop an implementation that hardcodes this one answer: a fixed return value cannot cover other model names. Honest boundary: those three model names are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch09-ex02",
+    "chapter": "chapter-9",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Build the request body for a local model call",
+    "prompt": "Ollama serves an OpenAI compatible interface at `127.0.0.1:11434` by default. Write a function `payload(model, user_text, system_text=None, max_tokens=512)` that returns a dict to send as the request body to `/v1/chat/completions`: `model` is the model name, `messages` is the message array, and `max_tokens` is passed through unchanged. When `system_text` is not `None`, insert `{\"role\": \"system\", \"content\": system_text}` at the **front** of the array, and after it the user message `{\"role\": \"user\", \"content\": user_text}`.\n\nThe starter and the grader use Chinese sample text, written here as escapes: a user message `\"\\u4f60\\u662f\\u8c01\\uff1f\"` and a system message `\"\\u4f60\\u662f\\u4e00\\u4e2a\\u6709\\u5e2e\\u52a9\\u7684\\u4e2d\\u6587\\u52a9\\u624b\\u3002\"`. You can use any text you like; the checks care about the shape of `messages`, not its content.",
+    "starter": "def payload(model, user_text, system_text=None, max_tokens=512):\n    # 返回请求体字典\n    return {}\n\nprint(payload('qwen3.5:2b', '你是谁？', '你是一个有帮助的中文助手。'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你是谁？')\nassert p['model'] == 'qwen3.5:2b' and p['max_tokens'] == 512, p",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你是谁？')\nassert p['messages'] == [{'role': 'user', 'content': '你是谁？'}], p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert len(p['messages']) == 2, p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert p['messages'][0] == {'role': 'system', 'content': '你是助手'}, 'system 必须在最前面'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert p['messages'][1] == {'role': 'user', 'content': '你好'}, '用户消息排在 system 之后'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', None)\nassert all(m['role'] != 'system' for m in p['messages']), p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert payload('m', 'u', 's', 128)['max_tokens'] == 128, 'max_tokens 必须原样带上'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _model in ('qwen3.5:2b', 'llama3:8b'):\n    for _user in ('你好', '写一首诗'):\n        for _sys in (None, '你是助手', '请用中文回答'):\n            for _mt in (128, 512, 2048):\n                _p = payload(_model, _user, _sys, _mt)\n                assert _p['model'] == _model and _p['max_tokens'] == _mt, (_model, _user, _sys, _mt)\n                if _sys is None:\n                    assert _p['messages'] == [{'role': 'user', 'content': _user}], (_model, _user, _sys)\n                else:\n                    assert _p['messages'] == [{'role': 'system', 'content': _sys},\n                                             {'role': 'user', 'content': _user}], (_model, _user, _sys)",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the system message goes at the front of the array?"
+    },
+    "reference": "def payload(model, user_text, system_text=None, max_tokens=512):\n    messages = []\n    if system_text is not None:\n        messages.append({'role': 'system', 'content': system_text})\n    messages.append({'role': 'user', 'content': user_text})\n    return {'model': model, 'messages': messages, 'max_tokens': max_tokens}\n\nprint(payload('qwen3.5:2b', '\\u4f60\\u662f\\u8c01\\uff1f', '\\u4f60\\u662f\\u4e00\\u4e2a\\u6709\\u5e2e\\u52a9\\u7684\\u4e2d\\u6587\\u52a9\\u624b\\u3002'))",
+    "explanation": "Ollama exposes an OpenAI compatible interface, so the request body keeps OpenAI's `messages` array shape: each message has a `role` and a `content` field.\n\nThe easiest thing to get wrong is **the position of the system message**. In this chapter's example the system prompt comes first and the user message follows it; appending with `messages.append` and bolting the system on afterwards, or appending the system at the end, may not make the interface complain but it does change the behaviour. The checks pin the first slot with `p['messages'][0]` and the second with `p['messages'][1]`, fixing both orders.\n\nThe second trap is `system_text=None`: in that case you must **not** insert a system message, not even an empty one. The check with `all(m['role'] != 'system' ...)` is verifying exactly that -- an implementation that \"always inserts a system message, with the string form of None when the value is None\" fails here.\n\nKeep \"not passing it\" apart from \"passing an empty string\": the prompt says `system_text is not None`, so passing `''` still has to insert a system message whose content is the empty string.\n\nThe final check runs 2 model names x 2 user inputs x 3 system cases x 3 `max_tokens` values, 36 combinations in total, recomputing the expected `messages` for each -- it is there to stop answer-lookup: a hardcoded return value cannot cover 36 inputs. Honest boundary: those 36 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch09-ex03",
+    "chapter": "chapter-9",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Decide when local Ollama deployment fits",
+    "prompt": "A team is considering moving a model off an external API and onto its own machines. Which of these statements match this chapter? (multi-select)\n\nA. Core documents and customer privacy cannot be handed to a third party public cloud, which is one reason to deploy locally\nB. When production requires fully offline operation and an intranet with no route to the public internet, local deployment suits it better\nC. When call volume is large and stable, standing up your own servers usually comes out cheaper in total than paying per token forever\nD. A laptop with no discrete GPU can still run a model on the CPU, just usually more slowly\nE. The more parameters a model has, the less VRAM it needs, so pick the biggest one when choosing",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, B, C and D. E is wrong because this chapter says the opposite: the bigger the model, the more VRAM it generally needs, so you have to check whether the card has enough when you choose.",
+    "explanation": "The three reasons this chapter gives for deploying locally map onto A, B and C one by one: data security (core documents, customer privacy and internal business data cannot be handed to a third party), offline availability (an intranet with no route out), and cost control (when call volume is large and stable, self-hosting can work out cheaper).\n\nD is the hardware section: without a discrete GPU you can still run on the CPU, but since large model inference needs a lot of compute the generation is usually slow, which makes it more suitable for models with a small parameter count or for scenarios that do not care about response speed.\n\nE pushes \"more parameters means stronger\" one step further into \"more parameters means less VRAM\". This chapter's own wording is the reverse -- **the bigger the model, the more VRAM it generally needs**. This is exactly the intuition trap that recurs through this book: the parameter count drives footprint, not efficiency.\n\nApple Silicon is a special case worth adding: the M series uses unified memory, so the CPU and the GPU share the same memory, and a Mac with 32GB, 64GB or more of unified memory can try running some of the larger quantised models.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

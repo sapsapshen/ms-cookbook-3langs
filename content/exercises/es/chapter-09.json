@@ -1,1 +1,145 @@
-[]
+[
+  {
+    "id": "ch09-ex01",
+    "chapter": "chapter-9",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Construir las órdenes serve y run de Ollama",
+    "prompt": "Ejecutar un modelo local con Ollama requiere dos órdenes: primero levantar el servicio residente `ollama serve` en una terminal, después ejecutar el modelo. Escribe una función `ollama_cmds(model)` que devuelva una lista de longitud 2: el primer elemento es la orden que levanta el servicio y el segundo la orden que carga el modelo (con el nombre del modelo tal cual). Luego imprime cada una de las dos órdenes en su propia línea.",
+    "starter": "def ollama_cmds(model):\n    # 返回 ['ollama serve', 'ollama run <model>']\n    return []\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "cmds = ollama_cmds('qwen3.5:2b')\nassert isinstance(cmds, list) and len(cmds) == 2, cmds",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert ollama_cmds('qwen3.5:2b')[0].strip() == 'ollama serve', '第一条是常驻服务，不能带上模型名'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert ollama_cmds('qwen3.5:2b')[1].split()[:2] == ['ollama', 'run'], '第二条是 ollama run <model>'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'qwen3.5:2b' in ollama_cmds('qwen3.5:2b')[1], '第二条必须带上模型名'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'qwen3.5:2b' not in ollama_cmds('qwen3.5:2b')[0], '服务命令里不该出现模型名'",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "^\\s*ollama\\s+serve",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "ollama\\s+run[\\s=]+['\"]?qwen3\\.5:2b",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('qwen3.5:2b', 'modelscope.cn/unsloth/Qwen3-4B-GGUF', 'llama3:8b'):\n    _c = ollama_cmds(_m)\n    assert len(_c) == 2, (_m, _c)\n    assert _c[0].strip() == 'ollama serve', (_m, _c)\n    assert _c[1].split()[:2] == ['ollama', 'run'], (_m, _c)\n    assert _m in _c[1], (_m, _c)\n    assert _m not in _c[0], (_m, _c)",
+        "weight": 24
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que serve es un servicio residente, así que hay que levantarlo antes de ejecutar el modelo?"
+    },
+    "reference": "def ollama_cmds(model):\n    return ['ollama serve', f'ollama run {model}']\n\nfor line in ollama_cmds('qwen3.5:2b'):\n    print(line)",
+    "explanation": "Ollama carga un modelo en dos pasos: `ollama serve` levanta el servicio residente y `ollama run <model>` ejecuta el modelo. Este capítulo también da el motivo de ese orden: el servicio es residente, mientras que un único kernel de Jupyter solo puede ejecutar una celda a la vez, así que `ollama serve` hay que lanzarlo en una terminal y no puede compartir celda de código con `ollama run`.\n\nLa forma que usa este capítulo para levantar el servicio desde ModelScope es `ollama run modelscope.cn/unsloth/Qwen3-4B-GGUF`, donde el nombre del modelo lleva el prefijo del repositorio, así que el nombre en la segunda orden se pone **tal cual** y no se puede truncar. Una de las comprobaciones usa precisamente ese nombre con prefijo.\n\nLa primera orden no debe llevar nombre de modelo: `ollama serve qwen3.5:2b` está mal, porque el servicio y el modelo son dos llamadas distintas. La comprobación principal recorre tres nombres de modelo y verifica línea por línea que «la orden del servicio está limpia y la del modelo lleva el nombre»: está ahí para impedir una implementación que tenga esta respuesta escrita a fuego, porque un valor de retorno fijo no cubre otros nombres. Límite honesto: esos tres nombres también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch09-ex02",
+    "chapter": "chapter-9",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Construir el cuerpo de la petición a un modelo local",
+    "prompt": "Ollama expone por defecto una interfaz compatible con OpenAI en `127.0.0.1:11434`. Escribe una función `payload(model, user_text, system_text=None, max_tokens=512)` que devuelva un diccionario para enviar como cuerpo de petición a `/v1/chat/completions`: `model` es el nombre del modelo, `messages` es el array de mensajes y `max_tokens` se pasa tal cual. Cuando `system_text` no sea `None`, inserta `{\"role\": \"system\", \"content\": system_text}` al **principio** del array, y detrás el mensaje de usuario `{\"role\": \"user\", \"content\": user_text}`.\n\nEl starter y la corrección usan texto chino de ejemplo, aquí escrito con escapes: un mensaje de usuario `\"\\u4f60\\u662f\\u8c01\\uff1f\"` y un mensaje de sistema `\"\\u4f60\\u662f\\u4e00\\u4e2a\\u6709\\u5e2e\\u52a9\\u7684\\u4e2d\\u6587\\u52a9\\u624b\\u3002\"`. Puedes usar el texto que quieras; las comprobaciones miran la forma de `messages`, no su contenido.",
+    "starter": "def payload(model, user_text, system_text=None, max_tokens=512):\n    # 返回请求体字典\n    return {}\n\nprint(payload('qwen3.5:2b', '你是谁？', '你是一个有帮助的中文助手。'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你是谁？')\nassert p['model'] == 'qwen3.5:2b' and p['max_tokens'] == 512, p",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你是谁？')\nassert p['messages'] == [{'role': 'user', 'content': '你是谁？'}], p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert len(p['messages']) == 2, p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert p['messages'][0] == {'role': 'system', 'content': '你是助手'}, 'system 必须在最前面'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', '你是助手')\nassert p['messages'][1] == {'role': 'user', 'content': '你好'}, '用户消息排在 system 之后'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "p = payload('qwen3.5:2b', '你好', None)\nassert all(m['role'] != 'system' for m in p['messages']), p['messages']",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert payload('m', 'u', 's', 128)['max_tokens'] == 128, 'max_tokens 必须原样带上'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _model in ('qwen3.5:2b', 'llama3:8b'):\n    for _user in ('你好', '写一首诗'):\n        for _sys in (None, '你是助手', '请用中文回答'):\n            for _mt in (128, 512, 2048):\n                _p = payload(_model, _user, _sys, _mt)\n                assert _p['model'] == _model and _p['max_tokens'] == _mt, (_model, _user, _sys, _mt)\n                if _sys is None:\n                    assert _p['messages'] == [{'role': 'user', 'content': _user}], (_model, _user, _sys)\n                else:\n                    assert _p['messages'] == [{'role': 'system', 'content': _sys},\n                                             {'role': 'user', 'content': _user}], (_model, _user, _sys)",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que el mensaje de sistema va al principio del array?"
+    },
+    "reference": "def payload(model, user_text, system_text=None, max_tokens=512):\n    messages = []\n    if system_text is not None:\n        messages.append({'role': 'system', 'content': system_text})\n    messages.append({'role': 'user', 'content': user_text})\n    return {'model': model, 'messages': messages, 'max_tokens': max_tokens}\n\nprint(payload('qwen3.5:2b', '\\u4f60\\u662f\\u8c01\\uff1f', '\\u4f60\\u662f\\u4e00\\u4e2a\\u6709\\u5e2e\\u52a9\\u7684\\u4e2d\\u6587\\u52a9\\u624b\\u3002'))",
+    "explanation": "Ollama expone una interfaz compatible con OpenAI, así que el cuerpo de la petición conserva la forma del array `messages` de OpenAI: cada mensaje tiene un campo `role` y un campo `content`.\n\nLo más fácil de equivocarse es **la posición del mensaje de sistema**. En el ejemplo de este capítulo el prompt de sistema va primero y el mensaje de usuario detrás; añadir con `messages.append` y pegar el sistema después, o añadir el sistema al final, puede no hacer que la interfaz se queje pero sí cambia el comportamiento. Las comprobaciones fijan la primera posición con `p['messages'][0]` y la segunda con `p['messages'][1]`, dejando ambos órdenes anclados.\n\nLa segunda trampa es `system_text=None`: en ese caso **no** hay que insertar ningún mensaje de sistema, ni siquiera uno vacío. La comprobación con `all(m['role'] != 'system' ...)` verifica justo eso: una implementación que «inserta siempre un mensaje de sistema, con la forma textual de None cuando el valor es None» falla aquí.\n\nNo confundas «no pasarlo» con «pasar una cadena vacía»: el enunciado dice `system_text is not None`, así que pasar `''` sigue obligando a insertar un mensaje de sistema cuyo contenido es la cadena vacía.\n\nLa última comprobación recorre 2 nombres de modelo x 2 entradas de usuario x 3 casos de sistema x 3 valores de `max_tokens`, 36 combinaciones en total, recalculando el `messages` esperado en cada caso: está ahí para impedir que te aprenses la respuesta, porque un valor de retorno fijo no cubre 36 entradas. Límite honesto: esas 36 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch09-ex03",
+    "chapter": "chapter-9",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Decidir cuándo encaja el despliegue local con Ollama",
+    "prompt": "Un equipo está pensando mover un modelo de una API externa a sus propios equipos. ¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. Los documentos internos y la privacidad de los clientes no se pueden entregar a una nube pública de terceros, y eso es una razón para desplegar localmente\nB. Cuando producción exige funcionar totalmente sin conexión y la intranet no tiene salida a internet, el despliegue local encaja mejor\nC. Con volumen de llamadas grande y estable, montar servidores propios suele salir más barato a largo plazo que seguir pagando por token\nD. Un portátil sin GPU dedicada también puede ejecutar un modelo en la CPU, normalmente más despacio\nE. Cuantos más parámetros tiene un modelo, menos VRAM necesita, así que al elegir conviene quedarse con el más grande",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, B, C y D. E falla porque este capítulo dice lo contrario: cuanto mayor es el modelo, más VRAM necesita por lo general, así que al elegir hay que comprobar si la tarjeta tiene suficiente.",
+    "explanation": "Los tres motivos que da este capítulo para desplegar localmente se corresponden uno a uno con A, B y C: seguridad de los datos (los documentos internos, la privacidad de los clientes y los datos de negocio no pueden entregarse a terceros), disponibilidad sin conexión (una intranet sin salida) y control del coste (con volumen grande y estable, montarlo uno mismo puede salir más barato).\n\nD es la sección de hardware: sin GPU dedicada se puede ejecutar en la CPU, pero como la inferencia de un modelo grande necesita mucho cómputo la generación suele ser lenta, lo que lo hace más adecuado para modelos con pocos parámetros o para escenarios a los que no les importa la velocidad de respuesta.\n\nE lleva «cuantos más parámetros, más capacidad» un paso más allá, a «cuantos más parámetros, menos VRAM». La formulación del capítulo es justo la contraria: **cuanto mayor es el modelo, más VRAM necesita por lo general**. Esta es exactamente la trampa intuitiva que se repite a lo largo del libro: el número de parámetros determina el consumo, no la eficiencia.\n\nApple Silicon es un caso aparte que conviene añadir: la serie M usa memoria unificada, así que la CPU y la GPU comparten la misma memoria, y un Mac con 32 GB, 64 GB o más de memoria unificada puede probar con algunos de los modelos cuantizados de mayor tamaño.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  }
+]

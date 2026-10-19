@@ -1,1 +1,149 @@
-[]
+[
+  {
+    "id": "ch10-ex01",
+    "chapter": "chapter-10",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Label a review as positive or negative",
+    "prompt": "Before using a model for sentiment, get the pipeline working with a keyword version on CPU. Write a function `sentiment(text)` that returns `\"positive\"` or `\"negative\"`: if the text contains any of the three positive keywords `\"\\u6ee1\\u610f\"` (satisfied), `\"\\u63a8\\u8350\"` (recommend) or `\"\\u5f88\\u597d\"` (very good), return `\"positive\"`; if it contains any of the three negative keywords `\"\\u5931\\u671b\"` (disappointed), `\"\\u6162\"` (slow) or `\"\\u5dee\"` (bad), return `\"negative\"`. When neither appears, return `\"negative\"` as well (conservative by default). When both appear, `\"negative\"` wins.\n\nWrite those six keywords as `\\uXXXX` escapes exactly as above, so the source stays ASCII while the strings are still the Chinese text.",
+    "starter": "def sentiment(text):\n    # 返回 \"positive\" 或 \"negative\"\n    pass\n\nprint(sentiment('这家店服务很好，强烈推荐'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('这家店服务很好') == 'positive'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('强烈推荐') == 'positive' and sentiment('很满意') == 'positive'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('有点失望') == 'negative' and sentiment('太慢了') == 'negative' and sentiment('质量太差') == 'negative'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('中规中矩吧') == 'negative', '默认保守，判 negative'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('很好，但是太慢了') == 'negative', '负面词优先'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('慢') == 'negative', '单独一个字也要能匹配到'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in ('很好', '满意', '推荐', '失望', '慢', '差', '中规中矩', '很好但是太慢', '推荐不推荐', ''):\n    _want = 'negative'\n    if any(_w in _t for _w in ('失望', '慢', '差')):\n        _want = 'negative'\n    elif any(_w in _t for _w in ('满意', '推荐', '很好')):\n        _want = 'positive'\n    assert sentiment(_t) == _want, (_t, sentiment(_t), _want)",
+        "weight": 26
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert sentiment('推荐度不高') == 'positive', '「推荐度不高」里有「推荐」但没有负面词，关键词法只能按正面处理——这正是它的局限'",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the keyword approach only gets the pipeline working and is not real model capability?"
+    },
+    "reference": "POSITIVE = ('\\u6ee1\\u610f', '\\u63a8\\u8350', '\\u5f88\\u597d')\nNEGATIVE = ('\\u5931\\u671b', '\\u6162', '\\u5dee')\n\n\ndef sentiment(text):\n    if any(word in text for word in NEGATIVE):\n        return 'negative'\n    if any(word in text for word in POSITIVE):\n        return 'positive'\n    return 'negative'\n\nprint(sentiment('\\u8fd9\\u5bb6\\u5e97\\u670d\\u52a1\\u5f88\\u597d\\uff0c\\u5f3a\\u70c8\\u63a8\\u8350'))",
+    "explanation": "This chapter is about \"first decide on CPU whether a review is positive or negative, then switch to a GPU and go text to image\", and the point is that the same pipeline runs on either kind of hardware. This keyword version is the CPU half.\n\nThree things are easy to get backwards, and the checks watch each one:\n\n**Negative wins.** `sentiment('\\u5f88\\u597d\\uff0c\\u4f46\\u662f\\u592a\\u6162\\u4e86')` (very good, but far too slow) must return `\"negative\"` -- when both kinds of word are present, the negative one counts. So the negative branch has to come first: check, then return.\n\n**Conservative by default.** `sentiment('\\u4e2d\\u89c4\\u4e2d\\u77e9\\u5427')` (nothing special either way) contains no keyword at all and returns `\"negative\"` per the prompt. So there has to be a second `return \"negative\"` after both branches have missed; an implicit `return None` outside an explicit `else` fails here.\n\n**A single character still matches.** `sentiment('\\u6162')` (a single character) is one character and must still come out negative. An implementation that only counts a hit for words of two characters or more gives itself away here.\n\nThis pipeline exists to verify that the code and the model run, not to demonstrate model capability. The keyword approach cannot tell apart negated structure: `sentiment('\\u63a8\\u8350\\u5ea6\\u4e0d\\u9ad8')` contains the recommend keyword but no negative one, so it can only be treated as positive -- sentences like that need a model to get right, and the last of the main checks pins this limitation down, so you know where it fails when you change it.\n\nThe final check runs all ten texts and recomputes the expected value for each under the order \"negative first, then positive, then default negative\" -- it is there to stop answer-lookup: a lookup table cannot cover any input beyond those ten. Honest boundary: those ten inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch10-ex02",
+    "chapter": "chapter-10",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Assemble the two-part runtime code",
+    "prompt": "The same code differs in only two places between CPU and GPU: the `device` argument when the model is loaded, and whether the model is moved to the card afterwards. Write a function `runtime_lines(device)` that returns a list of two code strings: when `device` is `\"cpu\"`, the first element is the statement that loads the model and the second is the move statement commented out; when `device` is `\"cuda\"`, the first element is the same and the second is the move statement actually executed (not commented). Both statements have to assign the model to a variable called `model`.",
+    "starter": "def runtime_lines(device):\n    # 返回两行代码字符串\n    return []\n\nfor line in runtime_lines('cuda'):\n    print(line)\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "lines = runtime_lines('cuda')\nassert isinstance(lines, list) and len(lines) == 2, lines",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert runtime_lines('cpu')[0] == runtime_lines('cuda')[0], '加载模型那一行两种设备是一样的'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'model' in runtime_lines('cpu')[0] and '=' in runtime_lines('cpu')[0], '第一行要把模型赋值给 model'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert runtime_lines('cpu')[1].lstrip().startswith('#'), 'CPU 上移动语句应该被注释掉'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert not runtime_lines('cuda')[1].lstrip().startswith('#'), 'GPU 上移动语句不能是注释'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert 'model' in runtime_lines('cuda')[1] and 'model' in runtime_lines('cpu')[1], '第二行都涉及 model 变量'",
+        "weight": 10
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "model\\s*=",
+        "weight": 8
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "cuda",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _d in ('cpu', 'cuda'):\n    _l = runtime_lines(_d)\n    assert len(_l) == 2, (_d, _l)\n    assert all(isinstance(x, str) and x.strip() for x in _l), (_d, _l)\n    assert '=' in _l[0] and 'model' in _l[0], (_d, _l)\n    assert 'model' in _l[1], (_d, _l)\n    assert _l[1].lstrip().startswith('#') == (_d == 'cpu'), (_d, _l)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that one `device` argument switches the hardware without rewriting the body?"
+    },
+    "reference": "def runtime_lines(device):\n    load = 'model = AutoModel.from_pretrained(model_id)'\n    if device == 'cuda':\n        move = 'model = model.to(\"cuda\")'\n    else:\n        move = '# model = model.to(\"cuda\")'\n    return [load, move]\n\nfor line in runtime_lines('cuda'):\n    print(line)",
+    "explanation": "This chapter's approach is that the same code switches hardware on one `device` argument: pass `device` in when loading, and afterwards decide whether to move the model to the card. So of the two lines only the second varies with the device, and the first has to be **byte-identical** -- the checks nail that down with `runtime_lines('cpu')[0] == runtime_lines('cuda')[0]`.\n\nThe difference in the second line is its **commented state**: on CPU the `.to(\"cuda\")` call has to stay but be commented out with `#`, and on GPU it actually runs. That is a different shape from \"just delete the line\", because the switch point stays in the code and you do not have to restructure anything when you change device. The check uses `lstrip().startswith('#')`, and `lstrip` is there so an indented version also passes.\n\nNote that the CPU line **still contains the word `cuda`**, it is just commented out -- so what identifies the device is the commented state, not whether the line mentions cuda. The main check loop verifies exactly that with `lstrip().startswith('#') == (device == 'cpu')`.\n\nThat also explains this chapter's line about \"deciding on CPU whether a review is positive or negative, then switching to a GPU and turning a text description into an image\": judgement tasks are small and a CPU is enough, while text-to-image is heavy work that earns its keep on a GPU.\n\nThe main check walks the cpu and cuda cases one by one, verifying \"two non-empty lines, the first with an assignment and `model`, the second with `model`, and the commented state matching the device\" -- it is there to stop an implementation that hardcodes this one answer. Honest boundary: those two devices are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch10-ex03",
+    "chapter": "chapter-10",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Decide how to pick a cloud runtime instance",
+    "prompt": "You have to run experiments on a cloud Notebook. Which of these practices match this chapter? (multi-select)\n\nA. For a small task like sentiment judgement, get the pipeline working on a CPU instance first\nB. To turn a text description into an image, a CPU instance is enough and the GPU is only a bit faster\nC. Moving the same model to a different device only means changing the `device` argument and whether the model is moved after loading; the body of the code is not rewritten\nD. You should apply for a GPU instance from the start, a CPU instance is too useless to keep\nE. Stop the instance when the experiment is done; do not leave one running that you are not using",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B is wrong because it treats the GPU as merely a bit faster -- this chapter's flow is to judge sentiment on CPU first and then switch to the GPU for text to image, and the latter is heavy work that genuinely needs a GPU. D reverses the chapter's order of \"judge on CPU first, then switch to GPU\".",
+    "explanation": "The chapter's own flow is already a judgement question: use a CPU instance to decide whether a review is positive or negative, switch to a GPU, and turn a text description into an image. So A and C are both direct expressions of that flow -- the same code runs on the other kind of hardware by changing `device`.\n\nB and D fail on the same point: treating the GPU as \"a faster CPU\". This chapter deliberately assigns two different jobs to two different kinds of hardware, which is precisely the point that they are not the same thing at different speeds -- text classification is judgement, image generation is a different class of task.\n\nE is the same logic as the previous chapter: resources have a time limit, so stop them when you are done. The object has shifted from the GPU instance to the cloud runtime instance, but the reasoning is unchanged.\n\nThis chapter also notes that running in the cloud has its own costs: you have to pick the right runtime instance, and the instance's specification directly decides how large a model you can load. That choice goes back to the estimation method from chapter 8.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

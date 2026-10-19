@@ -1,1 +1,150 @@
-[]
+[
+  {
+    "id": "ch14-ex01",
+    "chapter": "chapter-14",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Clasificar cuatro métodos de alineación por sus rasgos",
+    "prompt": "Convierte los cuatro métodos de postentrenamiento de este capítulo en una tabla consultable. Escribe dos funciones:\n\n`needs_online(method)` devuelve un booleano que indica si el método tiene que generar respuestas nuevas en línea durante el entrenamiento. Los valores son los de este capítulo: `\"RLHF\"`, `\"PPO\"` y `\"GRPO\"` sí, `\"DPO\"` no.\n\n`needs_components(method)` devuelve una lista de longitud 2, `[modelo de recompensa, modelo de valor]`, con elementos booleanos. Siguiendo la tabla del capítulo: `RLHF` es `[True, False]` (el modelo de valor depende del algoritmo de optimización que se use, y se puede renunciar a él fuera de la ruta clásica); `PPO` es `[True, True]`; `GRPO` es `[False, False]` (una recompensa por reglas puede sustituir al modelo de recompensa y no hace falta modelo de valor); `DPO` es `[False, False]`.\n\nAmbas funciones lanzan `ValueError` para un método que no esté en la tabla.",
+    "starter": "ONLINE = {'RLHF', 'PPO', 'GRPO'}\n\n\ndef needs_online(method):\n    pass\n\n\ndef needs_components(method):\n    pass\n\nprint(needs_online('DPO'), needs_components('PPO'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert needs_online('DPO') is False and needs_online('GRPO') is True",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_online('PPO') is True and needs_online('RLHF') is True",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('PPO') == [True, True], 'PPO 既要奖励模型也要价值模型'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('DPO') == [False, False], 'DPO 两者都不需要'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('GRPO') == [False, False], 'GRPO 不用价值模型，奖励可以用规则'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('RLHF') == [True, False], 'RLHF 的价值模型取决于所用算法'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    needs_online('SFT')\n    assert False, 'SFT 不在这张表里'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    needs_components('RLHF')\nexcept ValueError:\n    assert False, 'RLHF 在表里，不该抛异常'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('RLHF', 'PPO', 'GRPO', 'DPO'):\n    _on = {'RLHF': True, 'PPO': True, 'GRPO': True, 'DPO': False}[_m]\n    _cp = {'RLHF': [True, False], 'PPO': [True, True],\n           'GRPO': [False, False], 'DPO': [False, False]}[_m]\n    assert needs_online(_m) is _on, (_m, needs_online(_m))\n    assert needs_components(_m) == _cp, (_m, needs_components(_m))\nfor _bad in ('SFT', 'rlhf', '', 'PPO2'):\n    for _fn in (needs_online, needs_components):\n        try:\n            _fn(_bad)\n            assert False, '未知方法应该抛 ValueError: %r' % (_bad,)\n        except ValueError:\n            pass",
+        "weight": 32
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Distingue las tres posiciones «marco / algoritmo en línea / método offline»?"
+    },
+    "reference": "ONLINE = {'RLHF', 'PPO', 'GRPO'}\nCOMPONENTS = {\n    'RLHF': [True, False],\n    'PPO': [True, True],\n    'GRPO': [False, False],\n    'DPO': [False, False],\n}\n\n\ndef needs_online(method):\n    if method not in COMPONENTS:\n        raise ValueError('unknown method: ' + method)\n    return method in ONLINE\n\n\ndef needs_components(method):\n    if method not in COMPONENTS:\n        raise ValueError('unknown method: ' + method)\n    return list(COMPONENTS[method])\n\nprint(needs_online('DPO'), needs_components('PPO'))",
+    "explanation": "La tabla comparativa del final de este capítulo es el núcleo de esa sección. Estas dos funciones la convierten en algo ejecutable, y lo importante es **no meter los cuatro métodos en el mismo cajón**.\n\n**PPO es el más pesado**: genera en línea, necesita modelo de recompensa y además modelo de valor. Este capítulo dice que «estabiliza la actualización de la política mediante estimación del valor y recorte del ratio de probabilidad», y el modelo de valor es lo que lo distingue de GRPO.\n\n**GRPO prescinde del modelo de valor.** Este capítulo lo llama una variante de PPO cuyo cambio principal es que ya no entrena un modelo de valor aparte, y usa en su lugar la puntuación relativa de varias respuestas bajo el mismo prompt. Así que la columna del modelo de recompensa también es False, porque una recompensa por reglas (comprobar la respuesta, tests unitarios) puede sustituirla y no hace falta entrenar antes un modelo de recompensa dedicado.\n\n**DPO no necesita ninguno**: no entrena un modelo de recompensa aparte ni ejecuta un bucle de aprendizaje por refuerzo en línea, así que su forma de entrenamiento se parece a un SFT normal.\n\n**RLHF es la única casilla ambigua.** En la tabla de este capítulo su casilla «¿necesita modelo de valor?» dice «depende del algoritmo de optimización que se use», así que este ejercicio la trata como `[True, False]`: el modelo de valor no es un requisito del marco RLHF sino un producto de la ruta PPO clásica. Una comprobación está escrita al revés (RLHF no debe lanzar excepción) precisamente para evitar que una implementación la trate como «incierto, así que lo dejo así».\n\nSobre la columna «¿genera respuestas nuevas durante el entrenamiento?»: RLHF suele hacerlo, PPO y GRPO también, DPO normalmente no.\n\nLa última comprobación recorre los 4 métodos por las dos funciones y luego verifica el `ValueError` uno a uno con cuatro entradas no válidas (incluidas `'rlhf'` en minúsculas y la cadena vacía): está ahí para impedir que te aprenses la respuesta. Límite honesto: esos cuatro métodos y esas cuatro entradas no válidas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch14-ex02",
+    "chapter": "chapter-14",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Calcular la ventaja relativa de GRPO en el grupo",
+    "prompt": "GRPO genera un grupo de respuestas para el mismo prompt: primero calcula la media y la desviación típica de las recompensas de ese grupo y después convierte cada respuesta en su ventaja relativa dentro del grupo. Escribe una función `advantages(rewards)` que devuelva un diccionario: las claves son índices y el valor es la ventaja relativa de esa respuesta, `(r - media) / desviación`. Usa la desviación **poblacional** (dividir por `n`, no por `n-1`). Cuando todas las recompensas del grupo son idénticas y la desviación es 0, devuelve `None`.",
+    "starter": "def advantages(rewards):\n    # 返回 {下标: 相对优势}，标准差为 0 时返回 None\n    return None\n\nprint(advantages([1.0, 2.0, 3.0, 4.0]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([1.0, 0.0]) == {0: 1.0, 1: -1.0}, '两个奖励的相对优势恒为 ±1'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([1.0, 1.0]) is None, '组内得分完全相同要返回 None'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([2.0, 2.0, 2.0]) is None, '三条也一样要返回 None'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nassert sorted(out) == [0, 1, 2, 3] and out[0] < out[1] < out[2] < out[3], out",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nassert abs(sum(out.values())) < 1e-9, '相对优势之和应当接近 0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([0.0, 4.0])\nassert abs(out[0] - -1.0) < 1e-9 and abs(out[1] - 1.0) < 1e-9, out",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nmean, pop = 2.5, (1.25 ** 0.5)\nassert abs(out[0] - (1.0 - mean) / pop) < 1e-9, '必须用总体标准差（除以 n）'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nsample = (1.25 * 4 / 3) ** 0.5\nassert abs(out[0] - (1.0 - 2.5) / sample) > 1e-6, '这一条排除样本标准差（除以 n-1）：两种算法在这组输入上给出的值必须不同'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (2, 3, 4, 5, 6):\n    for _base in (0.0, 1.0, -2.5):\n        _r = [_base + _i * 0.5 for _i in range(_n)]\n        _out = advantages(_r)\n        _mean = sum(_r) / _n\n        _var = sum((_x - _mean) ** 2 for _x in _r) / _n\n        _sd = _var ** 0.5\n        assert abs(sum(_out.values())) < 1e-9, (_r, _out)\n        assert len(_out) == _n, (_r, _out)\n        for _i in range(_n):\n            _want = (_r[_i] - _mean) / _sd\n            assert abs(_out[_i] - _want) < 1e-9, (_r, _i, _out[_i], _want)\nassert advantages([3.0, 3.0]) is None and advantages([-5.0, -5.0]) is None",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que la ventaja relativa es una comparación dentro del grupo y no una puntuación absoluta?"
+    },
+    "reference": "def advantages(rewards):\n    n = len(rewards)\n    mean = sum(rewards) / n\n    var = sum((r - mean) ** 2 for r in rewards) / n\n    sd = var ** 0.5\n    if sd == 0:\n        return None\n    return {i: (r - mean) / sd for i, r in enumerate(rewards)}\n\nprint(advantages([1.0, 2.0, 3.0, 4.0]))",
+    "explanation": "Este capítulo dice que GRPO «primero calcula la media y la desviación típica de las recompensas de ese grupo y después convierte la puntuación de cada respuesta en una ventaja relativa dentro del grupo». Esta función son esos dos pasos.\n\n**El denominador es la desviación poblacional.** El capítulo no dice cuál usar, pero el enunciado lo fija: dividir por `n`, no por `n-1`. Una comprobación usa `[1.0, 2.0, 3.0, 4.0]` justamente para distinguir los dos algoritmos: la media es 2.5, la varianza poblacional es 1.25 (dividido entre 4), la desviación es unos 1.118 y la primera ventaja es -1.34; la varianza muestral es 1.25 x 4/3, unos 1.667, la desviación unos 1.291 y la primera ventaja -1.16. Dos aserciones fijan esa diferencia: una exige el resultado poblacional y otra exige que el muestral **no** aparezca, así que escribir `statistics.stdev` suspende.\n\n**Una desviación de 0 devuelve `None`**, no un diccionario de ceros. Este capítulo da el motivo: si todas las respuestas del grupo puntúan igual, la desviación se acerca a 0 y la comparación dentro del grupo apenas puede dar una dirección útil, así que una implementación real tiene que saltarse esos datos, suavizarlos o volver a muestrearlos. Las entradas `[1.0, 1.0]` y `[2.0, 2.0, 2.0]` lo fijan.\n\n**Las claves del diccionario son los índices, no los valores de recompensa.** Los valores pueden repetirse (dos de ellos son 1.0), y usar el valor como clave perdería datos; los índices se corresponden uno a uno.\n\nHay una propiedad que puedes comprobar tú mismo: **las ventajas relativas suman siempre 0**, porque a cada número se le resta la misma media. La comprobación principal contrasta 15 grupos de recompensas (5 tamaños de grupo x 3 bases) más las dos entradas finales de «todo igual dentro del grupo» con la fórmula, y comprueba que la suma se acerca a 0: está ahí para impedir que te aprenses la respuesta, porque una tabla de búsqueda no cubre estas entradas. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide.",
+    "_note": ""
+  },
+  {
+    "id": "ch14-ex03",
+    "chapter": "chapter-14",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Elegir un método de postentrenamiento",
+    "prompt": "Tu modelo ya resuelve con fiabilidad las preguntas de atención al cliente, pero a veces las respuestas son verborrágicas y a veces hace promesas que no puede respaldar. Tienes un lote de datos de preferencia etiquetados a mano (una respuesta preferida y otra no preferida para la misma pregunta), sin modelo de recompensa y sin infraestructura de aprendizaje por refuerzo. Explica qué método de postentrenamiento elegirías, por qué, y cómo juzgarías si el entrenamiento ha surtido efecto.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Recomienda DPO y explica que no necesita ni modelo de recompensa ni aprendizaje por refuerzo en línea, menciona que la calidad de los datos de preferencia decide si aprendes una capacidad o un estilo superficial, y destaca que no basta con mirar la pérdida de entrenamiento y la tasa de victoria en preferencias?"
+    },
+    "reference": "Elegiría DPO. El motivo: este capítulo dice que «cuando ya se tienen datos de preferencia de alta calidad y se quiere cerrar rápido la primera ronda de alineación, merece la pena considerar DPO primero», y yo ya tengo los datos de preferencia listos; además, «DPO no genera respuestas en línea ni necesita entrenar por separado un modelo de recompensa y un modelo de valor», y sin modelo de recompensa ni infraestructura de refuerzo, ni PPO ni GRPO pueden arrancar. GRPO tampoco necesita modelo de valor, pero sigue siendo un algoritmo que tiene que generar respuestas en línea, y el muestreo por sí solo consume mucho cómputo.\n\nSobre los datos: este capítulo recuerda que los datos de preferencia expresan una relación relativa y no etiquetan cada respuesta como correcta; una respuesta no preferida puede simplemente omitir una condición necesaria o hacer una promesa sin respaldo, que es justo lo que casan con los dos problemas que quiero resolver. Pero por eso mismo hay que confirmar que `chosen` no tiene errores factuales y que `rejected` no es tan mala que el modelo aprenda un estilo superficial en vez de la capacidad objetivo.\n\nPara juzgar el efecto: este capítulo dice de forma explícita que no se puede juzgar solo por la pérdida de entrenamiento, la recompensa o la tasa de victoria en preferencias, sino que hay que volver a la tarea real y seguir evaluando exactitud, grado de finalización, seguridad, límites de negocio y capacidad general. Así que miraría un conjunto de preguntas reales de atención al cliente que nunca participaron en el entrenamiento y comprobaría si baja la tasa de verborrágica y la de promesas sin respaldo, confirmando a la vez que la capacidad general no se ha degradado.",
+    "explanation": "Las condiciones de este ejercicio están puestas de forma muy concreta y casi obligan a hacer eliminación con la tabla de este capítulo: sin modelo de recompensa queda fuera PPO; sin infraestructura de refuerzo queda fuera todavía más; con solo datos de preferencia listos y sin recompensa por reglas verificable, GRPO tampoco encaja (aunque funciona bien con recompensas por reglas, sigue necesitando generar un grupo de respuestas en línea). Lo que queda es DPO.\n\nLa segunda pregunta importa más que elegir el método. Este capítulo dice que DPO «solo aprende las diferencias que ya aparecen en los datos de preferencia», y da tres formas de fallar: que la respuesta preferida tenga ella misma un error factual, que la no preferida sea demasiado mala y que los datos vengan de una distribución generadora demasiado distinta de la tuya. Los dos síntomas de este caso (verborrágica, promesas sin respaldo) son justamente la forma típica de una respuesta no preferida, así que la calidad de los datos decide qué aprende DPO.\n\nLa tercera pregunta recoge la frase final del capítulo: el objetivo del postentrenamiento no es conseguir una recompensa más alta, sino que el modelo complete la tarea objetivo de forma más estable y fiable en uso real. Que suba la tasa de victoria en preferencias solo indica que el modelo prefiere `chosen`; no indica que la salida haya mejorado.\n\nEste ejercicio no puede ejecutar un entrenamiento DPO real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un juicio con el que comparar."
+  }
+]

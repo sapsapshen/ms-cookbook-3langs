@@ -1,1 +1,150 @@
-[]
+[
+  {
+    "id": "ch14-ex01",
+    "chapter": "chapter-14",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Classify four alignment methods by their engineering traits",
+    "prompt": "Turn this chapter's four post-training methods into a table you can query. Write two functions:\n\n`needs_online(method)` returns a boolean saying whether the method has to generate fresh answers online during training. The values match this chapter: `\"RLHF\"`, `\"PPO\"` and `\"GRPO\"` do, `\"DPO\"` does not.\n\n`needs_components(method)` returns a list of length 2, `[reward model, value model]`, with boolean elements. Following the table in this chapter: `RLHF` is `[True, False]` (the value model depends on the optimisation algorithm used, and can be dropped outside the classic route); `PPO` is `[True, True]`; `GRPO` is `[False, False]` (a rule-based reward can take the place of a reward model, and no value model is needed); `DPO` is `[False, False]`.\n\nBoth functions raise `ValueError` for a method that is not in the table.",
+    "starter": "ONLINE = {'RLHF', 'PPO', 'GRPO'}\n\n\ndef needs_online(method):\n    pass\n\n\ndef needs_components(method):\n    pass\n\nprint(needs_online('DPO'), needs_components('PPO'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert needs_online('DPO') is False and needs_online('GRPO') is True",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_online('PPO') is True and needs_online('RLHF') is True",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('PPO') == [True, True], 'PPO 既要奖励模型也要价值模型'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('DPO') == [False, False], 'DPO 两者都不需要'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('GRPO') == [False, False], 'GRPO 不用价值模型，奖励可以用规则'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_components('RLHF') == [True, False], 'RLHF 的价值模型取决于所用算法'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    needs_online('SFT')\n    assert False, 'SFT 不在这张表里'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    needs_components('RLHF')\nexcept ValueError:\n    assert False, 'RLHF 在表里，不该抛异常'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('RLHF', 'PPO', 'GRPO', 'DPO'):\n    _on = {'RLHF': True, 'PPO': True, 'GRPO': True, 'DPO': False}[_m]\n    _cp = {'RLHF': [True, False], 'PPO': [True, True],\n           'GRPO': [False, False], 'DPO': [False, False]}[_m]\n    assert needs_online(_m) is _on, (_m, needs_online(_m))\n    assert needs_components(_m) == _cp, (_m, needs_components(_m))\nfor _bad in ('SFT', 'rlhf', '', 'PPO2'):\n    for _fn in (needs_online, needs_components):\n        try:\n            _fn(_bad)\n            assert False, '未知方法应该抛 ValueError: %r' % (_bad,)\n        except ValueError:\n            pass",
+        "weight": 32
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it tell apart the three positions \"framework / online algorithm / offline method\"?"
+    },
+    "reference": "ONLINE = {'RLHF', 'PPO', 'GRPO'}\nCOMPONENTS = {\n    'RLHF': [True, False],\n    'PPO': [True, True],\n    'GRPO': [False, False],\n    'DPO': [False, False],\n}\n\n\ndef needs_online(method):\n    if method not in COMPONENTS:\n        raise ValueError('unknown method: ' + method)\n    return method in ONLINE\n\n\ndef needs_components(method):\n    if method not in COMPONENTS:\n        raise ValueError('unknown method: ' + method)\n    return list(COMPONENTS[method])\n\nprint(needs_online('DPO'), needs_components('PPO'))",
+    "explanation": "The comparison table at the end of this chapter is the core of that section. These two functions turn it into something executable, and the point is **not to file all four methods under the same heading**.\n\n**PPO is the heaviest**: it generates online, needs a reward model, and also needs a value model. This chapter says it \"stabilises the policy update through value estimation and probability ratio clipping\", and the value model is what tells it apart from GRPO.\n\n**GRPO drops the value model.** This chapter calls it a variant of PPO whose main change is that it no longer trains a separate value model, using instead the relative scores of several answers under the same prompt. So the reward model column is False as well, because a rule-based reward (answer checking, unit tests) can take its place, and you do not necessarily train a dedicated reward model first.\n\n**DPO needs neither**: it does not train a separate reward model and does not run an online reinforcement learning loop, so its training form is close to ordinary SFT.\n\n**RLHF is the only ambiguous cell.** In this chapter's table its \"needs a value model\" entry reads \"depends on the optimisation algorithm used\", so this exercise treats it as `[True, False]`: the value model is not a requirement of the RLHF framework but a product of the classic PPO route. One check is written the other way round (RLHF must not raise) precisely to stop an implementation treating it as \"uncertain, so leave it alone\".\n\nOn the \"generates new answers during training\" column: RLHF usually does, PPO and GRPO do, DPO usually does not.\n\nThe final check walks the 4 methods through both functions and then verifies the `ValueError` one by one on four invalid inputs (including lower case `'rlhf'` and the empty string) -- it is there to stop answer-lookup. Honest boundary: those four methods and those four invalid inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch14-ex02",
+    "chapter": "chapter-14",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Compute GRPO's within-group relative advantage",
+    "prompt": "GRPO generates a group of answers for the same prompt, first computing the mean and standard deviation of that group's rewards and then converting each answer into its relative advantage within the group. Write a function `advantages(rewards)` that returns a dict: the keys are indices, and the value is that answer's relative advantage `(r - mean) / standard deviation`. Use the **population** standard deviation (divided by `n`, not `n-1`). When every reward in the group is identical and the standard deviation is 0, return `None`.",
+    "starter": "def advantages(rewards):\n    # 返回 {下标: 相对优势}，标准差为 0 时返回 None\n    return None\n\nprint(advantages([1.0, 2.0, 3.0, 4.0]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([1.0, 0.0]) == {0: 1.0, 1: -1.0}, '两个奖励的相对优势恒为 ±1'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([1.0, 1.0]) is None, '组内得分完全相同要返回 None'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert advantages([2.0, 2.0, 2.0]) is None, '三条也一样要返回 None'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nassert sorted(out) == [0, 1, 2, 3] and out[0] < out[1] < out[2] < out[3], out",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nassert abs(sum(out.values())) < 1e-9, '相对优势之和应当接近 0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([0.0, 4.0])\nassert abs(out[0] - -1.0) < 1e-9 and abs(out[1] - 1.0) < 1e-9, out",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nmean, pop = 2.5, (1.25 ** 0.5)\nassert abs(out[0] - (1.0 - mean) / pop) < 1e-9, '必须用总体标准差（除以 n）'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = advantages([1.0, 2.0, 3.0, 4.0])\nsample = (1.25 * 4 / 3) ** 0.5\nassert abs(out[0] - (1.0 - 2.5) / sample) > 1e-6, '这一条排除样本标准差（除以 n-1）：两种算法在这组输入上给出的值必须不同'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (2, 3, 4, 5, 6):\n    for _base in (0.0, 1.0, -2.5):\n        _r = [_base + _i * 0.5 for _i in range(_n)]\n        _out = advantages(_r)\n        _mean = sum(_r) / _n\n        _var = sum((_x - _mean) ** 2 for _x in _r) / _n\n        _sd = _var ** 0.5\n        assert abs(sum(_out.values())) < 1e-9, (_r, _out)\n        assert len(_out) == _n, (_r, _out)\n        for _i in range(_n):\n            _want = (_r[_i] - _mean) / _sd\n            assert abs(_out[_i] - _want) < 1e-9, (_r, _i, _out[_i], _want)\nassert advantages([3.0, 3.0]) is None and advantages([-5.0, -5.0]) is None",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the relative advantage is a within-group comparison and not an absolute score?"
+    },
+    "reference": "def advantages(rewards):\n    n = len(rewards)\n    mean = sum(rewards) / n\n    var = sum((r - mean) ** 2 for r in rewards) / n\n    sd = var ** 0.5\n    if sd == 0:\n        return None\n    return {i: (r - mean) / sd for i, r in enumerate(rewards)}\n\nprint(advantages([1.0, 2.0, 3.0, 4.0]))",
+    "explanation": "This chapter says GRPO \"first computes the mean and standard deviation of this group's rewards, then converts each answer's score into its relative advantage within the group\". This function is those two steps.\n\n**The denominator is the population standard deviation.** The chapter does not say which one to use, but the prompt fixes it: divided by `n`, not `n-1`. One check uses `[1.0, 2.0, 3.0, 4.0]` specifically to tell the two algorithms apart: the mean is 2.5, the population variance is 1.25 (divided by 4), the standard deviation is about 1.118, and the first advantage is -1.34; the sample variance is 1.25 x 4/3, about 1.667, the standard deviation about 1.291, and the first advantage -1.16. Two assertions pin that difference -- one requiring the population result and one requiring that the sample result is **not** produced -- so writing `statistics.stdev` fails.\n\n**A standard deviation of 0 returns `None`**, not a dict of zeros. This chapter gives the reason: when every answer in a group scores the same, the standard deviation approaches 0 and the within-group comparison cannot give a useful direction, so a real implementation has to skip, smooth or resample such data. The `[1.0, 1.0]` and `[2.0, 2.0, 2.0]` inputs pin this.\n\n**The keys of the returned dict are indices, not reward values.** Reward values can repeat (two of them are 1.0), and using the value as the key loses data; indices map one to one.\n\nThere is one property you can check yourself: **the relative advantages always sum to 0**, because every number has the same mean subtracted from it. The main check compares 15 reward groups (5 group sizes x 3 baselines) plus the two \"identical within the group\" inputs at the end against the formula, and also checks that the sum is close to 0 -- it is there to stop answer-lookup: a lookup table cannot cover these inputs. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it.",
+    "_note": ""
+  },
+  {
+    "id": "ch14-ex03",
+    "chapter": "chapter-14",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Choose a post-training method for a scenario",
+    "prompt": "Your model already handles customer service question answering reliably, but its answers are sometimes wordy and sometimes make promises it cannot support. You have a batch of hand-labelled preference data (a preferred and a non-preferred answer for the same question), no reward model, and no reinforcement learning infrastructure. Say which post-training method you would choose, why, and how you would judge whether the training worked.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it recommend DPO and explain that it needs neither a reward model nor online reinforcement learning, does it mention that preference data quality decides whether you learn a capability or a surface style, and does it stress that you cannot judge only by the training loss and the preference win rate?"
+    },
+    "reference": "I would choose DPO. The reason: this chapter says that \"when you already have high quality preference data and want to get through the first round of alignment quickly, DPO is worth considering first\", and I do have preference data ready to use; at the same time \"DPO does not generate answers online and does not need a separate reward model or value model\", and with no reward model and no reinforcement learning infrastructure, neither PPO nor GRPO can run. GRPO does not need a value model, but it is still an algorithm that has to generate answers online, and sampling alone burns a lot of compute.\n\nOn the data: this chapter reminds us that preference data expresses a relative relation rather than attaching the correct label to each answer -- a non-preferred answer may simply be missing a necessary condition or making an unsupported promise, which matches exactly the two problems I want to fix. But for the same reason I have to confirm that `chosen` contains no factual errors and that `rejected` is not so poor that the model would learn a surface style instead of the target capability.\n\nJudging the effect: this chapter is explicit that you cannot judge by the training loss, the reward score or the preference win rate alone; you have to go back to the real task and keep evaluating accuracy, task completion, safety, business boundaries and general capability. So I would look at a set of real customer service questions that never took part in training and check whether the wordiness rate and the unsupported promise rate have dropped, while confirming general capability has not regressed.",
+    "explanation": "The conditions in this exercise are set very concretely, and they amount to working through this chapter's comparison table by elimination: no reward model rules out PPO; no reinforcement learning infrastructure rules it out even more thoroughly; only ready-made preference data with no verifiable rule-based reward rules out GRPO too (it is friendly to rule-based rewards, but it still has to generate a group of answers online). What is left is DPO.\n\nThe second question matters more than picking the method. This chapter says DPO \"can only learn the differences already present in the preference data\", and gives three ways it fails: the preferred answer itself contains a factual error, the non-preferred answer is too poor, and the data comes from a generating distribution that is too far from yours. The two symptoms here (wordiness, unsupported promises) are exactly what a non-preferred answer tends to look like, so the data quality decides what DPO actually learns.\n\nThe third question matches the chapter's closing line: the goal of post-training is not a higher reward but a model that completes the target task more reliably in real use. A rising preference win rate only shows the model prefers `chosen`; it does not show the output got better.\n\nThis exercise cannot run a real DPO training; grading rests on self-assessment plus an optional AI score, and the reference answer gives a judgement you can compare against."
+  }
+]

@@ -7,7 +7,7 @@
     "minutes": 15,
     "objective": "Write the pass/fail rule for a production-line defect check",
     "prompt": "A line inspector must decide whether an image is acceptable. `defects` is the number of detected defect boxes (integer) and `area_ratio` is the defect area share (a decimal between 0 and 1). Write `judge(defects, area_ratio)`: zero defects returns `\"pass\"`; exactly one defect with an area share of at most 0.05 returns `\"warn\"`; anything else returns `\"fail\"`.",
-    "starter": "def judge(defects, area_ratio):\n    # return \"pass\" / \"warn\" / \"fail\"\n    pass\n",
+    "starter": "def judge(defects, area_ratio):\n    # 返回 \"pass\" / \"warn\" / \"fail\"\n    pass\n",
     "checks": [
       {
         "kind": "assert_python",
@@ -50,7 +50,7 @@
     "minutes": 12,
     "objective": "Compute evaluation metrics for the inspection Agent",
     "prompt": "An Agent ran over 20 production samples: 14 fully correct, 3 with minor flaws that do not change the verdict, 3 wrong. Write `metrics(correct, minor, wrong)` returning a dict with `accuracy` (correct / total, 3 decimals), `harm_rate` (wrong / total, 3 decimals) and `acceptable` ((correct + minor) / total, 3 decimals).",
-    "starter": "def metrics(correct, minor, wrong):\n    # return {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
+    "starter": "def metrics(correct, minor, wrong):\n    # 返回 {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
     "checks": [
       {
         "kind": "assert_python",

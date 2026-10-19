@@ -7,7 +7,7 @@
     "minutes": 15,
     "objective": "Escribir la regla de aprobado o fallo de una inspección",
     "prompt": "Un inspector de línea debe decidir si una imagen es aceptable. `defects` es el número de cajas de defectos detectadas (entero) y `area_ratio` es la proporción de área defectuosa (decimal entre 0 y 1). Escribe `judge(defects, area_ratio)`: cero defectos devuelve `\"pass\"`; exactamente un defecto con proporción de área de hasta 0,05 devuelve `\"warn\"`; cualquier otro caso devuelve `\"fail\"`.",
-    "starter": "def judge(defects, area_ratio):\n    # devuelve \"pass\" / \"warn\" / \"fail\"\n    pass\n",
+    "starter": "def judge(defects, area_ratio):\n    # 返回 \"pass\" / \"warn\" / \"fail\"\n    pass\n",
     "checks": [
       {
         "kind": "assert_python",
@@ -50,7 +50,7 @@
     "minutes": 12,
     "objective": "Calcular métricas de evaluación del agente inspector",
     "prompt": "Un agente se ejecutó sobre 20 muestras de producción: 14 totalmente correctas, 3 con fallos menores que no cambian el veredicto y 3 incorrectas. Escribe `metrics(correct, minor, wrong)` que devuelva un diccionario con `accuracy` (correct / total, 3 decimales), `harm_rate` (wrong / total, 3 decimales) y `acceptable` ((correct + minor) / total, 3 decimales).",
-    "starter": "def metrics(correct, minor, wrong):\n    # devuelve {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
+    "starter": "def metrics(correct, minor, wrong):\n    # 返回 {'accuracy': ..., 'harm_rate': ..., 'acceptable': ...}\n    pass\n\nprint(metrics(14, 3, 3))\n",
     "checks": [
       {
         "kind": "assert_python",

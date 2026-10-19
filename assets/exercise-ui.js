@@ -31,11 +31,11 @@
       code/selfAssessed. Nothing here decides a conflict itself, and a pull
       can never lower what the reader already earned.
 
-   LOCALE. Every `exercise.*` key this file asks for is still missing from
-   assets/locale/*.js, so MSI18N.t() returns the key itself and the panel shows
-   literals until Task 11 lands. These four arrived with the accessibility and
-   option-parsing work and have never had a word written for them; Task 11 is
-   where all of them, and the twenty-odd older ones, get filled in at once:
+   LOCALE. All 28 `exercise.*` keys this file asks for are written in all
+   three languages in assets/locale/*.js, so MSI18N.t() resolves every one of
+   them and the panel never shows a bare key. The four that arrived with the
+   accessibility and option-parsing work -- the last ones to be filled in --
+   are:
 
      exercise.chooseAnswer      the <legend> naming the option group
      exercise.codeLabel         the visible <label> on the code editor
@@ -673,8 +673,8 @@
    after its options -- with no blank line, because authors do not think in
    blank lines -- handed that whole paragraph to the LAST option's label. The
    reader saw option D end with three sentences of unrelated text. No shipped
-   exercise does this, and Task 14 is about to add 32 chapters of prompts, so
-   it would have been found the expensive way. The rule is now:
+   exercise does this, and the corpus has since grown by 32 chapters of
+   prompts, so it would have been found the expensive way. The rule is now:
 
      AN OPTION CONTINUES ONLY INTO THE LINES IMMEDIATELY BELOW IT THAT ARE
      INDENTED DEEPER THAN THE OPTION ITSELF, that carry no marker of their

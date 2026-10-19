@@ -1,1 +1,166 @@
-[]
+[
+  {
+    "id": "ch16-ex01",
+    "chapter": "chapter-16",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Normalise keypoint coordinates to a common scale",
+    "prompt": "Two people performing the same action still have different keypoint coordinates in the frame, so you have to normalise first. The keypoints come as a dict whose values are `[x, y]`. Write a function `normalize(points)` that returns a dict:\n\nthe hip centre is the midpoint of the left and right hips, the shoulder centre is the midpoint of the left and right shoulders, and the torso length is the Euclidean distance between those two centres (when the torso length is below `1e-6`, use `1e-6`). The normalised coordinate is `(original - hip centre) / torso length`, computed for each keypoint, and the returned dict uses the same keys.",
+    "starter": "LM = {\n    'left_shoulder': [0.0, 0.0],\n    'right_shoulder': [0.0, 0.0],\n    'left_hip': [0.0, 0.0],\n    'right_hip': [0.0, 0.0],\n    'knee': [0.0, 0.0],\n}\n\n\ndef normalize(points):\n    # 返回归一化后的关键点字典\n    return points\n\nprint(normalize({\n    'left_shoulder': [0.0, 10.0],\n    'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0],\n    'right_hip': [6.0, 0.0],\n    'knee': [5.0, 20.0],\n}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "out = normalize({\n    'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0], 'knee': [5.0, 20.0],\n})\nassert abs(out['left_hip'][0] + 0.1) < 1e-9 and abs(out['left_hip'][1]) < 1e-9, out['left_hip']"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "out = normalize({\n    'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0], 'knee': [5.0, 20.0],\n})\nassert abs(out['left_shoulder'][1] - 1.0) < 1e-9, '躯干长 10，肩中心高 10，所以 y 归一化后是 1'\nassert abs(out['left_shoulder'][0] + 0.5) < 1e-9 and abs(out['right_shoulder'][0] - 0.5) < 1e-9, '横坐标用的是同一个躯干长，不是各点的横差'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = normalize({\n    'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0], 'knee': [5.0, 20.0],\n})\nassert abs(out['knee'][1] - 2.0) < 1e-9 and abs(out['knee'][0]) < 1e-9, out['knee']"
+      },
+      {
+        "kind": "assert_python",
+        "code": "a = normalize({'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n                  'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0]})\nb = normalize({'left_shoulder': [0.0, 100.0], 'right_shoulder': [100.0, 100.0],\n                'left_hip': [40.0, 0.0], 'right_hip': [60.0, 0.0]})\nassert all(abs(a[k][i] - b[k][i]) < 1e-9 for k in a for i in (0, 1)), '放大 10 倍后归一化结果应完全相同'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "flat = normalize({'left_shoulder': [1.0, 1.0], 'right_shoulder': [1.0, 1.0],\n                 'left_hip': [1.0, 1.0], 'right_hip': [1.0, 1.0], 'knee': [1.0, 1.0]})\nassert all(abs(flat[k][0]) < 1e-3 and abs(flat[k][1]) < 1e-3 for k in flat), '肩髋重合时分母要兜底，不能除零'",
+        "weight": 18
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = {'left_shoulder': [0.0, 10.0], 'right_shoulder': [10.0, 10.0],\n       'left_hip': [4.0, 0.0], 'right_hip': [6.0, 0.0]}\nsnap = {k: list(v) for k, v in src.items()}\nnormalize(src)\nassert src == snap, 'normalize 不应该改动传入的坐标'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "import math\nfor _w in (1.0, 3.5, 10.0, 47.0):\n    for _dx in (0.0, 2.0, -4.0):\n        for _dy in (0.0, 5.0, -7.0):\n            _pts = {\n                'left_shoulder': [0.0, _w],\n                'right_shoulder': [_w, _w],\n                'left_hip': [4.0, 0.0],\n                'right_hip': [6.0, 0.0],\n                'knee': [4.0 + _dx, _dy],\n                'ankle': [6.0 - _dx, -_dy],\n            }\n            _snap = {k: list(v) for k, v in _pts.items()}\n            _out = normalize(_pts)\n            _hip = [(4.0 + 6.0) / 2, 0.0]\n            _sh = [(_w + 0.0) / 2, _w]\n            _len = math.hypot(_sh[0] - _hip[0], _sh[1] - _hip[1])\n            _len = _len if _len >= 1e-6 else 1e-6\n            for _k in _pts:\n                for _i in (0, 1):\n                    _want = (_pts[_k][_i] - _hip[_i]) / _len\n                    assert abs(_out[_k][_i] - _want) < 1e-9, (_w, _dx, _dy, _k, _i, _out[_k], _want)\n            assert _pts == _snap, 'normalize 不应该改动传入的坐标'\n_same = normalize({'left_shoulder': [5.0, 5.0], 'right_shoulder': [5.0, 5.0],\n                    'left_hip': [5.0, 5.0], 'right_hip': [5.0, 5.0]})\nfor _k in _same:\n    assert abs(_same[_k][0]) < 1e-3 and abs(_same[_k][1]) < 1e-3, ('肩髋完全重合时分母要兜底', _k, _same[_k])",
+        "weight": 36
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that normalisation removes position and size, not pose?"
+    },
+    "reference": "import math\n\n\ndef normalize(points):\n    mid_hip = [(points['left_hip'][i] + points['right_hip'][i]) / 2 for i in (0, 1)]\n    mid_sh = [(points['left_shoulder'][i] + points['right_shoulder'][i]) / 2 for i in (0, 1)]\n    torso = math.hypot(mid_sh[0] - mid_hip[0], mid_sh[1] - mid_hip[1])\n    if torso < 1e-6:\n        torso = 1e-6\n    return {k: [(v[0] - mid_hip[0]) / torso, (v[1] - mid_hip[1]) / torso]\n            for k, v in points.items()}\n\nprint(normalize({\n    'left_shoulder': [0.0, 10.0],\n    'right_shoulder': [10.0, 10.0],\n    'left_hip': [4.0, 0.0],\n    'right_hip': [6.0, 0.0],\n    'knee': [5.0, 20.0],\n}))",
+    "explanation": "This chapter says that \"even for exactly the same action, the keypoint coordinates in the frame can differ noticeably\", so you normalise before comparing. This function is that formula.\n\n**Both centres start as midpoints.** The hip centre is the midpoint of the two hips, the shoulder centre the midpoint of the two shoulders, and the torso length is the Euclidean distance between those centres. Using the x difference between the shoulders as the torso length is wrong -- this chapter deliberately uses a slanted set of coordinates (left shoulder `[0,10]`, right shoulder `[10,10]`, hip centre `[5,0]`), where the torso length is exactly 10 and both axes share that denominator.\n\n**You subtract the hip centre, not the origin.** After normalisation the hip centre lands on `(0, 0)`, and one check pins that with `out['left_hip']` equal to `(-0.1, 0)` (the hip centre x is 5 and the left hip x is 4, so the offset is -1, divided by a torso length of 10 gives -0.1).\n\n**The denominator needs a floor.** When the shoulders and hips coincide exactly the torso length is 0 and dividing raises ZeroDivisionError; this chapter's handling is to use `1e-6`. One check watches this with a set of coordinates where the shoulders, hips and both side points all coincide -- the normalised result should then be all zeros and nothing may raise. (If there are other points besides the coincident ones, they get divided by 1e-6 and come out very large; that is a direct consequence of the floor value, not a bug.)\n\n**Normalisation removes position and size.** Scale the whole person by 10 and the normalised result has to be identical -- which is exactly this chapter's point that \"the comparison afterwards focuses on the body pose itself rather than the person's position and size in the frame\". One check measures this directly, and it is the fastest way to tell whether an implementation really divides by the torso length.\n\nThe main check runs torso lengths of 4 values against 3 horizontal and 3 vertical hip offsets, 36 input groups in total (plus one coincident-shoulders-and-hips fallback input), recomputing each coordinate with the formula and confirming the dict passed in was not modified in place. It is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch16-ex02",
+    "chapter": "chapter-16",
+    "type": "build",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Compute a joint angle with a vector dot product",
+    "prompt": "Given three keypoints A, B and C, where B is the joint whose angle you want, write a function `angle(a, b, c)` that returns the angle at B in degrees. The two vectors are `u = a - b` and `v = c - b`, and the angle is `arccos(u.v / (|u| x |v|))`, multiplied by 180/pi. Return `None` when either vector has length 0. The `math` module is enough.",
+    "starter": "import math\n\n\ndef angle(a, b, c):\n    # 返回 B 处的夹角（度），任一向量为零时返回 None\n    return None\n\nprint(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert abs(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]) - 90.0) < 1e-6",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert abs(angle([0.0, 1.0], [0.0, 0.0], [0.0, -1.0]) - 180.0) < 1e-6, '反向的两个向量是 180 度'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert abs(angle([1.0, 0.0], [0.0, 0.0], [1.0, 0.0]) - 0.0) < 1e-6, '同向的两个向量是 0 度'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert angle([1.0, 1.0], [1.0, 1.0], [0.0, 0.0]) is None, '第一个向量为零长度要返回 None'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert angle([0.0, 0.0], [1.0, 1.0], [1.0, 1.0]) is None, '第二个向量为零长度要返回 None'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "# 同一条腿换到另一侧，夹角不变：角只由两条射线的夹角决定，与 A、C 谁写在前面无关\nfor _px, _py in ((0.0, 1.0), (2.0, 3.0), (-4.0, 1.5)):\n    for _qx, _qy in ((1.0, 0.0), (-2.0, 5.0), (3.0, -1.0)):\n        for _ox, _oy in ((0.0, 0.0), (7.0, -3.0)):\n            _A = [_ox + _px, _oy + _py]\n            _B = [_ox, _oy]\n            _C = [_ox + _qx, _oy + _qy]\n            _fwd = angle(_A, _B, _C)\n            _rev = angle(_C, _B, _A)\n            assert _fwd is not None and _rev is not None, (_A, _B, _C, _fwd, _rev)\n            assert abs(_fwd - _rev) < 1e-9, ('对调 A 与 C 之后夹角必须不变', _A, _B, _C, _fwd, _rev)",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 32,
+        "code": "import math\nfor _theta in (0, 15, 30, 45, 60, 90, 120, 150, 179):\n    _r = math.radians(_theta)\n    _a = [math.cos(_r), math.sin(_r)]\n    _c = [1.0, 0.0]\n    for _scale in (1.0, 3.0, 0.25):\n        _pa = [_a[0] * _scale, _a[1] * _scale]\n        for _shift in ([0.0, 0.0], [4.0, -2.0], [-7.0, 3.5]):\n            _b = [_shift[0], _shift[1]]\n            _P = [_b[0] + _pa[0], _b[1] + _pa[1]]\n            _Q = [_b[0] + _c[0], _b[1] + _c[1]]\n            _got = angle(_P, _b, _Q)\n            assert abs(_got - _theta) < 1e-6, (_theta, _scale, _shift, _got)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 14,
+        "code": "for _b in ([1.0, 2.0], [0.0, 0.0]):\n    assert angle(_b, _b, [3.0, 4.0]) is None, 'A 与 B 重合要返回 None'\n    assert angle([3.0, 4.0], _b, _b) is None, 'C 与 B 重合要返回 None'"
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand the angle is the one at B between the two bone segments?"
+    },
+    "reference": "import math\n\n\ndef angle(a, b, c):\n    u = [a[0] - b[0], a[1] - b[1]]\n    v = [c[0] - b[0], c[1] - b[1]]\n    lu = math.hypot(u[0], u[1])\n    lv = math.hypot(v[0], v[1])\n    if lu == 0 or lv == 0:\n        return None\n    cos = (u[0] * v[0] + u[1] * v[1]) / (lu * lv)\n    cos = max(-1.0, min(1.0, cos))\n    return math.degrees(math.acos(cos))\n\nprint(angle([0.0, 1.0], [0.0, 0.0], [1.0, 0.0]))",
+    "explanation": "This chapter's formula is `arccos((A-B).(C-B) / (|A-B| x |C-B|))`, and what it computes is the angle at **B** between the two bone segments -- for a knee angle, A is the hip, B the knee and C the ankle, and only then do you get the knee's angle.\n\n**Both vectors subtract from B.** Writing `a - b` and `b - c` is the most common mistake, because the second vector then starts from the wrong point, and the dot product of such a pair happens to give a plausible-looking number for some shapes.\n\n**The lengths are Euclidean.** This chapter's code uses `np.linalg.norm`, which in two dimensions is `math.hypot`. Using the Manhattan distance (`|dx| + |dy|`) gets every non-right angle wrong.\n\n**A zero length returns `None`.** When the three points coincide, dividing raises, and that corresponds to \"this joint was never detected\". The checks measure the two cases separately: `a == b` and `c == b` both have to return `None`.\n\n**Clamping the cosine is optional (measured).** In theory floating point error can make `(u.v)/(lu*lv)` come out as 1.0000000000000002, and `math.acos` then raises `ValueError`. In practice none of the 81 inputs in the checks (including the 179 degree case) trigger it, so that check does not distinguish the two spellings. If you hit a crash on your own real data, add `max(-1.0, min(1.0, cos))` -- that is defensive coding, not the point of this exercise.\n\n**The angle does not depend on the order of the two segments (symmetry).** `angle(a, b, c)` and `angle(c, b, a)` have to be equal: B is the joint and A and C are the two endpoints on either side of it, so which one you write first should not change the angle. One check verifies this across 3 x 3 x 2 = 18 inputs. It stops two kinds of implementation: one that returns something arbitrary, and one that picks the vector based on whether A or C has the larger coordinate.\n\nThe main check runs 9 target angles against 3 bone lengths and 3 joint positions, 81 inputs in total, recomputing each with the formula -- it is there to stop answer-lookup: a lookup table cannot cover those 81 **distinct** inputs. (The joint position really does move the joint B here: the whole segment is translated, so `_P`, `_Q` and `_b` all move together and the 81 inputs all have different coordinates; an earlier version pinned the joint at `[1.0, 1.0]`, which left only 27 distinct inputs across 81 calls and made that factor worthless.) Honest boundary: those 81 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch16-ex03",
+    "chapter": "chapter-16",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Find runs of frames whose angle error exceeds a threshold",
+    "prompt": "Pose estimation jitters slightly, so you cannot judge from a single frame whether the motion is clearly wrong. This chapter's approach is: smooth the sequence of angle differences first, and only when the difference exceeds the threshold for **several frames in a row** mark that stretch as a deviation.\n\nWrite a function `find_deviation_segments(diffs, threshold, min_frames)`:\n\n- `diffs` is the per-frame sequence of angle differences (a list of numbers);\n- only **strictly greater** than `threshold` counts as exceeding it (exactly equal does not);\n- group consecutive over-threshold frames into one segment and return every segment whose length is **at least** `min_frames`;\n- each segment is `(start index, end index)`, zero-based, both ends included;\n- segments shorter than `min_frames` are dropped; an over-threshold run still open at the end of the sequence counts too.\n\nReturn an empty list when there are no segments.",
+    "starter": "def find_deviation_segments(diffs, threshold, min_frames):\n    # 返回 [(start, end), ...]\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([20.0] * 6 + [0.0] * 2, 15, 6) == [(0, 5)], '整整 6 帧超阈值应当保留'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([20.0] * 5 + [0.0], 15, 6) == [], '只有 5 帧，比 min_frames 短，应当丢弃'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([15.0] * 8, 15, 6) == [], '正好等于阈值不算超阈值'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([0.0, 0.0] + [30.0] * 7, 15, 6) == [(2, 8)], '序列末尾仍未结束的片段也要算进去'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_d = [0.0] * 3 + [20.0] * 8 + [0.0] * 4 + [25.0] * 3\nassert find_deviation_segments(_d, 15, 6) == [(3, 10)], _d",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert find_deviation_segments([], 15, 6) == [] and find_deviation_segments([1.0] * 30, 15, 6) == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "def _want(diffs, threshold, min_frames):\n    out, start = [], None\n    for i, v in enumerate(diffs):\n        if v > threshold:\n            if start is None:\n                start = i\n        elif start is not None:\n            if i - start >= min_frames:\n                out.append((start, i - 1))\n            start = None\n    if start is not None and len(diffs) - start >= min_frames:\n        out.append((start, len(diffs) - 1))\n    return out\n\n_pattern = [0.0, 30.0, 15.0, 0.0]\nfor _n in range(0, 18):\n    for _p in range(0, _n + 1):\n        _d = [_pattern[_i % 4] for _i in range(_n)][:0] or \\\n             [_pattern[(_i * 7 + _p) % 4] for _i in range(_n)]\n        for _mf in (1, 2, 3, 6):\n            _exp = _want(_d, 15, _mf)\n            assert find_deviation_segments(_d, 15, _mf) == _exp, (_n, _p, _mf, _d, _exp)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it distinguish \"several frames in a row\" from a single over-threshold frame, and does it handle a segment left open at the end?"
+    },
+    "reference": "def find_deviation_segments(diffs, threshold, min_frames):\n    segments = []\n    in_seg = False\n    start = 0\n    for i, v in enumerate(diffs):\n        if v > threshold and not in_seg:\n            in_seg = True\n            start = i\n        elif v <= threshold and in_seg:\n            in_seg = False\n            if i - start >= min_frames:\n                segments.append((start, i - 1))\n    if in_seg and len(diffs) - start >= min_frames:\n        segments.append((start, len(diffs) - 1))\n    return segments",
+    "explanation": "This exercise is the logic of that `find_deviation_segments` in this chapter. **A single over-threshold frame is not a deviation** -- the chapter says \"human keypoint detection may have slight jitter, and judging from one frame alone whether the motion differs noticeably is easily affected by accidental error\", so it has to hold for several frames.\n\n**The threshold is strictly greater.** The chapter writes `v > DEVIATION_THRESHOLD_DEG`, so exactly 15 degrees does not count. An implementation using `>=` fails on the input where the whole run sits exactly at the threshold.\n\n**The length is `i - start >= min_frames`.** The end index is `i - 1`, not `i`, because the frame that triggered the end (the first one back below the threshold) is not part of the over-threshold run. An implementation off by one shifts every segment by a frame.\n\n**A run still open at the end is handled separately.** When the loop finishes `in_seg` may still be true, and the segment length is then `len(diffs) - start` rather than some `i - start`. Drop that branch and a deviation that persists to the last frame of the video is never reported -- the most common hole in a scanning loop like this one.\n\nThe main check lays out four values (0, 30, 15, 0) deterministically into sequences of length 0 to 17 and sweeps `min_frames` over 1, 2, 3 and 6, comparing every group against an independently written expected result -- it is there to stop a lookup table: it cannot cover these combinations.\n\nHonest boundary note on grading: the \"still open at the end\" case is guarded by two checks together, 12/100 and 30/100 (42% combined), which is enough on its own for P1. But \"exactly equal to the threshold does not count\" is guarded by 12/100 alone, which makes it the weakest link here: it only covers the one input where the whole run sits exactly at the threshold, so an implementation that wrote `>` as `>=` but happened to get the rest right could slip through."
+  }
+]

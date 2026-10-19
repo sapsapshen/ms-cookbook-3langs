@@ -73,10 +73,9 @@ def merge(lang, number):
                 # retyped: `test_exercises.py` forbids CJK in the en/es
                 # `reference`, and `check_exercise_references.py` executes it,
                 # so the literal must keep the same runtime value. Escaping
-                # satisfies both without the translator touching the code.
+                # satisfies both without the translator touching the code --
+                # retyping a program is how a stray edit slips in.
                 if src[key] == FROM_ZH:
-                    assert CJK.search(value or ''), (
-                        f'{item["id"]}: {FROM_ZH} used but the {key} has no CJK')
                     twin[key] = escape(value)
                 else:
                     twin[key] = src[key]

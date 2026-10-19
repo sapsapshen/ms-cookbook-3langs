@@ -1,1 +1,121 @@
-[]
+[
+  {
+    "id": "ch29-ex01",
+    "chapter": "chapter-29",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Decide whether an environment can be installed on",
+    "prompt": "Before installing Claude Code you check the environment against this chapter's checklist. Write a function `check_env(env)` where `env` is a dict that may contain `os`, `os_version`, `memory_gb`, `network`, `node`, `git_bash`, `login`. Return a list of problems (a list of strings):\n\n- `os_version` below what that system requires (macOS 13, Windows 1809, Linux 20.04) -> `\"\\u7cfb\\u7edf\\u7248\\u672c\\u8fc7\\u4f4e\"` (OS version too low)\n- `memory_gb` below 4 -> `\"\\u5185\\u5b58\\u4e0d\\u8db3\"` (not enough memory)\n- `network` is `False` -> `\"\\u65e0\\u6cd5\\u8fde\\u63a5\\u6a21\\u578b\\u670d\\u52a1\"` (cannot reach the model service)\n- `login` not in `(\"pro\", \"max\", \"team\", \"enterprise\", \"console\")` -> `\"\\u767b\\u5f55\\u65b9\\u5f0f\\u4e0d\\u53ef\\u7528\"` (login type not available)\n- `os` is `\"Windows\"` and `git_bash` is `False` and there is no `powershell` -> `\"\\u7f3a\\u5c11 Bash \\u5de5\\u5177\"` (Bash tool missing)\n\nReturn in the order above and stop at the first problem, returning a list of length 1; return `[]` when everything passes.\n\nThe five problem strings are Chinese and the grader compares them exactly, so write them with the backslash-u escapes shown. The escapes are not a different value, only a way of keeping the source ASCII.",
+    "explanation": "This chapter gives a pre-installation checklist, and this function makes it executable. Several points map onto individual rows of that table.\n\n**The minimum version is looked up per operating system**: macOS 13, Windows 10 1809, Linux 20.04+. Using one version number for all three is wrong, because that Windows 1809 is a build number on a completely different scale from macOS 13. The main check measures \"one below the minimum\", \"exactly at it\" and \"one above it\" separately for each of the three systems.\n\n**The login type is its own row.** The chapter says \"a free Claude account does not include the right to use Claude Code\", so `free` has to be reported as an unusable login type. That row also drags in billing: a subscription and Console API credit are two separate things, and buying a subscription does not top up the API account.\n\n**Bash on Windows is a recommendation, not a requirement.** The chapter says \"on Windows, installing Git for Windows is recommended so the Bash tool can be used; if it is not installed, the current version also supports the PowerShell tool\", so having `powershell` counts as covered. One check measures the two cases separately.\n\n**Stop at the first problem, do not accumulate.** That is what the prompt specifies, so an environment that is \"too old + not enough memory + free account\" reports exactly one problem. One check is that multi-fault input.\n\n**The Windows 1809 number is not to be read as 1809 points.** The table writes 10 1809 for Windows and the function uses 1809; the main check measures it with a real Windows build number such as 19045, which confirms a modern build passes too.\n\nThe main check lays out 3 systems x version tiers x 3 memory levels x 2 network states x 4 login types into a batch of inputs, recomputing the expected result in order for each, and then testing every group twice more with `git_bash` or `powershell` supplied -- it is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it.",
+    "reference": "MIN_VERSIONS = {'macOS': 13, 'Windows': 1809, 'Linux': 20.04}\nLOGINS = ('pro', 'max', 'team', 'enterprise', 'console')\n\n\ndef check_env(env):\n    need = MIN_VERSIONS[env['os']]\n    if env['os_version'] < need:\n        return ['\\u7cfb\\u7edf\\u7248\\u672c\\u8fc7\\u4f4e']\n    if env['memory_gb'] < 4:\n        return ['\\u5185\\u5b58\\u4e0d\\u8db3']\n    if not env['network']:\n        return ['\\u65e0\\u6cd5\\u8fde\\u63a5\\u6a21\\u578b\\u670d\\u52a1']\n    if env['login'] not in LOGINS:\n        return ['\\u767b\\u5f55\\u65b9\\u5f0f\\u4e0d\\u53ef\\u7528']\n    if env['os'] == 'Windows' and not env.get('git_bash') and not env.get('powershell'):\n        return ['\\u7f3a\\u5c11 Bash \\u5de5\\u5177']\n    return []\n\nprint(check_env({'os': 'macOS', 'os_version': 13, 'memory_gb': 8,\n                 'network': True, 'login': 'pro'}))",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that checking the environment before installing and choosing where the model comes from are two separate things?"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_ok = {'os': 'macOS', 'os_version': 13, 'memory_gb': 8, 'network': True, 'login': 'pro'}\nassert check_env(_ok) == [], check_env(_ok)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "_e = {'os': 'macOS', 'os_version': 12, 'memory_gb': 8, 'network': True, 'login': 'pro'}\nassert check_env(_e) == ['系统版本过低'], check_env(_e)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'macOS', 'os_version': 13, 'memory_gb': 3, 'network': True, 'login': 'pro'}\nassert check_env(_e) == ['内存不足'], check_env(_e)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'macOS', 'os_version': 13, 'memory_gb': 8, 'network': False, 'login': 'pro'}\nassert check_env(_e) == ['无法连接模型服务'], check_env(_e)"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "_e = {'os': 'macOS', 'os_version': 13, 'memory_gb': 8, 'network': True, 'login': 'free'}\nassert check_env(_e) == ['登录方式不可用'], '免费账号不包含使用权限'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'Windows', 'os_version': 19045, 'memory_gb': 8, 'network': True, 'login': 'pro'}\nassert check_env(_e) == ['缺少 Bash 工具'], 'Windows 上没有 Git Bash 也没有 PowerShell 就要报'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "_e = {'os': 'Windows', 'os_version': 19045, 'memory_gb': 8, 'network': True, 'login': 'pro', 'powershell': True}\nassert check_env(_e) == [], '有 PowerShell 就不算缺工具'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "_e = {'os': 'Windows', 'os_version': 19045, 'memory_gb': 8, 'network': True, 'login': 'pro', 'git_bash': True}\nassert check_env(_e) == [], '有 Git Bash 也不算缺工具'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'macOS', 'os_version': 12, 'memory_gb': 3, 'network': False, 'login': 'free'}\nassert check_env(_e) == ['系统版本过低'], '遇到第一个问题就返回，不累积'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_e = {'os': 'Linux', 'os_version': 20.04, 'memory_gb': 4, 'network': True, 'login': 'console'}\nassert check_env(_e) == [], 'Linux 20.04 与 4GB 都刚好达标'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 24,
+        "code": "_MIN = {'macOS': 13, 'Windows': 1809, 'Linux': 20.04}\n_OK = ('pro', 'max', 'team', 'enterprise', 'console')\nfor _os in sorted(_MIN):\n    for _ver in (_MIN[_os] - 1, _MIN[_os], _MIN[_os] + 1, 19045 if _os == 'Windows' else _MIN[_os] + 5):\n        for _mem in (3, 4, 8):\n            for _net in (True, False):\n                for _login in ('pro', 'console', 'free', 'Pro'):\n                    _e = {'os': _os, 'os_version': _ver, 'memory_gb': _mem,\n                           'network': _net, 'login': _login}\n                    if _ver < _MIN[_os]:\n                        _want = ['系统版本过低']\n                    elif _mem < 4:\n                        _want = ['内存不足']\n                    elif not _net:\n                        _want = ['无法连接模型服务']\n                    elif _login not in _OK:\n                        _want = ['登录方式不可用']\n                    elif _os == 'Windows':\n                        _want = ['缺少 Bash 工具']\n                    else:\n                        _want = []\n                    assert check_env(_e) == _want, (_os, _ver, _mem, _net, _login, check_env(_e), _want)\n                    if _os == 'Windows' and _want == ['缺少 Bash 工具']:\n                        for _key in ('powershell', 'git_bash'):\n                            _e2 = dict(_e)\n                            _e2[_key] = True\n                            assert check_env(_e2) == [], (_e2, check_env(_e2))\n                    _e3 = dict(_e)\n                    _e3['git_bash'] = True\n                    _e3['powershell'] = True\n                    _want3 = _want if _want != ['缺少 Bash 工具'] else []\n                    assert check_env(_e3) == _want3, (_e3, check_env(_e3), _want3)"
+      }
+    ],
+    "starter": "MIN_VERSIONS = {'macOS': 13, 'Windows': 1809, 'Linux': 20.04}\nLOGINS = ('pro', 'max', 'team', 'enterprise', 'console')\n\n\ndef check_env(env):\n    # 返回问题列表\n    return []\n\nprint(check_env({'os': 'macOS', 'os_version': 13, 'memory_gb': 8,\n                 'network': True, 'login': 'pro'}))\n"
+  },
+  {
+    "id": "ch29-ex02",
+    "chapter": "chapter-29",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge how to work with Claude Code",
+    "prompt": "Which of these practices match this chapter? (multi-select)\n\nA. To see a plan before deciding whether to act, start it in the terminal with `claude --permission-mode plan`\nB. Long term rules (which language to use, where results go) should be repeated in the conversation every time\nC. Entering `/init` in Claude Code generates a first draft of `CLAUDE.md`, which you then review and adjust\nD. When you give Claude Code a requirement, \"fix this bug for me\" is enough\nE. Buying a Claude subscription automatically tops up the API account",
+    "explanation": "A and C come from the same section of this chapter, A being plan mode and C being `/init` generating a first draft of `CLAUDE.md`.\n\nB is precisely the problem `CLAUDE.md` exists to solve. The chapter says \"there are things you should not have to repeat every time. Which language to use, what technology the project uses, where the results go -- all of that can go into `CLAUDE.md` in the project root\", and it stresses that \"project rules have to be concrete enough to guide actual work\": in this chapter's content distribution plugin example, even the constraint that \"the API key is configured through the settings page and never hardcoded in the source\" is written down.\n\nD is where the chapter deliberately gives a counter-example. It offers two model requests: one is \"read the README and the main entry files and tell me ... explain it to me first, do not change any code\", and the other spells out the reproduction steps, the expected result, the scope of the change and how to verify it when fixing a bug. The author's line that \"I would rather start from one clear small requirement\" is aimed squarely at vague requirements.\n\nE is from the billing passage. The chapter is explicit that \"a Claude subscription and Console API credit are two separate billing systems, and buying a subscription does not automatically top up the API account\".\n\nTwo more commands worth remembering: `claude --permission-mode default` shows the permission prompt for each action, `Shift+Tab` switches to Plan mode inside an existing session, and `/memory` shows the memory settings.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded.",
+    "reference": "B is the opposite of what this chapter says: long term rules belong in `CLAUDE.md` rather than being repeated. D is the opposite of the chapter's example, which asks for the reproduction steps, the expected result, the scope of the change and how to verify it. E is the opposite too: a subscription and Console API credit are two separate billing systems.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C"
+        ],
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "id": "ch29-ex03",
+    "chapter": "chapter-29",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Write a CLAUDE.md collaboration file for a project",
+    "prompt": "You want Claude Code to work in your project. Write down what your `CLAUDE.md` would contain, and say why each item is written the way it is rather than just saying \"be clear\".",
+    "explanation": "This exercise is the chapter's line that \"project rules have to be concrete enough to guide actual work\". Asking you to \"say why\" is to stop a vague list being handed in.\n\nThe core observation is that **every rule corresponds to a specific failure mode**. Those lines in the example are not an arbitrary list -- \"read the relevant code before changing it\" prevents changing code without having read it; \"use the existing APIs and theme variables\" prevents a second, inconsistent implementation; \"the raw notes are read only\" prevents overwriting the user's data; \"the API key is never hardcoded\" stops credentials ending up in version control. Being able to say what each one prevents is already more concrete than \"write it more clearly\".\n\nThe last item, \"after finishing, describe the changes, the check results and what still needs manual verification\", is worth thinking about on its own. It splits the deliverable into two kinds: what the model verified itself, and what still needs a human. The model's work often looks right, but on the parts with no external check it does not know either -- so this rule is really asking it to state its uncertainty explicitly.\n\nThis exercise cannot run a real Claude Code session; grading rests on self-assessment plus an optional AI score, and the reference answer gives a way of writing it you can compare against.",
+    "reference": "Split into two blocks, matching the structure of this chapter's content distribution plugin example.\n\nProject description: what problem this project solves, which language and technology it uses. The example writes \"this is an Obsidian content distribution assistant plugin, written in TypeScript. The goal is to turn Markdown notes into copy for different platforms\". That block exists because it decides the model's default understanding of the project -- get the language wrong and every code suggestion after that is off course.\n\nCollaboration requirements: (1) which language to reply in; (2) read the relevant code before changing it, do not assume from nothing; (3) which existing APIs and conventions to use (the example is \"use Obsidian's API and the theme variables, and stay consistent with the app's interface\"); (4) the relationship between the raw data and the generated output (the example is \"the raw notes are read only, and the generated results go in a separate preview area\"); (5) what to do about sensitive information (the example is \"the API key is configured through the settings page, never hardcoded in the source\"); (6) what has to be reported when finished (the example is \"after each run, describe the changes, the check results, and the parts that still need manual verification\").\n\nWhy write them this concretely: each one corresponds to something that really goes wrong. (2) stops it changing code it never read; (3) stops it inventing a style of its own; (4) stops it overwriting your data; (5) stops credentials leaking; (6) tells you what nobody has verified yet -- and that last one matters most, because it clearly separates \"what I have confirmed\" from \"what still needs a human\", instead of letting unverified results pass as verified.\n\nOne addition: spell the filename `CLAUDE.md` with that exact capitalisation. Once written you can use `/init` to generate a first draft and then edit it, or write it by hand; `/memory` shows the current memory settings.",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it cover the project description and stack, the collaboration requirements (reply language, read the code before changing it, which APIs and theme variables to use), where results go, how sensitive data is handled, and what has to be reported when finished along with what still needs manual verification?"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

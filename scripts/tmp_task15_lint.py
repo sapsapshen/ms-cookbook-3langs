@@ -98,6 +98,7 @@ CAMEL_OK = {
     'elScope', 'alScope', 'inHash', 'imHash', 'vaScript', 'enAI',
     'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO', 'niMax', 'niCoder', 'niMoonshot',
     'ffSynth', 'ffUsers', 'meError', 'meError.', 'utSchema', 'meDict',
+    'acOS', 'peScript', 'acOSX', 'ypeScript', 'erShell', 'erShell',
 }
 
 # An English function word fused onto the end of a Spanish word, and the
@@ -125,6 +126,8 @@ MIXED_SCRIPT = re.compile(r'[A-Za-z][一-鿿]|[一-鿿][A-Za-z]')
 FUSED_ASTERISK = re.compile(r'[A-Za-zÁ-ÿ]\*[A-Za-zÁ-ÿ]')
 
 HYPHENATED = re.compile(r'[A-Za-z]+(?:-[A-Za-z]+)+')
+# Multi-word product names kept verbatim in every language.
+PRODUCT_NAMES = {'git for windows', 'git for mac', 'vs code', 'visual studio code', 'model context protocol'}
 CODE_SPAN = re.compile(r'`[^`]*`|```[\s\S]*?```|^\s{4,}\S.*$', re.MULTILINE)
 # A reference that is a whole program rather than prose. Nothing in it is
 # natural language, so the word checks do not apply at all -- Python keywords
@@ -162,6 +165,10 @@ def foreign_words(lang, value):
     protected = set()
     for match in HYPHENATED.finditer(strip_code(value)):
         protected.update(match.group(0).split('-'))
+    lowered = strip_code(value).lower()
+    for name in PRODUCT_NAMES:
+        if name in lowered:
+            protected.update(name.split())
     for word in WORD.findall(strip_code(value)):
         low = word.lower()
         if low in other and low not in SHARED and word not in protected:

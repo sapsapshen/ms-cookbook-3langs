@@ -1,1 +1,117 @@
-[]
+[
+  {
+    "id": "ch28-ex01",
+    "chapter": "chapter-28",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Pick the right files to load for a Skill",
+    "prompt": "A Skill directory follows this convention: the entry point is `SKILL.md`; `references/` holds terminology and privacy rules; `assets/` holds output templates; `scripts/` holds the programs that do mechanical processing; `tests/` is for development validation and is not loaded on every run.\n\nWrite a function `load_for(need)` that returns the list of files to read for this run:\n\n- when `need` contains `\"\\u672f\\u8bed\"` (terminology) or `\"\\u9690\\u79c1\"` (privacy), add both `\"references/terms.md\"` and `\"references/privacy-rules.md\"`\n- when `need` contains `\"\\u6a21\\u677f\"` (template), add `\"assets/meeting-template.md\"`\n- when `need` contains `\"\\u6e05\\u6d17\"` (cleaning), add `\"scripts/clean-transcript.py\"`\n- when `need` contains `\"\\u6d4b\\u8bd5\"` (testing), add **no** file at all -- the tests directory takes no part in runtime loading\n- whether or not anything matched, `\"SKILL.md\"` always goes first in the list\n\nNo duplicates in the list, in the order above (`SKILL.md`, references, assets, scripts). Raise `TypeError` when `need` is not a string.\n\nThe four trigger words are Chinese, so `need` contains them as the backslash-u escapes shown here; the escaped form and the character itself behave identically in Python.",
+    "starter": "def load_for(need):\n    # 返回需要读取的文件名列表\n    return []\n\nprint(load_for('按模板输出，清洗时间戳'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('') == ['SKILL.md'], load_for('')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('遇到术语') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], load_for('遇到术语')",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('有隐私要求') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], '隐私和术语命中同一组文件'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('套用模板') == ['SKILL.md', 'assets/meeting-template.md'], load_for('套用模板')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('清洗时间戳') == ['SKILL.md', 'scripts/clean-transcript.py'], load_for('清洗时间戳')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('跑测试') == ['SKILL.md'], 'tests 目录不参与运行时加载'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = load_for('有隐私要求，套用模板并清洗')\nassert out == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md', 'assets/meeting-template.md', 'scripts/clean-transcript.py'], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('术语术语隐私隐私') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], '重复关键词不产生重复条目'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (None, 123, ['术语'], {'a': 1}):\n    try:\n        load_for(_bad)\n        assert False, '非字符串应该抛 TypeError: %r' % (_bad,)\n    except TypeError:\n        pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "_CASES = ['', '术语', '隐私', '模板', '清洗', '测试', '术语+模板', '隐私清洗',\n          '测试模板', '术语隐私模板清洗测试', '无关内容', '业务术语很多需要模板']\nfor _need in _CASES:\n    _out = load_for(_need)\n    _want = ['SKILL.md']\n    if ('术语' in _need) or ('隐私' in _need):\n        _want += ['references/terms.md', 'references/privacy-rules.md']\n    if '模板' in _need:\n        _want += ['assets/meeting-template.md']\n    if '清洗' in _need:\n        _want += ['scripts/clean-transcript.py']\n    assert _out == _want, (_need, _out, _want)\n    assert len(_out) == len(set(_out)), ('不能有重复条目', _need, _out)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that a Skill is the accumulated method while the Prompt is this particular task?"
+    },
+    "reference": "def load_for(need):\n    if not isinstance(need, str):\n        raise TypeError('need must be a string')\n    files = ['SKILL.md']\n    if '\\u672f\\u8bed' in need or '\\u9690\\u79c1' in need:\n        files.append('references/terms.md')\n        files.append('references/privacy-rules.md')\n    if '\\u6a21\\u677f' in need:\n        files.append('assets/meeting-template.md')\n    if '\\u6e05\\u6d17' in need:\n        files.append('scripts/clean-transcript.py')\n    return files\n\nprint(load_for('\\u6309\\u6a21\\u677f\\u8f93\\u51fa\\uff0c\\u6e05\\u6d17\\u65f6\\u95f4\\u6233'))",
+    "explanation": "This chapter says `SKILL.md` is the entry point: the Agent reads it first to learn what tasks this Skill suits, what input it needs and which steps to follow; the other directories are loaded on demand. This function turns \"on demand\" into a rule you can decide with.\n\n**The entry point is always first.** This chapter's task chain is \"the large model judges from the name and description whether to load it -> reads the execution method from SKILL.md -> reads other files when needed\", so whatever this run's requirement is, `SKILL.md` gets loaded. The `load_for('')` check returning `['SKILL.md']` pins that down.\n\n**Terminology and privacy hit the same group of files.** In this chapter's layout `references/` holds \"the glossary and content classification rules\" and \"sensitive information and masking requirements\", so both a terminology need and a privacy need read that same directory -- \"there is a privacy requirement\" and \"a term comes up\" trigger the same two files. One check measures the two spellings separately.\n\n**`tests/` takes no part in runtime loading.** The chapter is explicit: \"tests/ is mainly for validation during development and after a revision, not content that has to be loaded on every task run\". So a requirement mentioning \"testing\" adds no file -- this is the line most easily written wrong by the \"see a keyword, add a file\" habit, and one check measures `load_for('\\u8dd1\\u6d4b\\u8bd5') == ['SKILL.md']`.\n\n**A repeated keyword produces no duplicate entry.** `load_for('\\u672f\\u8bed\\u672f\\u8bed\\u9690\\u79c1\\u9690\\u79c1')` still has just the two reference files. That looks like a detail, but an implementation that appends once per keyword reads the same file twice.\n\n**A non-string raises `TypeError`, not `ValueError`.** If `need` is a list, `'\\u672f\\u8bed' in need` still works (a list's `in` is a membership test) but the meaning is entirely wrong, which is why the prompt asks you to reject it first.\n\nThe main check recomputes the expected list for each of 12 requirement combinations under the order \"entry point -> references -> assets -> scripts\" and confirms there are no duplicates -- it is there to stop answer-lookup. Honest boundary: those 12 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch28-ex02",
+    "chapter": "chapter-28",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Tell Prompt, Skill, workflow and MCP apart",
+    "prompt": "Which of these statements match this chapter? (multi-select)\n\nA. The Prompt answers \"what to do this time\"; the Skill answers \"how this kind of task is usually done\"\nB. MCP is about how the Agent connects to and calls external capabilities; the Skill describes how to use those capabilities to finish a task\nC. A Skill can avoid MCP entirely\nD. Once the tools are connected, the Skill no longer needs to specify confirmation points before deleting or sending\nE. The `tests/` directory is content a Skill must load when it executes a task",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D is the opposite of what this chapter says: \"when sending messages, modifying records, deleting data, incurring cost or publishing publicly, the Skill should specify the confirmation point explicitly, and execution must not be assumed to be allowed just because the tool is connected\". E is the opposite too: the tests directory is for validation during development and after a revision, not something loaded on every run.",
+    "explanation": "This chapter is about which of four concepts covers which part. The table it gives is the most direct comparison: A and B correspond to the Prompt and Skill rows, plus the line \"MCP provides a standard way to connect external tools and data, while the Skill describes how to use those capabilities to complete a kind of task\".\n\nC is from the same passage: \"a Skill can guide the Agent in calling MCP tools, and can also avoid MCP entirely. An MCP service can likewise be adopted by several Skills\". Many-to-many in both directions, which is what decoupling looks like.\n\nD is the line in this section most worth remembering. The chapter first says \"a successful connection only means the Agent can use a capability, not that it already knows how to complete the business task\", then lists the questions that have to go into a Skill -- which project to query, over what date range to aggregate, which fields count as sensitive, whether a confirmation is needed before creating, modifying or deleting. And then the conclusion: the confirmation point has to be written into the Skill, and **execution must not be assumed to be allowed just because the tool is connected**. That is the real risk point on the permission boundary.\n\nE is from the section on what a Skill is made of. The chapter says `tests/` is mainly for validation during development and after a revision, \"not content that has to be loaded on every task run\" -- which is the same point as the check in the previous exercise.\n\nOne more thing that is easily overlooked: Prompt and Skill are not either/or. Facing a different input, the same Skill still needs a Prompt stating this run's goal -- the Prompt tells the Agent which material to process this time, the Skill supplies the accumulated way of doing that kind of task.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch28-ex03",
+    "chapter": "chapter-28",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Turn a vague request into a complete Skill",
+    "prompt": "Your team keeps asking a model to \"organise customer feedback and suggest improvements\", and writes a long prompt from scratch every time. Following this chapter's components, design that Skill: write the trigger conditions, the inputs, the execution steps, the extra resources to prepare, and how you would define the acceptance criteria and the confirmation points.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it cover all six components (trigger conditions, input requirements, execution steps, tools and resources, output format, error handling), does it apply the principle that a Skill with few rules is just one SKILL.md, and does it write the acceptance criteria and the confirmation point for high risk operations?"
+    },
+    "reference": "Trigger conditions: when the Agent should load this Skill automatically -- the user mentions an intent like \"customer feedback\", \"organising user reviews\" or \"improvement suggestions\", or names this Skill explicitly. Write the trigger boundary down, or you get the Skill not being used when it should be and being misused when it should not.\n\nInput requirements: what has to be in hand before starting -- the raw feedback (several items, or files), the product or feature name, the date range the feedback covers. Write down \"what is missing means work cannot start\", for example stopping to ask when there is no clear product scope instead of guessing one.\n\nExecution steps: (1) clean and categorise (strip timestamps, merge duplicate phrasings); (2) group by problem type (functional defect, user experience, price, expectations); (3) rank by impact; (4) give an actionable improvement suggestion for each. The chapter says the steps go into SKILL.md and that \"when there are few rules, one SKILL.md is enough to form a working Skill\", so do not split every detail into its own file from the start.\n\nExtra resources: a glossary (the internal product lines' jargon needs one agreed wording) in references/; an output template for the suggestions in assets/; the batch cleaning program for the feedback text in scripts/. Split something out only once it is used repeatedly or SKILL.md starts getting long -- the chapter is explicit that \"during the build stage the directory is not required to be complete in one go\".\n\nOutput: a summary of the conclusions, the categorised feedback list, the suggestions per category, and the open questions that need the product owner to confirm.\n\nAcceptance criteria: whether the categorisation covers all the feedback, whether each suggestion is actionable, whether it cites specific feedback rather than talking in generalities. That item is the chapter's \"acceptance\" element -- without acceptance criteria the quality of a Skill's output cannot be guaranteed.\n\nConfirmation points: if the suggestions will later be submitted to the requirements system or sent to customers, that has to be confirmed first; actions that delete existing records, send things externally, incur cost or publish publicly also need a confirmation point. The chapter stressed that you \"must not assume execution is allowed just because the tool is connected\".\n\nTest cases: prepare one each for the normal case, a missing input and a conflicting opinion, put them in tests/, and run them after a revision.",
+    "explanation": "What this exercise tests is the chapter's claim that \"a Skill saves these relatively stable rules down in advance\". In the long prompt you rewrite every time, what actually recurs is the method -- how to categorise, how to rank, how a suggestion should be written -- while the goal, the material and the one-off requirements still come from the Prompt. The chapter's \"Prompt and Skill are not either/or\" is exactly about that division of labour.\n\nThe second question, the trigger conditions, is easiest to leave out, and it is the threshold for whether the Skill can ever be used. This chapter's directory note reads \"entry point: name, description, input, steps and acceptance\", and the name and description are what the model uses to decide whether to load it. Too broad and it triggers everywhere; too narrow and it only works when the user names it every time.\n\nThe fourth question, when to split resources, corresponds to this chapter's \"during the build stage the directory is not required to be complete in one go\" and \"when there are few rules, one SKILL.md is enough to form a working Skill\". Splitting too eagerly carries a maintenance cost: the more files there are, the less you know which one to edit when a rule changes. So write SKILL.md first and split something out once an item is used repeatedly or the main file gets too long.\n\nThe fifth question, the acceptance criteria, is the most substantive part. This chapter lists \"acceptance\" among the elements a Skill has to make clear -- without acceptance criteria the quality of the output is down to feel. The reference answer gives three checkable ones: does the categorisation cover all the feedback, is each suggestion actionable, does it cite specific feedback.\n\nThe last question, the confirmation points, corresponds to this chapter's \"must not assume execution is allowed just because the tool is connected\". If the Skill writes suggestions back to the requirements system or sends them to customers, that step modifies records, sends things externally and publishes, so it needs a confirmation.\n\nThis exercise cannot run a real Skill; grading rests on self-assessment plus an optional AI score, and the reference answer gives a design you can compare against."
+  }
+]

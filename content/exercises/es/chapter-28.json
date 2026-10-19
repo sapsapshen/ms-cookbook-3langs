@@ -1,1 +1,117 @@
-[]
+[
+  {
+    "id": "ch28-ex01",
+    "chapter": "chapter-28",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Elegir los ficheros que hay que cargar",
+    "prompt": "Un directorio de Skill sigue esta convención: el punto de entrada es `SKILL.md`; `references/` guarda terminología y reglas de privacidad; `assets/` guarda plantillas de salida; `scripts/` guarda los programas de procesamiento mecánico; `tests/` es para la validación durante el desarrollo y no se carga en cada ejecución.\n\nEscribe una función `load_for(need)` que devuelva la lista de ficheros que hay que leer en esta ejecución:\n\n- cuando `need` contenga `\"\\u672f\\u8bed\"` (terminología) o `\"\\u9690\\u79c1\"` (privacidad), añade tanto `\"references/terms.md\"` como `\"references/privacy-rules.md\"`\n- cuando `need` contenga `\"\\u6a21\\u677f\"` (plantilla), añade `\"assets/meeting-template.md\"`\n- cuando `need` contenga `\"\\u6e05\\u6d17\"` (limpieza), añade `\"scripts/clean-transcript.py\"`\n- cuando `need` contenga `\"\\u6d4b\\u8bd5\"` (pruebas), **no** añade ningún fichero: el directorio tests no participa en la carga en tiempo de ejecución\n- haya algo coincidente o no, `\"SKILL.md\"` va siempre en primera posición\n\nSin duplicados en la lista y en el orden indicado (`SKILL.md`, references, assets, scripts). Lanza `TypeError` cuando `need` no sea una cadena.\n\nLas cuatro palabras disparadoras están en chino, así que `need` las lleva con los escapes que se muestran; en Python la forma escapada y el carácter se comportan igual.",
+    "starter": "def load_for(need):\n    # 返回需要读取的文件名列表\n    return []\n\nprint(load_for('按模板输出，清洗时间戳'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('') == ['SKILL.md'], load_for('')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('遇到术语') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], load_for('遇到术语')",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('有隐私要求') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], '隐私和术语命中同一组文件'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('套用模板') == ['SKILL.md', 'assets/meeting-template.md'], load_for('套用模板')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('清洗时间戳') == ['SKILL.md', 'scripts/clean-transcript.py'], load_for('清洗时间戳')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('跑测试') == ['SKILL.md'], 'tests 目录不参与运行时加载'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = load_for('有隐私要求，套用模板并清洗')\nassert out == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md', 'assets/meeting-template.md', 'scripts/clean-transcript.py'], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert load_for('术语术语隐私隐私') == ['SKILL.md', 'references/terms.md', 'references/privacy-rules.md'], '重复关键词不产生重复条目'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (None, 123, ['术语'], {'a': 1}):\n    try:\n        load_for(_bad)\n        assert False, '非字符串应该抛 TypeError: %r' % (_bad,)\n    except TypeError:\n        pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "_CASES = ['', '术语', '隐私', '模板', '清洗', '测试', '术语+模板', '隐私清洗',\n          '测试模板', '术语隐私模板清洗测试', '无关内容', '业务术语很多需要模板']\nfor _need in _CASES:\n    _out = load_for(_need)\n    _want = ['SKILL.md']\n    if ('术语' in _need) or ('隐私' in _need):\n        _want += ['references/terms.md', 'references/privacy-rules.md']\n    if '模板' in _need:\n        _want += ['assets/meeting-template.md']\n    if '清洗' in _need:\n        _want += ['scripts/clean-transcript.py']\n    assert _out == _want, (_need, _out, _want)\n    assert len(_out) == len(set(_out)), ('不能有重复条目', _need, _out)",
+        "weight": 26
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que un Skill es el método acumulado y el Prompt es esta tarea concreta?"
+    },
+    "reference": "def load_for(need):\n    if not isinstance(need, str):\n        raise TypeError('need must be a string')\n    files = ['SKILL.md']\n    if '\\u672f\\u8bed' in need or '\\u9690\\u79c1' in need:\n        files.append('references/terms.md')\n        files.append('references/privacy-rules.md')\n    if '\\u6a21\\u677f' in need:\n        files.append('assets/meeting-template.md')\n    if '\\u6e05\\u6d17' in need:\n        files.append('scripts/clean-transcript.py')\n    return files\n\nprint(load_for('\\u6309\\u6a21\\u677f\\u8f93\\u51fa\\uff0c\\u6e05\\u6d17\\u65f6\\u95f4\\u6233'))",
+    "explanation": "Este capítulo dice que `SKILL.md` es el punto de entrada: el Agent lo lee primero para saber qué tareas encajan con este Skill, qué entrada necesita y con qué pasos ejecutarlo; los demás directorios se cargan bajo demanda. Esta función convierte el «bajo demanda» en una regla decidible.\n\n**El punto de entrada siempre va primero.** La cadena de tareas de este capítulo es «el modelo grande decide por el nombre y la descripción si hace falta cargarlo -> lee el método de ejecución de SKILL.md -> cuando hace falta, lee otros ficheros», así que sea cual sea la necesidad de esta ejecución, `SKILL.md` se carga. La comprobación `load_for('')` que devuelve `['SKILL.md']` fija este punto.\n\n**Terminología y privacidad activan el mismo grupo de ficheros.** En el esquema de este capítulo `references/` guarda «el glosario y las reglas de clasificación de contenido» y «los requisitos de información sensible y anonimización», así que tanto una necesidad de terminología como una de privacidad leen ese mismo directorio: «hay requisitos de privacidad» y «sale un término» activan los mismos dos ficheros. Una comprobación mide las dos formas por separado.\n\n**`tests/` no participa en la carga en tiempo de ejecución.** El capítulo es explícito: «tests/ sirve principalmente para la validación durante el desarrollo y tras una revisión, no es contenido que haya que cargar en cada ejecución». Así que una necesidad que mencione «pruebas» no añade ningún fichero, y esa es la línea que más fácil se escribe mal siguiendo la costumbre de «veo una palabra clave, añado un fichero»; una comprobación mide `load_for('\\u8dd1\\u6d4b\\u8bd5') == ['SKILL.md']`.\n\n**Una palabra clave repetida no produce entradas duplicadas.** `load_for('\\u672f\\u8bed\\u672f\\u8bed\\u9690\\u79c1\\u9690\\u79c1')` sigue teniendo solo los dos ficheros de references. Parece un detalle, pero una implementación que añade una entrada por palabra clave lee el mismo fichero dos veces.\n\n**Una cadena que no es str lanza `TypeError`, no `ValueError`.** Si `need` es una lista, `'\\u672f\\u8bed' in need` sigue funcionando (en una lista, `in` es una prueba de pertenencia) pero el sentido es completamente otro, y por eso el enunciado pide descartarlo antes.\n\nLa comprobación principal recalcula la lista esperada para cada una de las 12 combinaciones de necesidad con el orden «punto de entrada -> references -> assets -> scripts» y comprueba que no haya duplicados: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas 12 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch28-ex02",
+    "chapter": "chapter-28",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Distinguir Prompt, Skill, flujo y MCP",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. El Prompt responde «qué hay que hacer esta vez»; el Skill responde «cómo se suele completar este tipo de tarea»\nB. MCP se ocupa de cómo el Agent se conecta y llama a las capacidades externas, y el Skill describe cómo usar esas capacidades para completar una tarea\nC. Un Skill puede no usar MCP en absoluto\nD. Una vez conectadas las herramientas, el Skill ya no necesita especificar puntos de confirmación antes de borrar o enviar\nE. El directorio `tests/` es contenido que un Skill debe cargar al ejecutar una tarea",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D es lo contrario de lo que dice este capítulo: «cuando se envían mensajes, se modifican registros, se borran datos, se generan costes o se publica de forma abierta, el Skill debe especificar el punto de confirmación, y no se puede asumir que la ejecución está permitida solo porque la herramienta ya está conectada». E también es lo contrario: el directorio tests sirve para validar durante el desarrollo y tras una revisión, no se carga en cada ejecución.",
+    "explanation": "Este capítulo va de qué parte cubre cada uno de los cuatro conceptos. La tabla que da es la comparación más directa: A y B se corresponden con las filas de Prompt y Skill, más la frase «MCP proporciona una forma estándar de conectar herramientas y datos externos, mientras que el Skill describe cómo usar esas capacidades para completar una clase de tareas».\n\nC sale del mismo párrafo: «un Skill puede guiar al Agent para que llame a herramientas MCP, y también puede no usar MCP en absoluto. Un servicio MCP puede a su vez ser adoptado por varios Skills». De muchos a muchos en las dos direcciones, que es lo que significa estar desacoplados.\n\nD es la línea de esta sección que más conviene recordar. El capítulo dice primero que «conectar con éxito solo significa que el Agent puede usar una capacidad, no que ya sepa cómo completar la tarea de negocio», y luego enumera las preguntas que tienen que ir en un Skill: qué proyecto consultar, en qué rango de fechas agregar, qué campos son información sensible, si hace falta confirmación antes de crear, modificar o borrar. Y justo después va la conclusión: el punto de confirmación tiene que ir escrito en el Skill, y **no se puede asumir que la ejecución está permitida solo porque la herramienta ya está conectada**. Ese es el punto de riesgo real en la frontera de permisos.\n\nE sale de la sección sobre qué compone un Skill. El capítulo dice que `tests/` sirve principalmente para la validación durante el desarrollo y tras una revisión, «no es contenido que haya que cargar en cada ejecución», que es el mismo punto que la comprobación del ejercicio anterior.\n\nHay otra cosa que se pasa por alto con facilidad: Prompt y Skill no son alternativas. Frente a una entrada distinta, el mismo Skill sigue necesitando un Prompt que indique el objetivo de esta ejecución: el Prompt le dice al Agent qué material procesar esta vez, y el Skill aporta la forma acumulada de hacer ese tipo de tarea.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch28-ex03",
+    "chapter": "chapter-28",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Convertir una petición vaga en un Skill",
+    "prompt": "Tu equipo le pide una y otra vez al modelo «organizar las opiniones de los clientes y dar suggestions de mejora», y cada vez escribe un prompt largo desde cero. Siguiendo los componentes de este capítulo, diseña ese Skill: escribe las condiciones de activación, las entradas, los pasos de ejecución, los recursos adicionales que hay que preparar y cómo definirías los criterios de aceptación y los puntos de confirmación.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Cubre los seis componentes (condiciones de activación, requisitos de entrada, pasos de ejecución, herramientas y recursos, formato de salida, gestión de errores), aplica el principio de que con pocas reglas basta un SKILL.md y deja escritos los criterios de aceptación y el punto de confirmación de las operaciones de riesgo?"
+    },
+    "reference": "Condiciones de activación: cuándo debe cargar el Agent este Skill automáticamente, cuando el usuario mencione una intención como «opiniones de clientes», «organizar valoraciones de usuarios» o «suggestions de mejora», o cuando nombre este Skill explícitamente. Escribe la frontera de activación, o habrá casos en que no se use cuando debería y se use sin que deba.\n\nRequisitos de entrada: qué hace falta tener para empezar, el texto original de las opiniones (pueden ser varias o ficheros), el nombre del producto o funcionalidad y el rango de fechas que cubren las opiniones. Escribe «qué falta para no poder empezar», por ejemplo parar a preguntar cuando no hay un alcance de producto claro en lugar de adivinarlo.\n\nPasos de ejecución: (1) limpiar y clasificar (quitar marcas de tiempo, fusionar formulaciones duplicadas); (2) agrupar por tipo de problema (defecto funcional, experiencia de uso, precio, expectativa); (3) ordenar por alcance del impacto; (4) dar una sugerencia de mejora accionable para cada una. El capítulo dice que los pasos van en SKILL.md y que «cuando hay pocas reglas, un solo SKILL.md basta para formar un Skill funcional», así que no conviene partir cada detalle en su propio fichero desde el principio.\n\nRecursos adicionales: un glosario (la jerga interna de las líneas de producto necesita un criterio unificado) en references/; una plantilla de salida para las sugerencias en assets/; el programa de limpieza por lotes del texto de opiniones en scripts/. Saca algo a su propio fichero solo cuando se use una y otra vez o cuando SKILL.md empiece a ponerse largo; el capítulo dice de forma explícita que «en la fase de construcción no se exige que el directorio esté completo de una vez».\n\nSalida: un resumen de conclusiones, la lista de opiniones clasificada, las sugerencias de cada categoría y las preguntas abiertas que necesitan que confirme el responsable del producto.\n\nCriterios de aceptación: si la clasificación cubre todas las opiniones, si cada sugerencia es accionable y si cita opiniones concretas en lugar de hablar en general. Este punto corresponde al elemento de «aceptación» del capítulo: sin criterios de aceptación, la calidad del resultado de un Skill no se puede garantizar.\n\nPuntos de confirmación: si más adelante las sugerencias van a enviarse al sistema de requisitos o a los clientes, eso hay que confirmarlo antes; las acciones que borren registros existentes, envíen algo al exterior, generen costes o publiquen de forma abierta también necesitan un punto de confirmación. El capítulo insiste en que «no se puede asumir que la ejecución está permitida solo porque la herramienta ya está conectada».\n\nCasos de prueba: prepara uno para la situación normal, otro con información que falta y otro con opiniones contradictorias, ponlos en tests/ y pásalos tras cada revisión.",
+    "explanation": "Lo que evalúa este ejercicio es la afirmación del capítulo de que «un Skill guarda por adelantado estas reglas relativamente estables». En el prompt largo que reescribes cada vez, lo que de verdad se repite es la parte del método, cómo clasificar, cómo ordenar, cómo escribir una sugerencia; mientras que el objetivo, el material y los requisitos puntuales los sigue aportando el Prompt. La frase del capítulo de que «Prompt y Skill no son alternativas» trata justamente de ese reparto.\n\nLa segunda pregunta, las condiciones de activación, es la más fácil de pasar por alto, y es el listón para que el Skill llegue a usarse. La nota del directorio en este capítulo dice «punto de entrada: nombre, descripción, entrada, pasos y aceptación», y el nombre y la descripción son justo lo que el modelo usa para decidir «¿me cargo o no?». Si es demasiado ancho se dispara en todas partes; si es demasiado estrecho solo funciona cuando el usuario lo nombra cada vez.\n\nLa cuarta pregunta, cuándo separar recursos, corresponde a la frase del capítulo «en la fase de construcción no se exige que el directorio esté completo de una vez» y a «cuando hay pocas reglas, un solo SKILL.md basta para formar un Skill funcional». Partir demasiado trae un coste de mantenimiento: cuantos más ficheros haya, menos se sabe cuál editar cuando cambia una regla. Así que escribe primero SKILL.md y saca algo a su propio fichero cuando un elemento se use repetidamente o el fichero principal se alargue.\n\nLa quinta pregunta, los criterios de aceptación, es la parte más sustantiva. El capítulo incluye «aceptación» entre los elementos que un Skill debe dejar claros: sin criterios de aceptación la calidad del resultado depende de la sensación. La respuesta de referencia da tres comprobables: si la clasificación cubre todas las opiniones, si cada sugerencia es accionable y si cita opiniones concretas.\n\nLa última pregunta, los puntos de confirmación, corresponde a la frase del capítulo de que «no se puede asumir que la ejecución está permitida solo porque la herramienta ya está conectada». Si el Skill escribe sugerencias de vuelta en el sistema de requisitos o se las manda a los clientes, ese paso modifica registros, envía al exterior y publica, así que necesita confirmación.\n\nEste ejercicio no puede ejecutar un Skill real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un diseño con el que comparar."
+  }
+]

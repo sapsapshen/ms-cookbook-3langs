@@ -1,1 +1,107 @@
-[]
+[
+  {
+    "id": "ch30-ex01",
+    "chapter": "chapter-30",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Implementar la comprobación de versión de Node",
+    "prompt": "Pi exige Node.js **22.19.0 o superior**, y cuando no se cumple hay que explicar antes cómo actualizar.\n\nEscribe una función `node_ok(version)`: `version` es una cadena de versión con forma `\"v22.19.0\"` (puede no tener el prefijo `v` y puede quedarse en la versión menor, por ejemplo `\"v22.19\"`). Devuelve `True` cuando se cumple el requisito y `False` en caso contrario.\n\nLanza `ValueError` ante una cadena que no se pueda interpretar (por ejemplo `\"unknown\"`, `\"\"`, `None`).",
+    "starter": "MIN_VERSION = (22, 19, 0)\n\n\ndef node_ok(version):\n    # 返回 True / False；无法解析时抛 ValueError\n    raise ValueError('not implemented')\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v22.19.0') is True, '恰好等于下限应当满足'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v22.18.9') is False, '次版本比 19 小一格就不满足'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v23.0.0') is True and node_ok('v24.5.1') is True, '主版本更高就满足'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('v20.11.0') is False and node_ok('v9.99.99') is False, '主版本更低就不满足，哪怕次版本很大'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert node_ok('22.19.0') is True and node_ok('v22.19') is True and node_ok('v22.19.5') is True, '可以没有 v 前缀，也可以只给到次版本'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    node_ok('unknown')\n    assert False, '无法解析的版本号应该抛 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('', None, 'unknown', 'v', 'vx.y.z', 'v22.x'):\n    try:\n        node_ok(_bad)\n        assert False, '无法解析的版本号应该抛 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _ma in range(18, 27):\n    for _mi in range(0, 24):\n        for _pa in (0, 1, 5):\n            _v = 'v%d.%d.%d' % (_ma, _mi, _pa)\n            _want = (_ma, _mi, _pa) >= (22, 19, 0)\n            assert node_ok(_v) is _want, (_v, node_ok(_v), _want)",
+        "weight": 40
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que comparar versiones es comparar una tupla por niveles: mayor, menor y parche?"
+    },
+    "reference": "def node_ok(version):\n    if not isinstance(version, str):\n        raise ValueError('version must be a string')\n    parts = version.strip().lstrip('vV').split('.')\n    if not 1 <= len(parts) <= 3:\n        raise ValueError('unparsable version: %r' % (version,))\n    nums = []\n    for part in parts:\n        if not part.isdigit():\n            raise ValueError('unparsable version: %r' % (version,))\n        nums.append(int(part))\n    while len(nums) < 3:\n        nums.append(0)\n    return tuple(nums) >= MIN_VERSION",
+    "explanation": "Las versiones no se pueden comparar como cadenas: `\"v9.99.99\"` es mayor que `\"v22.19.0\"` en orden lexicográfico, pero 9 es menor que 22, así que una versión mayor más baja tiene que suspender. La forma correcta es separar en una tupla de enteros y comparar nivel por nivel: la comparación de tuplas de Python compara primero la versión mayor y solo pasa a la menor cuando las mayores coinciden, que es exactamente la regla del versionado semántico.\n\n**El límite inferior es inclusivo.** Este capítulo escribe `>= 22.19.0`, así que `v22.19.0` tiene que pasar mientras que `v22.18.9`, una menor por debajo, tiene que bloquearse. Escribir un mayor que estricto juzga mal una versión que queda justo en el límite, y una comprobación vigila esos dos puntos.\n\n**Quedarse en la versión menor sigue siendo una entrada válida.** `v22.19` no tiene parche y por convención el parche es 0, así que es 22.19.0, justo el límite, y pasa. Una implementación que lanza ante un segmento ausente falla aquí.\n\nLa comprobación principal recorre versiones mayores de 18 a 26 x menores de 0 a 23 x parches de 0, 1 y 5, 648 cadenas de versión en total, calculando el resultado esperado de forma independiente para cada una: está ahí para impedir que te aprenses la respuesta, porque una tabla de búsqueda no cubre 648, y devolver siempre `True` o `False` tampoco pasa.\n\nNota honesta sobre la corrección: la regla de entrada inválida la vigilan dos comprobaciones juntas (8/122 y 16/122, 20% en total, justo por encima del umbral de P1), y eso la convierte en la parte más débil: solo vigila si se lanza `ValueError`, y no distingue si lanzaste por no saber interpretarla o por casualidad."
+  },
+  {
+    "id": "ch30-ex02",
+    "chapter": "chapter-30",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar los valores por defecto y la seguridad de Pi",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. Las herramientas centrales que Pi entrega al modelo por defecto son solo cuatro: read, write, edit y bash\nB. Pi muestra un cuadro de confirmación antes de borrar un archivo o ejecutar un comando, así que se puede usar sin miedo directamente en un ordenador personal\nC. `--tools read,grep,find,ls` limita las herramientas disponibles al modo de solo lectura\nD. Una vez que Pi está dentro de Docker, un directorio de trabajo montado en él sigue pudiendo escribir en el host\nE. Pi escanea automáticamente los Skills que ya haya en `~/.claude/skills` y `~/.codex/skills`",
+    "explanation": "Las respuestas correctas son A, C y D.\n\nA es la sección donde este capítulo posiciona Pi: «las herramientas centrales que Pi entrega al modelo por defecto son solo cuatro: `read`, `write`, `edit` y `bash`», y más adelante sí dice que el CLI más nuevo puede abrir `grep`, `find` y `ls` bajo demanda. El comentario del propio capítulo sobre esto es que «no parece mucho, pero un Agent por debajo solo es leer, escribir, editar y ejecutar».\n\nC y D están los dos en la trampa que este capítulo señala. Dice que Pi por defecto **no** muestra ventanas de confirmación como algunos Agents de escritorio, sino que «hereda directamente los ficheros, la red, las credenciales y los permisos de sistema del proceso que lo lanza», y por eso da una orden para bloquearlo en solo lectura; y al hablar del aislamiento con Docker advierte específicamente de que «un directorio de trabajo montado en él sigue pudiendo escribir en el host», mientras que montar el `~/.pi/agent` de la máquina expone también al contenedor los ficheros de autenticación y de sesión.\n\n**B es lo contrario de lo que este capítulo afirma, y además lleva el sentido cambiado**: la frase es «No permission popups», es decir, **no hay** protección. A continuación dice que para quien domina la terminal eso representa un modo YOLO, pero acto seguido advierte a quien empieza de que «un Prompt escrito con poco rigor puede llegar a hacer que el Agent haga daños». Así que «se puede usar sin miedo directamente» lee un aviso de riesgo como si fuera una garantía de seguridad.\n\n**E es justo la distinción que este capítulo debe aclarar, así que no cuenta como «coincidir con el capítulo»**. Las únicas ubicaciones de **escaneo automático** que lista son cuatro: `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/` y `.agents/skills/`. `~/.claude/skills` y `~/.codex/skills` **no están** entre ellas: el capítulo dice que «si ya tienes acumulados unos cuantos Claude Skills o Codex Skills, puedes editar la configuración global `~/.pi/agent/settings.json`», añadirlos a mano al array `\"skills\"` y solo entonces ejecutar `/reload`. Así que «escanea automáticamente `~/.claude/skills` y `~/.codex/skills`» es lo contrario del texto: esas dos rutas son precisamente las que necesitan un paso de configuración manual.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen.",
+    "reference": "B es lo contrario de lo que dice este capítulo: Pi no muestra ventanas de permiso por defecto (No permission popups) y hereda directamente los ficheros, la red, las credenciales y los permisos de sistema del proceso que lo lanza, así que quien empieza debe usar un directorio vacío, bloquear en solo lectura con `--tools` al leer código y no dejar que el modelo lea `auth.json` ni `.env`.\n\nE también es lo contrario: solo se escanean automáticamente cuatro ubicaciones, `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/` y `.agents/skills/`; `~/.claude/skills` y `~/.codex/skills` hay que añadirlos a mano en el array `\"skills\"` de `~/.pi/agent/settings.json` y luego ejecutar `/reload`.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 3
+      }
+    ]
+  },
+  {
+    "id": "ch30-ex03",
+    "chapter": "chapter-30",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Diseñar una adopción segura de Pi en un equipo",
+    "prompt": "Vas a llevar Pi a un equipo con acceso al código privado de la empresa. Siguiendo este capítulo, escribe: cómo aislarías el entorno, qué tarea usarías para la primera validación y con qué señal considerarías que «Pi no encaja en este escenario».",
+    "explanation": "Esta pregunta es la frase del capítulo de que «cuanta más libertad, más hay que vigilar la seguridad por tu cuenta», junto con los avisos que da para quien empieza.\n\nLa clave de la primera pregunta es distinguir los niveles que da este capítulo, porque su intensidad es distinta: «si de verdad quieres que corra solo mucho rato, ponlo en Docker, OpenShell u otro sandbox», y lo más cómodo es meter todo Pi dentro de Docker; pero a la vez avisa de que «un directorio de trabajo montado en él sigue pudiendo escribir en el host», y que montar `~/.pi/agent` expone al contenedor los ficheros de autenticación y de sesión. Así que «está en Docker, luego está seguro» está incompleto: la política de montajes es la mitad que decide si el aislamiento se sostiene.\n\nLa segunda pregunta, la primera validación, tiene un camino claro en este capítulo: empezar por un directorio vacío, bloquear en solo lectura con `--tools` al leer código y luego usar una tarea mínima para comprobar que «de verdad sabe trabajar». Este ejercicio lo acota a «un equipo con acceso a código privado», así que la validación en solo lectura y el aislamiento de credenciales tienen que ir juntos: el capítulo advierte expresamente de no dejar que el modelo lea `~/.pi/agent/auth.json`, `.env` y otros ficheros de credenciales.\n\nLa tercera pregunta es la más valiosa. El capítulo da de hecho un criterio bastante duro para «para quién sirve Pi»: dice que si lo único que quieres es descargar un producto, iniciar sesión y usarlo de forma estable dentro de barreras de seguridad, «Pi no es necesariamente la opción menos engorrosa», porque «omite deliberadamente algunas cosas que deberían venir de serie, y hay bastante que configurar a mano». Esa frase se traduce directamente en las señales para no usarlo: cuando necesitas aprobación de permisos y lista de tareas listas para usar, y nadie en el equipo tiene tiempo para configurar extensiones, la libertad de Pi pasa de ventaja a carga.\n\nEl último punto se deduce del ecosistema de Skills y Extensions que describe este capítulo: como «te falta algo, pues que Pi se escriba una Extension», lo primero cuando algo no cuadra es averiguar qué clase de capacidad falta, en lugar de cambiar de herramienta a la primera.\n\nEste ejercicio no puede ejecutar un Agent real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una lista con la que comparar.",
+    "reference": "Aislar el entorno: escríbelo en tres capas. La primera es el directorio de trabajo: el capítulo dice que quien empieza «tiene que usar siempre un directorio vacío, no abrir de entrada el Escritorio, Documentos o todo el Home», y en un equipo pasa lo mismo, así que dale un directorio de pruebas dedicado en lugar de la raíz del repositorio. La segunda es el alcance de las herramientas: al leer código, usa `--tools read,grep,find,ls` para bloquear las herramientas en solo lectura, que es lo que el capítulo llama bloquear en solo lectura. La tercera es el aislamiento de proceso: el capítulo dice que «si de verdad quieres que corra solo durante mucho tiempo, ponlo en Docker, OpenShell u otro sandbox», y que lo más fácil de usar es meter todo Pi en Docker. Escribe también la política de montaje: un directorio de trabajo montado sigue pudiendo escribir en el host, así que usa un montaje de solo lectura durante la fase de validación en solo lectura; y si además tiene que modificar código, recoge los cambios en una copia de trabajo dedicada. Las credenciales van aparte: el capítulo advierte de no dejar que el modelo lea `~/.pi/agent/auth.json`, `.env` y otros ficheros de credenciales, ni de montar el `~/.pi/agent` de la máquina en el contenedor, porque quedarían expuestos los ficheros de autenticación y de sesión. Revisa el código fuente de los Packages y Extensions de terceros antes de instalarlos.\n\nPrimera validación: mantén el orden del capítulo, primero solo lectura y después escritura. Ejecuta `--tools read,grep,find,ls` con la instrucción «lee el directorio actual, dime de qué se ocupa el proyecto, dónde está el fichero de entrada y qué comprobaciones deberían ejecutarse. No modifiques ningún fichero», y confirma primero que el modelo conecta, que lee el espacio de trabajo y que la restricción de herramientas surte efecto. Después cambia a un directorio de pruebas dedicado para la prueba de escritura mínima; la plantilla que da el capítulo es: confirmar el directorio de trabajo actual y listar lo que ya hay, crear un fichero y luego volver a revisar el directorio y explicar qué cambió de verdad. Esa tarea toca a la vez lectura de directorio, escritura de fichero, cumplimiento de restricciones y verificación del resultado.\n\nSeñales de que no encaja: (1) el equipo quiere algo que funcione nada más instalarlo, pero el capítulo dice que Pi «omite deliberadamente algunas cosas que deberían venir de serie, y hay bastante que configurar a mano»; cuando nadie tiene tiempo para configurar extensiones, la libertad se convierte en carga; (2) hace falta aprobación manual antes de cada operación perigosa, porque el capítulo dice que Pi no tiene ventanas de permiso por defecto (No permission popups), que es una capacidad que hay que cubrir escribiendo una Extension; (3) hacen falta MCP y sub-Agents listos para usar, y ambas cosas solo llegan tras instalar extensiones; (4) una tarea que dura horas tiene que empezar de cero si se interrumpe, lo que significa que la persistencia de estado no está bien configurada; (5) cuando la ruta de la tarea es muy incierta y hacen falta restricciones estrictas, la falta de control de permisos permite que un Prompt escrito con poco rigor provoque pérdidas reales.\n\nUn último criterio: cuando algo no cuadre, averigua primero qué tipo de capacidad falta. El consejo del capítulo es «te falta algo, pues que Pi se escriba una Extension», así que primero completa el mecanismo y solo después cambias de herramienta.",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Distingue los tres niveles de intensidad (directorio vacío / herramientas bloqueadas en solo lectura / aislamiento en contenedor), menciona que un montaje sigue pudiendo escribir en el host y que los ficheros de credenciales no deben exponerse, hace la primera validación en el orden solo lectura antes que escritura, y concreta las señales de «no encaja» lo bastante como para decidir y no como un vago «no funcionó bien»?"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

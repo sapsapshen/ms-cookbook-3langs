@@ -738,7 +738,7 @@ ALL_PAIRS = [(chapter, exercise) for chapter, exercise in ANY_EXERCISE]
 
 def rows(count, **overrides):
     """`count` rows cycling through the real corpus, so a batch can be bigger
-    than the nine exercises that exist today without inventing ids."""
+    than the corpus itself without inventing ids."""
     return [dict({'chapter': chapter, 'exercise': exercise, 'passed': 1, 'score': 0.5}, **overrides)
             for chapter, exercise in (ALL_PAIRS * count)[:count]]
 
@@ -757,10 +757,14 @@ def test_sixty_rows_in_one_request_are_stored(site):
     """The second ceiling: `max_length=50` answered 51 rows with a 422. The cap
     now sits far above any plausible corpus."""
     client = reader(site)
-    response = client.post(PROGRESS, json={'items': rows(60)})
+    # Sixty rows only exercise the ceiling while the corpus has fewer than sixty
+    # exercises; past that the batch is the same size as the corpus, which is
+    # still the property under test (the whole corpus fits in one request).
+    count = max(60, len(ALL_PAIRS))
+    response = client.post(PROGRESS, json={'items': rows(count)})
     assert response.status_code == 201
-    assert response.json() == {'saved': 60, 'skipped': 0}
-    # 60 rows over the 9 real ids upsert onto all 9; none is lost.
+    assert response.json() == {'saved': count, 'skipped': 0}
+    # The rows upsert onto the real ids; none is lost.
     assert len(client.get(PROGRESS).json()['items']) == len(ALL_PAIRS)
 
 
@@ -818,8 +822,8 @@ def test_a_row_with_an_out_of_range_pass_is_skipped_not_a_server_error(site):
 
 
 def test_one_bad_score_does_not_poison_the_batch(site):
-    """The end of the row-level bug: nine good rows plus a score of 1.7 used to
-    be a 422 that lost all ten. The nine are stored."""
+    """The end of the row-level bug: a full batch of good rows plus a score of
+    1.7 used to be a 422 that lost the whole batch. The good rows are stored."""
     client = reader(site)
     good = [{'chapter': chapter, 'exercise': exercise, 'passed': 1, 'score': 0.5}
             for chapter, exercise in ALL_PAIRS]
@@ -827,7 +831,7 @@ def test_one_bad_score_does_not_poison_the_batch(site):
     batch.insert(4, {'chapter': SAMPLE_CHAPTER, 'exercise': SAMPLE_ID, 'score': 1.7})
     response = client.post(PROGRESS, json={'items': batch})
     assert response.status_code == 201
-    assert response.json() == {'saved': 9, 'skipped': 1}
+    assert response.json() == {'saved': len(ALL_PAIRS), 'skipped': 1}
     stored = {item['exercise'] for item in client.get(PROGRESS).json()['items']}
     assert stored == {exercise for _, exercise in ALL_PAIRS}
 

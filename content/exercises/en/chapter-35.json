@@ -1,1 +1,95 @@
-[]
+[
+  {
+    "id": "ch35-ex01",
+    "chapter": "chapter-35",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Aggregate per-item scores into a leaderboard",
+    "prompt": "The result of a community evaluation is usually \"each model's score on a set of questions\". Write two functions that aggregate those into a leaderboard.\n\n`rank(models)`:\n\n- `models` is a dict whose keys are model names and whose values are that model's list of per-question scores (numbers from 0 to 100);\n- an empty score list averages to `0.0`; otherwise the average is the sum of the scores divided by the number of questions, **rounded to 1 decimal place**;\n- it returns a list of `{'name': model name, 'avg': average}`, sorted by average **from high to low**, and on equal averages by model name in **lexicographic order**.\n\n`best_model(models)`: returns the name of the first row of the leaderboard; returns `None` when `models` is empty (or when every model has no scores and they all tie).",
+    "starter": "def rank(models):\n    # 返回排好序的榜单\n    raise NotImplementedError\n\n\ndef best_model(models):\n    # 返回第一名模型名，没有则返回 None\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "_r = rank({'a': [80, 90, 70], 'b': []})\nassert _r == [{'name': 'a', 'avg': 80.0}, {'name': 'b', 'avg': 0.0}], _r",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({}) == [], rank({})",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert best_model({'a': [80, 90], 'b': [20]}) == 'a', best_model({'a': [80, 90], 'b': [20]})",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert best_model({}) is None, '空榜单没有第一名'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({'x': [1, 2]})[0]['avg'] == 1.5, '1.5 只需要补一个 0，不该被四舍五入成 2.0'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({'x': [1, 1, 2]})[0]['avg'] == 1.3, '4/3 = 1.333... 要四舍五入成 1.3'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "_v = rank({'x': [2, 2]})[0]['avg']\nassert _v == 2.0 and isinstance(_v, float), (_v, type(_v))",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_t = rank({'x': [60, 70], 'y': [90, 80], 'z': [10, 10]})\nassert [i['name'] for i in _t] == ['y', 'x', 'z'], _t\nassert best_model({'x': [60, 70], 'y': [90, 80], 'z': [10, 10]}) == 'y'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "_t = rank({'bb': [50], 'aa': [50], 'cc': [50]})\nassert [i['name'] for i in _t] == ['aa', 'bb', 'cc'], '同分时必须按模型名字典序'\nassert best_model({'bb': [50], 'aa': [50], 'cc': [50]}) == 'aa', '同分时第一名也要确定'",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 5):\n    for _i in range(0, _n + 1):\n        _one = [10 * _j for _j in range(_i + 1)]\n        for _w in (0, 1, 2):\n            _in = {'k': _one, 'j': [50 + _w]}\n            _out = rank(_in)\n            _want = sorted(\n                [{'name': 'k', 'avg': round(sum(_one) / len(_one), 1) if _one else 0.0},\n                 {'name': 'j', 'avg': float(50 + _w)}],\n                key=lambda i: (-i['avg'], i['name']))\n            assert _out == _want, (_one, _w, _out, _want)\n            assert best_model(_in) == _want[0]['name'], (_one, _w, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it handle the division by zero of an empty list, the deterministic order of ties, and the boundary of rounding the average?"
+    },
+    "reference": "def rank(models):\n    rows = []\n    for name, scores in models.items():\n        avg = round(sum(scores) / len(scores), 1) if scores else 0.0\n        rows.append({'name': name, 'avg': avg})\n    rows.sort(key=lambda row: (-row['avg'], row['name']))\n    return rows\n\n\ndef best_model(models):\n    rows = rank(models)\n    return rows[0]['name'] if rows else None",
+    "explanation": "This exercise is the chapter's \"see who is stronger\" -- the per-item scores on their own say nothing about which is better, they have to be aggregated into one comparable number and then sorted. Four places are easy to get wrong.\n\n**An empty list cannot be divided.** `sum([]) / len([])` is a `ZeroDivisionError`, so you have to give 0.0 explicitly. One check deliberately includes a model whose only score list is empty, precisely to watch that.\n\n**Ties need a deterministic order.** Sorting on the score alone leaves two 50.0 rows in whichever order the dict happened to be built in, so the same data written a different way gives a different leaderboard. Writing the key as `(-avg, name)` expresses both \"higher score first\" and \"equal score by name order\" at once, and it also makes the first place unique.\n\n**Rounding has a boundary.** The average of `[1, 2]` is 1.5, which needs no change at one decimal, while the average of `[1, 1, 2]` is 4/3 = 1.333... and has to become 1.3. Those two groups are guarded separately, so an implementation that does not round fails.\n\n**The first place is graded too.** `best_model` is not as obvious as \"take element 0 of `rank`\" -- on an empty leaderboard it has to return `None` rather than raising `IndexError`, and on a tie it has to give the lexicographically smallest name. Each of those has its own check.\n\nThe main check combines \"0 to 4 scores\" with \"another model scoring 50, 51 or 52\" into a batch of inputs and compares each against an independently computed leaderboard -- it is there to stop a lookup table: it cannot cover these combinations.\n\nHonest boundary note on grading: the tie ordering is guarded by two checks together, 16/130 and 30/130 (35% combined), which clears the P1 threshold. But \"`best` returns `None` on an empty leaderboard\" is guarded by 8/130 alone, which makes it the weakest part: an implementation that would raise `IndexError` on an empty leaderboard passes because it already cleared the non-empty half of the same check, so this requirement is one you have to confirm yourself."
+  },
+  {
+    "id": "ch35-ex02",
+    "chapter": "chapter-35",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge when a model bake-off is trustworthy",
+    "prompt": "Which of these statements describe a trustworthy model bake-off? (multi-select)\n\nA. Looking at the overall ranking is enough to tell which model is stronger; there is no need to publish the raw outputs\nB. The model version, the prompt and the sampling parameters have to be fixed, or the results are not comparable\nC. A model that comes first on the leaderboard is therefore the strongest in every scenario\nD. Publish each question's raw output together with the scoring basis, so that others can check it\nE. A bake-off only needs one or two simple questions, and the more questions you add the more it proves",
+    "explanation": "The answers are B and D only.\n\nB is the core of the whole exercise. This chapter's premise is testing the current mainstream models together to \"see who is stronger\", and to compare anything the things being compared have to run under the same conditions -- change the model version, the prompt or the sampling parameters and you have tested something else, which makes the ranking meaningless.\n\nD follows directly from B. This chapter is about a community effort, and a conclusion only holds if somebody else can repeat it. Publishing a ranking with no raw output and no scoring basis leaves a reader unable to tell how the score was awarded and unable to reproduce the same result on their own machine, so the ranking cannot be checked.\n\nA and D are exactly a pair: A says \"publishing the ranking is enough\", D says \"publish the raw output\", and the standard here is the latter.\n\nC is over-generalisation. What this chapter asks is \"who is stronger\", and that conclusion only holds for the batch of questions the bake-off covered; reading first place as \"strongest in every scenario\" turns a measurement with boundaries into a universal claim.\n\nE contradicts \"see who is stronger\" outright: leading on one or two simple questions says nothing about overall strength. Few questions means narrow coverage, and the places things most often go wrong are exactly the ones that went untested.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded.",
+    "reference": "A is the opposite of D: publishing only the ranking without the raw outputs and the scoring basis leaves nobody able to check it, so the conclusion of a community evaluation is not credible. C overstates: what this chapter asks is \"who is stronger\", and that conclusion only holds for the set of questions the bake-off covered. E contradicts \"see who is stronger\": leading on one or two simple questions says nothing about overall strength, and few questions means narrow coverage.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "D"
+        ],
+        "weight": 3
+      }
+    ]
+  }
+]

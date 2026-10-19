@@ -1,1 +1,95 @@
-[]
+[
+  {
+    "id": "ch35-ex01",
+    "chapter": "chapter-35",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Agregar las puntuaciones por ítem en una tabla",
+    "prompt": "El resultado de una evaluación comunitaria suele ser «la puntuación de cada modelo en varias preguntas». Escribe dos funciones que agreguen esos datos en una tabla.\n\n`rank(models)`:\n\n- `models` es un diccionario cuyas claves son nombres de modelo y cuyos valores son las listas de puntuaciones por pregunta de ese modelo (números de 0 a 100);\n- una lista de puntuaciones vacía promedia 0.0; si no, la media es la suma de las puntuaciones dividida entre el número de preguntas, **redondeada a 1 decimal**;\n- devuelve una lista de `{'name': nombre del modelo, 'avg': media}`, ordenada por media **de mayor a menor**, y ante empates por nombre de modelo en **orden lexicográfico**.\n\n`best_model(models)`: devuelve el nombre de la primera fila de la tabla; devuelve `None` cuando `models` está vacío (o cuando todos los modelos se quedan sin puntuaciones y quedan empatados).",
+    "starter": "def rank(models):\n    # 返回排好序的榜单\n    raise NotImplementedError\n\n\ndef best_model(models):\n    # 返回第一名模型名，没有则返回 None\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "_r = rank({'a': [80, 90, 70], 'b': []})\nassert _r == [{'name': 'a', 'avg': 80.0}, {'name': 'b', 'avg': 0.0}], _r",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({}) == [], rank({})",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert best_model({'a': [80, 90], 'b': [20]}) == 'a', best_model({'a': [80, 90], 'b': [20]})",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert best_model({}) is None, '空榜单没有第一名'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({'x': [1, 2]})[0]['avg'] == 1.5, '1.5 只需要补一个 0，不该被四舍五入成 2.0'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert rank({'x': [1, 1, 2]})[0]['avg'] == 1.3, '4/3 = 1.333... 要四舍五入成 1.3'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "_v = rank({'x': [2, 2]})[0]['avg']\nassert _v == 2.0 and isinstance(_v, float), (_v, type(_v))",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "_t = rank({'x': [60, 70], 'y': [90, 80], 'z': [10, 10]})\nassert [i['name'] for i in _t] == ['y', 'x', 'z'], _t\nassert best_model({'x': [60, 70], 'y': [90, 80], 'z': [10, 10]}) == 'y'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "_t = rank({'bb': [50], 'aa': [50], 'cc': [50]})\nassert [i['name'] for i in _t] == ['aa', 'bb', 'cc'], '同分时必须按模型名字典序'\nassert best_model({'bb': [50], 'aa': [50], 'cc': [50]}) == 'aa', '同分时第一名也要确定'",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 5):\n    for _i in range(0, _n + 1):\n        _one = [10 * _j for _j in range(_i + 1)]\n        for _w in (0, 1, 2):\n            _in = {'k': _one, 'j': [50 + _w]}\n            _out = rank(_in)\n            _want = sorted(\n                [{'name': 'k', 'avg': round(sum(_one) / len(_one), 1) if _one else 0.0},\n                 {'name': 'j', 'avg': float(50 + _w)}],\n                key=lambda i: (-i['avg'], i['name']))\n            assert _out == _want, (_one, _w, _out, _want)\n            assert best_model(_in) == _want[0]['name'], (_one, _w, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Resuelve la división entre cero de una lista vacía, el orden determinista ante empates y el límite del redondeo de la media?"
+    },
+    "reference": "def rank(models):\n    rows = []\n    for name, scores in models.items():\n        avg = round(sum(scores) / len(scores), 1) if scores else 0.0\n        rows.append({'name': name, 'avg': avg})\n    rows.sort(key=lambda row: (-row['avg'], row['name']))\n    return rows\n\n\ndef best_model(models):\n    rows = rank(models)\n    return rows[0]['name'] if rows else None",
+    "explanation": "Este ejercicio es el «a ver quién es más fuerte» del capítulo: las puntuaciones por ítem, por sí solas, no dicen quién es mejor; hay que agregarlas en un número comparable y luego ordenar. Hay cuatro puntos donde es fácil equivocarse.\n\n**Una lista vacía no se puede dividir.** `sum([]) / len([])` es un `ZeroDivisionError`, así que hay que dar 0.0 explícitamente. Una comprobación incluye a propósito un modelo cuya única lista de puntuaciones está vacía, justo para vigilar eso.\n\n**Los empates necesitan un orden determinista.** Si solo ordenas por la puntuación, dos 50.0 quedan en el orden en que se construyó el diccionario, así que los mismos datos escritos de otra forma dan otra tabla. Escribir la clave como `(-avg, name)` expresa a la vez «la puntuación más alta primero» y «a igual puntuación, por orden de nombre», y de paso garantiza que el primer puesto es único.\n\n**El redondeo tiene un límite.** La media de `[1, 2]` es 1.5, y con un decimal no hay que tocar nada; la media de `[1, 1, 2]` es 4/3 = 1.333... y tiene que convertirse en 1.3. Esos dos grupos se vigilan por separado, así que una implementación que no redondee suspende.\n\n**El primer puesto también se corrige.** `best_model` no es tan obvio como «coge el elemento 0 de `rank`»: con la tabla vacía tiene que devolver `None` en lugar de lanzar `IndexError`, y ante un empate tiene que dar el nombre lexicográficamente menor. Cada uno de esos dos puntos tiene su comprobación.\n\nLa comprobación principal combina «de 0 a 4 puntuaciones» con «otro modelo que saca 50, 51 o 52» en un lote de entradas y compara cada grupo con una tabla calculada de forma independiente: está ahí para impedir una tabla de búsqueda, que no puede cubrir esas combinaciones.\n\nNota honesta sobre la corrección: el orden ante empates lo vigilan dos comprobaciones juntas, 16/130 y 30/130 (35% en total), que supera el umbral de P1. Pero «`best` devuelve `None` con la tabla vacía» lo vigila solo la de 8/130, y eso lo convierte en la parte más débil: una implementación que lanzaría `IndexError` con la tabla vacía pasa porque ya superó la mitad no vacía de la misma comprobación, así que este requisito conviene confirmarlo por tu cuenta."
+  },
+  {
+    "id": "ch35-ex02",
+    "chapter": "chapter-35",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar cuándo es creíble un confronto entre modelos",
+    "prompt": "¿Cuáles de estas afirmaciones describen un confronto entre modelos creíble? (selección múltiple)\n\nA. Con mirar la clasificación general basta para saber qué modelo es más fuerte; no hace falta publicar las salidas originales\nB. La versión del modelo, el prompt y los parámetros de muestreo tienen que estar fijados, o los resultados no son comparables\nC. Que un modelo ocupe el primer puesto en la clasificación significa que es el más fuerte en todos los escenarios\nD. Publica la salida original de cada pregunta junto con el criterio de puntuación, para que otros puedan revisarlo\nE. El contraste solo necesita una o dos preguntas sencillas, y cuantas más preguntas se añadan más demuestra",
+    "explanation": "Las únicas respuestas correctas son B y D.\n\nB es el núcleo de todo el ejercicio. La premisa de este capítulo es probar juntos los modelos hoy en uso para «a ver quién es más fuerte», y para poder comparar, lo que se compara tiene que correr en las mismas condiciones: si cambias la versión del modelo, el prompt o los parámetros de muestreo, ya has probado otra cosa, y la clasificación pierde el sentido.\n\nD va justo detrás de B. Este capítulo trata de una iniciativa comunitaria, y una conclusión solo se sostiene si otro puede repetirla. Publicar una clasificación sin salida original ni criterio de puntuación deja al lector sin saber cómo se dio la nota y sin poder reproducir el mismo resultado en su propia máquina, así que la clasificación no se puede comprobar.\n\nA y D son justo una pareja: A dice «basta con publicar la clasificación», D dice «publica la salida original», y el listón aquí es lo segundo.\n\nC es una generalización excesiva. Lo que este capítulo plantea es «quién es más fuerte», y esa conclusión solo vale para el lote de preguntas que cubrió el contraste; leer el primer puesto como «el más fuerte en todos los escenarios» convierte una medición con límites en una afirmación universal.\n\nE contradice de frente el «a ver quién es más fuerte»: liderar en una o dos preguntas sencillas no dice nada sobre la fuerza global. Pocas preguntas significan poca cobertura, y los puntos donde más veces salen problemas son justo los que no se midieron.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen.",
+    "reference": "A es lo contrario de D: si solo se publica la clasificación sin las salidas originales ni el criterio de puntuación, nadie puede revisarlo y la conclusión de una evaluación comunitaria no es creíble. C es una generalización excesiva: lo que este capítulo plantea es «quién es más fuerte», y esa conclusión solo vale para el conjunto de preguntas que el contraste cubrió. E contradice el «a ver quién es más fuerte»: liderar en una o dos preguntas sencillas no dice nada de la fuerza global, y pocas preguntas significan poca cobertura.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "D"
+        ],
+        "weight": 3
+      }
+    ]
+  }
+]

@@ -26,9 +26,32 @@ CJK = re.compile(r'[一-鿿　-〿＀-￯]')
 # so they must survive. Latin-1 letters are never intentional: they are
 # readable Spanish prose that a translator tool escaped by accident.
 LITERAL_ESCAPE = re.compile(r'\\u([0-9a-fA-F]{4})')
+# Hangul, Cyrillic and kana. No exercise in this book is written in those
+# scripts, so an escape decoding to one is a stray fragment left by whatever
+# tool produced the translation -- ch17-ex02 shipped a Korean 근거 where the
+# Chinese said 主要依据. Outside CJK+ASCII, a translation field is a defect
+# however it happens to be spelled.
+FOREIGN_SCRIPT = re.compile(r'[Ѐ-ӿ가-힯぀-ヿ]')
+# The fields a translation has to cover. `starter` and `checks` are code the
+# grader runs and are byte-identical to zh by rule; `reference` is code on
+# code/build exercises and prose on reflect/predict.
+TRANSLATED_FIELDS = ('objective', 'prompt', 'explanation', 'reference')
+# Quote pairs a translated field may use around a sample. `'` and `"` are
+# listed after the typographic pairs so a Spanish «...» wins over a stray
+# apostrophe.
+QUOTE_PAIRS = (('“', '”'), ('«', '»'), ('`', '`'), ('"', '"'), ("'", "'"))
+# What may sit inside a quoted sample besides the Chinese itself: the f-string
+# placeholders and the punctuation of a code snippet. Any real word means the
+# quote mixes translated prose with an untranslated fragment.
+SAMPLE_SKELETON = re.compile(r'^[A-Za-z0-9_{}()\[\],.\-]*$')
 # Latin-1 Supplement, minus the multiplication/division signs.
 LATIN1 = {c for c in range(0xA0, 0x100)} - {0xD7, 0xF7}
 REPLACEMENT_CHAR = '\ufffd'
+
+
+def unescape(text):
+    """Decode the literal `\\uXXXX` runs a reader sees in the raw file."""
+    return LITERAL_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), text)
 
 
 def book_chapters():
@@ -157,13 +180,139 @@ def run_checks():
                 assert twin['difficulty'] == item['difficulty'], \
                     f'{item["id"]} difficulty differs between zh and {lang}: ' \
                     f'{item["difficulty"]} vs {twin["difficulty"]}'
+                # The starter is the code the learner starts from, and the rule
+                # is that it is never translated: a translated starter would
+                # rename the functions the checks call. Compare it byte for
+                # byte rather than by shape.
+                assert twin.get('starter') == item.get('starter'), \
+                    f'{item["id"]} starter differs between zh and {lang}; ' \
+                    'starter is code and must stay identical'
         seen |= zh
     # Compare the union of every chapter's ids against the total count, not
     # against one chapter: base_ids only holds the first zh chapter.
     total = sum(len(v) for (_, lang), v in corpus.items() if lang == 'zh')
     assert len(seen) == total, 'exercise ids repeat across chapters'
+    check_untranslated_escapes(corpus)
     check_raw_text()
     return manifest, corpus
+
+
+def check_untranslated_escapes(corpus):
+    r"""Reject Chinese left sitting in an en/es sentence as a literal escape.
+
+    A `\uXXXX` run is NOT the defect. Inside code or a quoted sample
+    it is deliberate: the prompt tells the learner to type the Chinese literal
+    and the grader compares the printed characters, so the escaped form is the
+    lesson and decoding it would break grading (ch07-ex01, ch09-ex02).
+
+    The defect is a Chinese WORD spliced into the translated sentence where no
+    code sample was meant -- "Dos personas haciendo el mismo" followed by an
+    escaped 动作. It slips past the CJK check in validate_item() precisely
+    because the characters are still spelled as escapes, and it reaches the
+    reader as literal text.
+
+    A run is sample data, and so allowed, when either
+      * the grader compares that exact string -- it occurs in `checks`,
+        `starter`, or `reference` on a code/build exercise, the fields shared
+        byte for byte with zh; or
+      * it sits inside a quoted region that holds nothing but Chinese and
+        code punctuation, and the same text occurs in the zh source of that
+        field: a chapter example quoted whole, such as the two sample questions
+        in ch12-ex02's explanation.
+    Anything else is an untranslated fragment.
+
+    Everything below works on the DECODED text. Reasoning about the escaped
+    bytes is what made the first version of this check wrong: a closing quote
+    can land inside an escape run, so every offset shifts and a half-run leaves
+    a stray `\uff1` behind.
+    """
+    for (chapter_id, lang), items in sorted(corpus.items()):
+        if lang == 'zh':
+            continue
+        zh_items = {item['id']: item for item in corpus[(chapter_id, 'zh')]}
+        for item in items:
+            where = f"{item.get('_file', '?')}:{item.get('id', '?')}"
+            code_fields = unescape(json.dumps(
+                [item.get('checks'), item.get('starter'),
+                 item.get('reference') if item['type'] in SANDBOX_TYPES else None],
+                ensure_ascii=False))
+            zh_item = zh_items.get(item['id'], {})
+            for key in TRANSLATED_FIELDS + ('criteria',):
+                # `reference` is the reference answer: on code/build it is the
+                # code the grader runs, shared with zh like starter and checks,
+                # so its Chinese is sample data by definition. On reflect and
+                # predict it is prose the translation has to cover.
+                if key == 'reference' and item['type'] in SANDBOX_TYPES:
+                    continue
+                raw = translated_field(item, key)
+                if not isinstance(raw, str):
+                    continue
+                zh_raw = translated_field(zh_item, key)
+                zh_value = unescape(zh_raw) if isinstance(zh_raw, str) else ''
+                text = unescape(raw)
+                for run in cjk_runs(text):
+                    decoded = run.group(0)
+                    context = (f'{where} {key} at ...'
+                               f'{text[max(0, run.start() - 40):run.end() + 40]}...')
+                    # Hangul/Cyrillic/kana are not this book's script at all, so
+                    # one here is a stray fragment whatever the field is.
+                    assert not FOREIGN_SCRIPT.search(decoded), (
+                        f'{context} holds the foreign-script fragment {decoded!r}; '
+                        f'translate it into {lang}')
+                    if decoded in code_fields:
+                        continue  # sample data the grader compares
+                    region = quoted_region(text, run.start())
+                    if region is not None:
+                        inner = text[region[0] + 1:region[1] - 1]
+                        if (SAMPLE_SKELETON.match(CJK.sub('', inner))
+                                and inner in zh_value):
+                            continue  # a chapter example quoted whole
+                    assert False, (
+                        f'{context} holds the untranslated fragment {decoded!r}; '
+                        f'translate it into {lang}')
+
+
+def translated_field(item, key):
+    """Read a translated field; `criteria` lives inside llm_rubric."""
+    if key == 'criteria':
+        return (item.get('llm_rubric') or {}).get('criteria')
+    return item.get(key)
+
+
+def cjk_runs(text):
+    """Maximal runs of CJK (plus the CJK punctuation a sample carries).
+
+    FOREIGN_SCRIPT is folded in so a Hangul/Cyrillic/kana fragment reaches the
+    assertion in check_untranslated_escapes() instead of passing unnoticed --
+    ch17-ex02 shipped a Korean 근거 in the Spanish rubric and nothing caught it.
+    """
+    return re.finditer(
+        r'[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef'
+        r'Ѐ-ӿ가-힯぀-ヿ]+', text)
+
+
+def quoted_region(text, index):
+    """The tightest quote pair enclosing `index`, as (start, end), else None.
+
+    Scanned per pairing rather than across all of them: mixing them lets a
+    stray apostrophe swallow the rest of the paragraph. Among the pairs that
+    enclose `index` the shortest wins, so a sample inside a longer quotation
+    still resolves to its own quotes.
+    """
+    best = None
+    for opener, closer in QUOTE_PAIRS:
+        pos = 0
+        while True:
+            start = text.find(opener, pos)
+            if start < 0:
+                break
+            end = text.find(closer, start + 1)
+            if end < 0:
+                break
+            if start < index < end and (best is None or end - start < best[1] - best[0]):
+                best = (start, end)
+            pos = end + 1
+    return best
 
 
 def check_raw_text():

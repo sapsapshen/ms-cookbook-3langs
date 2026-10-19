@@ -1,1 +1,101 @@
-[]
+[
+  {
+    "id": "ch18-ex01",
+    "chapter": "chapter-18",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Segmentar la voz con la regla del VAD",
+    "prompt": "Un asistente de voz tiene que averiguar cuándo empieza a hablar el usuario y cuándo termina un turno de entrada. El audio llega en tramas de 30ms. Escribe una función `segment(frames, silence=None)`: `frames` es una lista de booleanos donde `True` significa que esa trama tiene actividad de voz. La primera trama `True` es el «inicio del habla», y el silencio anterior a ese inicio no cuenta. Después de que empiece el habla, `silence` tramas `False` consecutivas terminan el turno (`silence` vale un segundo por defecto, es decir `int(1000 / 30)` tramas). Devuelve `\"none\"` cuando nunca aparece voz, o cuando aparece pero la racha de tramas silenciosas nunca alcanza el umbral. En caso contrario devuelve `(start, end)`: `start` es el índice de la primera trama `True`, y `end` es el índice de la **primera trama `False` de la racha de silencio que se contabilizó**. Dicho de otro modo, `end - start` es igual al número de tramas de voz acumuladas en el momento en que se alcanzó el estado de fin.",
+    "starter": "def segment(frames, silence=None):\n    # 返回 \"none\" 或 (start, end)\n    return \"none\"\n\nprint(segment([False, False, True, True] + [False] * 40))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert segment([]) == 'none' and segment([False, False, False]) == 'none', '没有语音返回 none'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert segment([True, False, False], silence=1) == (0, 1), '阈值 1 帧时第二帧就结束'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([False, False, True, True] + [False] * 40) == (2, 4), '开始前的静音不计入，end 指向第一帧静音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 40) == (0, 5), 'end 是最后一帧语音 +1 的位置'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 32) == 'none', '32 帧静音不够 34 帧阈值'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 33) == (0, 5), '第 34 帧静音刚好凑满阈值'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert segment([True, False, False, True] + [False] * 3, silence=3) == (0, 4), 'silence 变小结束更早'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert segment([False, True] + [False] * 40) == (1, 2), '前导静音不累加，静音计数从 start 之后才起'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True, False, False, True] + [False] * 40) == (0, 4), '中途的短静音会被语音打断，只认最后一段连续静音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] + [False] * 34 + [True] * 3 + [False] * 34) == (0, 1), '达到阈值就立刻结束，不会越过后面的语音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 34,
+        "code": "for _pre in (0, 1, 3, 7):\n    for _speech in (1, 2, 5, 34, 35, 70):\n        for _tail in (0, 1, 32, 33, 34, 40, 80):\n            _f = [False] * _pre + [True] * _speech + [False] * _tail\n            _out = segment(_f)\n            if _tail >= 33:\n                assert _out == (_pre, _pre + _speech), (_pre, _speech, _tail, _out)\n            else:\n                assert _out == 'none', (_pre, _speech, _tail, _out)\n            for _s in (1, 2, 34):\n                _out2 = segment(_f, silence=_s)\n                if _tail >= _s:\n                    assert _out2 == (_pre, _pre + _speech), (_pre, _speech, _tail, _s, _out2)\n                else:\n                    assert _out2 == 'none', (_pre, _speech, _tail, _s, _out2)"
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que end apunta a la trama silenciosa que cerró el turno y no a la última trama de voz?"
+    },
+    "reference": "def segment(frames, silence=None):\n    threshold = int(1000 / 30) if silence is None else silence\n    start = None\n    quiet = 0\n    for i, active in enumerate(frames):\n        if active:\n            if start is None:\n                start = i\n            quiet = 0\n            continue\n        if start is None:\n            continue\n        quiet += 1\n        if quiet >= threshold:\n            return start, i - threshold + 1\n    return 'none'\n\nprint(segment([False, False, True, True] + [False] * 40))",
+    "explanation": "La lógica de VAD de este capítulo evalúa trama a trama cada 30ms y cierra un turno en cuanto aparecen N tramas silenciosas consecutivas. Esta función lo convierte en algo ejecutable.\n\n**El silencio anterior al inicio del habla no se contabiliza.** Esto es lo más fácil de equivocar: para `[False, False, True, True] + [False] * 40` el inicio es 2, no 0. Si también se sumara el silencio inicial, el turno podría declararse terminado justo cuando el usuario abre la boca, porque «ya estaba en silencio antes». Las comprobaciones miden silencios iniciales de 0, 1, 3 y 7 tramas.\n\n**`end` apunta a la primera trama silenciosa, no a la última trama de voz.** El enunciado lo define como «la primera trama `False` de la racha de silencio que se contabilizó», de modo que `end - start` es exactamente cuántas tramas de voz acumuló este turno y el informe puede usarlo tal cual. Que `[True] * 5 + [False] * 40` devuelva `(0, 5)` significa precisamente eso. En código es «el índice actual menos el umbral más uno».\n\n**El umbral es de 34 tramas, pero con 33 tramas silenciosas finales ya se cumple.** 1 segundo / 30ms = 33.33, que se trunca a 34; el contador sube en uno con **cada** trama silenciosa, así que el umbral se alcanza cuando llega la trama 34 -- por eso `[True] * 5 + [False] * 33` ya termina (devuelve `(0, 5)`) mientras que `[False] * 32` no basta (devuelve `\"none\"`). Las comprobaciones miden esos dos casos por separado; una implementación con `> threshold`, o que calcule el umbral como 35, falla en el grupo de 32/33.\n\n**Un silencio breve en medio lo interrumpe el habla.** En `[True, False, False, True] + [False] * 40` hay una racha de dos tramas silenciosas al principio, pero después aparece voz, así que esa racha no cumple la condición de fin y `end` cae en el inicio de la última racha consecutiva de silencio (4). En código, al detectar voz hay que **poner a cero** el contador de silencio, no sumarle.\n\n**Devolver en cuanto se alcance el umbral.** `[True] + [False] * 34 + [True] * 3 + [False] * 34` da `(0, 1)`, y las 3 tramas de voz posteriores no se «corrigen retroactivamente». Así funciona un VAD trama a trama: una vez decidido que el turno terminó, el audio posterior pertenece al siguiente.\n\n**Con poco silencio se devuelve `\"none\"`.** Eso no es «devuelve el inicio y ya está»: este ejercicio no tiene ocasión de esperar tramas posteriores, así que el turno cuenta como no terminado. La comprobación principal extiende silencios iniciales de 4 valores x tramas de voz de 6 valores x silencios finales de 7 valores en un lote de secuencias de tramas, y luego ejecuta cada una con el umbral por defecto y con 3 umbrales explícitos, recalculando el valor esperado grupo por grupo: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch18-ex02",
+    "chapter": "chapter-18",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Ordenar la cadena de un asistente de voz",
+    "prompt": "Un asistente de voz tiene que «entender la pregunta y responderla». ¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. La grabación pasa por ASR para convertirse en texto, el LLM responde y TTS lee la respuesta en voz alta\nB. Basta con darle el audio directamente al LLM; no hacen falta ASR ni TTS en medio\nC. La función del VAD es averiguar cuándo empieza a hablar el usuario y cuándo termina un turno de entrada de voz\nD. El nivel de detección de WebRTC VAD se puede fijar de 0 a 3, y cuanto mayor es el número más estrictamente filtra los sonidos que no son voz\nE. Hay que cortar la entrada en cuanto el usuario deja de hablar, sin esperar una racha de silencio que confirme que terminó",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B falla porque este capítulo divide la cadena explícitamente en ASR, LLM y TTS, cada uno con su papel. E falla porque el VAD decide que alguien «terminó» precisamente esperando una racha de silencio, así que si cortas de inmediato no hay forma de saber dónde empieza y acaba el turno.",
+    "explanation": "El capítulo abre dibujando esta cadena: **desde que el usuario pregunta hasta que se oye la respuesta, el audio pasa por ASR -> LLM -> TTS**. ASR convierte lo que dijiste en texto, el LLM coge la pregunta y responde, y TTS lee en voz alta la respuesta escrita. A es esa misma cadena.\n\nC y D salen de la sección del VAD. El capítulo dice que el VAD sirve sobre todo para averiguar cuándo empieza a hablar el usuario y cuándo termina un turno de entrada de voz; el nivel de detección de WebRTC VAD se puede fijar en 0, 1, 2 o 3, y cuanto mayor es el número más estrictamente filtra los sonidos que no son voz.\n\nE contradice de frente el funcionamiento del VAD: decidir que el usuario ha terminado es justo lo que exige esperar una racha de silencio. En una implementación trama a trama, el parámetro `silence_seconds` es lo que controla cuánto dura esa espera: si lo pones demasiado corto cortas al usuario a mitad de frase, y si lo pones demasiado largo la respuesta se hace lenta.\n\nB es una mala lectura de la arquitectura de este capítulo. Cada una de las tres etapas tiene su propio modelo (esta sección usa Qwen3-ASR, y el TTS es una etapa aparte), y darle el audio directamente al LLM no es cómo funciona esta cadena.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  }
+]

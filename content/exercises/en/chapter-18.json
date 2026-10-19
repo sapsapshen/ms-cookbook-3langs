@@ -1,1 +1,101 @@
-[]
+[
+  {
+    "id": "ch18-ex01",
+    "chapter": "chapter-18",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Segment speech with the VAD rule",
+    "prompt": "A voice assistant has to work out when the user starts speaking and when one turn of input ends. Audio arrives in 30ms frames. Write a function `segment(frames, silence=None)`: `frames` is a list of booleans where `True` means that frame has speech activity. The first `True` frame is the \"speech start\", and silence before the speech start does not count. After the speech starts, `silence` consecutive `False` frames end the turn (`silence` defaults to one second, that is `int(1000 / 30)` frames). Return `\"none\"` when no speech ever appears, or when speech appears but the run of silent frames never reaches the threshold. Otherwise return `(start, end)`: `start` is the index of the first `True` frame, and `end` is the index of the **first `False` frame in the run of silence that was counted**. In other words `end - start` equals the number of speech frames accumulated by the time the end state was reached.",
+    "starter": "def segment(frames, silence=None):\n    # 返回 \"none\" 或 (start, end)\n    return \"none\"\n\nprint(segment([False, False, True, True] + [False] * 40))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert segment([]) == 'none' and segment([False, False, False]) == 'none', '没有语音返回 none'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "assert segment([True, False, False], silence=1) == (0, 1), '阈值 1 帧时第二帧就结束'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([False, False, True, True] + [False] * 40) == (2, 4), '开始前的静音不计入，end 指向第一帧静音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 40) == (0, 5), 'end 是最后一帧语音 +1 的位置'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 32) == 'none', '32 帧静音不够 34 帧阈值'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] * 5 + [False] * 33) == (0, 5), '第 34 帧静音刚好凑满阈值'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert segment([True, False, False, True] + [False] * 3, silence=3) == (0, 4), 'silence 变小结束更早'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert segment([False, True] + [False] * 40) == (1, 2), '前导静音不累加，静音计数从 start 之后才起'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True, False, False, True] + [False] * 40) == (0, 4), '中途的短静音会被语音打断，只认最后一段连续静音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "assert segment([True] + [False] * 34 + [True] * 3 + [False] * 34) == (0, 1), '达到阈值就立刻结束，不会越过后面的语音'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 34,
+        "code": "for _pre in (0, 1, 3, 7):\n    for _speech in (1, 2, 5, 34, 35, 70):\n        for _tail in (0, 1, 32, 33, 34, 40, 80):\n            _f = [False] * _pre + [True] * _speech + [False] * _tail\n            _out = segment(_f)\n            if _tail >= 33:\n                assert _out == (_pre, _pre + _speech), (_pre, _speech, _tail, _out)\n            else:\n                assert _out == 'none', (_pre, _speech, _tail, _out)\n            for _s in (1, 2, 34):\n                _out2 = segment(_f, silence=_s)\n                if _tail >= _s:\n                    assert _out2 == (_pre, _pre + _speech), (_pre, _speech, _tail, _s, _out2)\n                else:\n                    assert _out2 == 'none', (_pre, _speech, _tail, _s, _out2)"
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that end points at the silent frame that ended the turn, not at the last speech frame?"
+    },
+    "reference": "def segment(frames, silence=None):\n    threshold = int(1000 / 30) if silence is None else silence\n    start = None\n    quiet = 0\n    for i, active in enumerate(frames):\n        if active:\n            if start is None:\n                start = i\n            quiet = 0\n            continue\n        if start is None:\n            continue\n        quiet += 1\n        if quiet >= threshold:\n            return start, i - threshold + 1\n    return 'none'\n\nprint(segment([False, False, True, True] + [False] * 40))",
+    "explanation": "This chapter's VAD logic judges frame by frame at 30ms and ends a turn once N consecutive silent frames appear. This function turns that into something executable.\n\n**Silence before the speech start is not counted.** This is the easiest thing to get wrong: for `[False, False, True, True] + [False] * 40` the start is 2, not 0. If the leading silence were counted too, the turn could be declared over the moment the user opens their mouth, since \"it was already quiet before\". The checks measure leading silence of 0, 1, 3 and 7 frames.\n\n**`end` points at the first silent frame, not at the last speech frame.** The prompt defines it as \"the first `False` frame in the run of silence that was counted\", so that `end - start` is exactly how many frames of speech this turn accumulated and the report can use it directly. `[True] * 5 + [False] * 40` returning `(0, 5)` means exactly that. In code it is \"the current index minus the threshold plus one\".\n\n**The threshold is 34 frames, but 33 trailing silent frames are enough to reach it.** 1 second / 30ms = 33.33, floored to 34; the counter goes up by one on **each silent frame**, so the threshold is met when the 34th silent frame arrives -- which is why `[True] * 5 + [False] * 33` already ends (returning `(0, 5)`) while `[False] * 32` is not enough (returning `\"none\"`). The checks measure those two cases separately; an implementation using `> threshold`, or computing the threshold as 35, fails on the 32/33 group.\n\n**A short silence in the middle is interrupted by speech.** In `[True, False, False, True] + [False] * 40` there is a run of two silent frames at the start, but speech appears afterwards, so that run does not meet the end condition and `end` lands on the start of the last consecutive silence (4). In code, detecting speech has to **reset** the silence counter to zero, not add to it.\n\n**Return as soon as the threshold is met.** `[True] + [False] * 34 + [True] * 3 + [False] * 34` gives `(0, 1)`, and the 3 speech frames after it are not \"corrected retroactively\". That is how a frame-by-frame VAD behaves: once the turn is decided to be over, the audio after it belongs to the next one.\n\n**Too little silence returns `\"none\"`.** That is not \"just return the start and be done\" -- this exercise has no chance to wait for later frames, so the turn counts as unfinished. The main check lays out leading silence of 4 values x speech frames of 6 values x trailing silence of 7 values into a batch of frame sequences, then runs each one with the default threshold and with 3 explicit thresholds, recomputing the expected value group by group -- it is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch18-ex02",
+    "chapter": "chapter-18",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Order the voice assistant pipeline",
+    "prompt": "A voice assistant has to \"hear the question and answer it\". Which of these statements match this chapter? (multi-select)\n\nA. The recording goes through ASR to become text, the LLM answers it, and TTS reads the answer aloud\nB. Feeding the audio straight to the LLM is enough; no ASR or TTS is needed in between\nC. VAD's job is to work out when the user starts speaking and when one turn of speech input ends\nD. WebRTC VAD's aggressiveness can be set from 0 to 3, and a higher number filters non-speech sounds more strictly\nE. Cut the input off as soon as the user stops speaking; do not wait for a stretch of silence to confirm they have finished",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B is wrong because this chapter divides the pipeline explicitly into ASR, LLM and TTS, each with its own job. E is wrong because VAD decides \"finished\" precisely by waiting for a stretch of silence, so cutting immediately leaves no way to judge where the turn starts and ends.",
+    "explanation": "The chapter opens by drawing this pipeline: **from the user speaking to hearing the answer, the audio goes through ASR -> LLM -> TTS**. ASR turns what you said into text, the LLM takes the question and answers, TTS reads the text answer aloud. A is that pipeline itself.\n\nC and D come from the VAD section. The chapter says VAD is mainly used to decide when the user starts speaking and when one turn of speech input ends; WebRTC VAD's aggressiveness can be set to 0, 1, 2 or 3, and a higher number filters non-speech sounds more strictly.\n\nE contradicts how VAD works outright: deciding that the user has finished is exactly what waits for a stretch of silence. In a frame-by-frame implementation the `silence_seconds` parameter is what controls how long that wait lasts -- set it too short and you cut the user off mid-sentence, set it too long and the response feels slow.\n\nB is a misreading of this chapter's architecture. Each of the three stages has its own model (this section uses Qwen3-ASR, and TTS is a separate stage), and handing audio directly to the LLM is not how this pipeline works.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

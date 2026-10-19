@@ -54,7 +54,7 @@ Docker 监听 7860，持久化数据目录固定为 `/mnt/workspace/purplebook`�
 - 登录后进度会同步到服务端 `.data/reading.sqlite3` 的 `exercise_progress` 表，用于跨设备继续学习。同一账号在另一台设备登录后会拉回这些记录。
 - 同步只上传题目 id、所属章节、是否通过、通过率、尝试次数和你写的代码（单条上限 20000 字符）。请不要在练习代码里写入生产密钥或个人信息——它会随进度一起存到服务端，评论区的删除权限不覆盖这张表。
 - 服务端只按 `updated` 时间戳合并，取较新的一条；通过状态与分数是单调的（只升不降），避免一次旧快照把已通过的题改回未通过。
-- 练习代码在浏览器内的 Pyodide 沙箱中执行。Pyodide 默认没有网络访问、没有文件系统写入、没有子进程，因此练习无法安装第三方包，也无法访问你的本地文件。
+- 练习代码在读者自己的浏览器内的 Pyodide 沙箱中执行，没有任何服务端执行。真实边界是：没有网络访问、没有子进程，也没有通往宿主文件系统的路——**内存文件系统（MEMFS）本身是可写的**，`open('/tmp/x', 'w')` 会成功，但没有挂载 NODEFS，所以写入只存在于 worker 的内存里，随 worker 一起销毁，真实磁盘与本地文件都不会被碰到。因此练习无法安装第三方包，也无法读取或覆盖你的本地文件。完整的边界说明（含 JS 逃逸路径的封闭方式）见 `assets/exercise-worker.js` 的头部注释。
 - `EXERCISE_LLM_KEY` 与 `EXERCISE_LLM_BASE_URL` 均为可选项。未配置时，开放题只展示参考答案与自评，不做自动评分。
 
 ## 练习评分的配额
@@ -88,7 +88,7 @@ Docker 监听 7860，持久化数据目录固定为 `/mnt/workspace/purplebook`�
 
 使用 Authlib 完成 OIDC state、nonce、签名及身份校验。Cookie 中只保存随机服务端会话 ID、CSRF 与短期授权事务；不保存访问令牌。
 数据库保存随机用户 ID、OIDC sub、显示名称和评论；用户 ID 只取自验证后的服务端身份。退出时撤销服务端会话。
-写操作要求有效登录、同源 Origin 和 CSRF token。每位用户每分钟最多 10 次写入。静态文件仅通过显式允许的目录提供，源代码、数据库、密钥不会作为静态文件暴露。
+写操作要求有效登录、同源 Origin 和 CSRF token。写端点各自计配额，窗口都是 60 秒：划线与章节留言 `POST /api/chapters/{chapter}/entries` 与 `POST /api/wishes` 每位用户每分钟 10 次与 5 次，练习进度 `POST /api/exercises/progress` 每位用户每分钟 20 次；练习评分 `POST /api/exercises/grade` 是另一套额度，见上一节。空批次不算写入（读者从未做过练习时不会因此被拒）。静态文件仅通过显式允许的目录提供，源代码、数据库、密钥不会作为静态文件暴露。
 前端通过 textContent 渲染用户内容，拒绝将评论作为 HTML 执行。
 生产会话使用 HTTPS Secure、HttpOnly、SameSite=Lax Cookie。
 

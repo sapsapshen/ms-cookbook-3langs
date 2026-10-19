@@ -5,9 +5,9 @@
     "type": "code",
     "difficulty": 1,
     "minutes": 5,
-    "objective": "Build a self-introduction with an f-string",
-    "prompt": "Define two variables: `name` holding your name and `role` holding what you want to learn. Then print one Chinese sentence that says who you are and what you want to learn, built from those two variables with an f-string. The starter shows the sentence template to use.",
-    "starter": "name = \"\"\nrole = \"\"\n# Print the Chinese line with one f-string, using both variables.\n# Template: 我是{name}，我想学{role}   (\"I am {name}, I want to learn {role}\")\n",
+    "objective": "Build a self-introduction from variables with an f-string",
+    "prompt": "Define two variables: `name` holding your name and `role` holding what you want to learn. Then print one sentence built from those two variables with an f-string. The sentence must be the Chinese line `\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\"` (\"I am {name}, I want to learn {role}\"). Write the Chinese characters as `\\uXXXX` escapes so the source stays ASCII; the grader matches the printed Chinese text.",
+    "starter": "name = \"\"\nrole = \"\"\n# 在下面打印那句话\n",
     "checks": [
       {
         "kind": "stdout_matches",
@@ -16,31 +16,31 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and name.strip(), 'name must be a non-empty string'",
+        "code": "assert isinstance(name, str) and name.strip(), 'name 必须是非空字符串'",
         "weight": 2
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and role.strip(), 'role must be a non-empty string'",
+        "code": "assert isinstance(role, str) and role.strip(), 'role 必须是非空字符串'",
         "weight": 2
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 name 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
         "weight": 5
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 role 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
         "weight": 5
       }
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "Did the learner really use two variables instead of hard-coding the string?"
+      "criteria": "Does it really use two variables instead of hard-coding the string?"
     },
-    "reference": "name = \"Mian\"\nrole = \"Agent development\"\n# \\u-escapes keep this answer CJK-free while still printing the Chinese line.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
-    "explanation": "An f-string embeds values with {} and avoids manual concatenation. Assign name and role before printing, otherwise the sentence has holes in it. The printed line stays Chinese on purpose, so the check matches it literally; the escape sequences above are just that same sentence written in ASCII. Grading looks at three things across four assertions: both variables hold non-empty strings, the printed line has the shape \"I am ... , I want to learn ...\", and the printed line actually carries the two values. The shape assertion requires real content after the \"I want to learn\" half -- printing half a sentence fails, while splitting the name and the role onto separate lines is fine. The non-empty point is guarded twice, once by the variable itself and once by its value having to show up in the output, so leaving it blank always fails. The last one fails the version that fills the variables in correctly but still hand-writes the literal."
+    "reference": "name = \"\\u6c88\\u6110\"\nrole = \"Agent \\u5f00\\u53d1\"\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
+    "explanation": "An f-string embeds a value with {} and avoids manual string concatenation. Note that name and role have to be assigned before they are used, otherwise the sentence comes out with holes in it. Automated grading looks at three things across four criteria: whether both variables hold non-empty strings, whether the printed sentence has the shape \"I am ..., I want to learn ...\", and whether the printed sentence actually carries both values. The shape criterion requires real content after the \"I want to learn\" half -- printing half a sentence fails, while printing the name and the role on separate lines is legal. The non-empty point is guarded by two criteria together: it checks both that the variable itself is non-empty and that its value really appears in the output, so leaving it blank always fails. The third one fails the version that fills the variables in correctly but still hand-writes the literal."
   },
   {
     "id": "ch07-ex02",
@@ -48,23 +48,47 @@
     "type": "code",
     "difficulty": 2,
     "minutes": 8,
-    "objective": "Compute the bytes needed to load a model into VRAM",
-    "prompt": "A model has 7 billion parameters loaded at fp16 precision (2 bytes per parameter). Compute the total weight size and store it in `weight_bytes`.",
-    "starter": "params_billion = 7\nbytes_per_param = 2\n# compute and assign weight_bytes\n",
+    "objective": "Compute the bytes a model needs in VRAM",
+    "prompt": "A model has 7 billion parameters loaded at fp16 precision (2 bytes per parameter). Write a function `weight_bytes(params_billion, bytes_per_param)` that returns the total number of bytes the weights take: `params_billion` is the parameter count in **billions** (so 7 billion is passed as `7`), and `bytes_per_param` is the bytes per parameter (2 for fp16). It must return an integer.",
+    "starter": "def weight_bytes(params_billion, bytes_per_param):\n    # 返回权重总字节数（整数）\n    raise NotImplementedError\n",
     "checks": [
       {
-        "kind": "var_equals",
-        "name": "weight_bytes",
-        "value": 14000000000,
-        "weight": 3
+        "kind": "assert_python",
+        "code": "assert weight_bytes(7, 2) == 14000000000, weight_bytes(7, 2)",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(0.5, 2) == 1000000000, '0.5 十亿 = 5 亿参数'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(70, 2) == 140000000000, weight_bytes(70, 2)",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(7, 1) == 7000000000 and weight_bytes(7, 4) == 28000000000, '每参数字节数要参与计算'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(weight_bytes(7, 2), int), '必须返回整数'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _pb in (0.5, 1, 1.5, 2, 3, 7, 8, 13, 70, 175, 405):\n    for _bpp in (1, 2, 4, 8):\n        assert weight_bytes(_pb, _bpp) == int(_pb * 1_000_000_000 * _bpp), (_pb, _bpp)",
+        "weight": 34
       }
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "Does the learner understand that the parameter count is in billions?"
+      "criteria": "Does it understand that the parameter count is expressed in billions?"
     },
-    "reference": "params_billion = 7\nbytes_per_param = 2\nweight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
-    "explanation": "7 billion = 7 x 10^9. Times 2 bytes each gives 1.4 x 10^10 bytes, about 13 GB. That is weights only; a real deployment also needs KV cache and activations."
+    "reference": "def weight_bytes(params_billion, bytes_per_param):\n    return int(params_billion * 1_000_000_000 * bytes_per_param)",
+    "explanation": "7 billion = 7 x 10^9. Times 2 bytes each gives 1.4 x 10^10 bytes, about 13 GB. That is weights only; a real deployment also needs the KV cache and the activations.\n\n**The unit is the whole exercise.** `params_billion` is counted in billions, so you multiply by `1_000_000_000` and not by `1_000`. Dropping a zero is the most common mistake, and the number it produces also \"looks like a byte count\", so the checks deliberately span eleven parameter counts from 0.5 billion to 405 billion and four bytes-per-parameter values of 1, 2, 4 and 8 -- 44 input pairs in total -- to tell the two apart. An implementation that only remembers the answer for 7 billion at fp16 necessarily shows up there.\n\n**The bytes per parameter really take part in the arithmetic.** For the same 7 billion model, fp32 is 4 bytes and int8 is 1 byte, a factor of four apart. An implementation that hardcodes the second parameter as 2 fails on `weight_bytes(7, 1)`.\n\n**It has to return an integer.** Every number in JavaScript is a float, and dividing in Python gives a float too, so return an integer. One criterion checks this on its own, because \"the arithmetic was right but the type is a float\" is exactly what lingers when you move over from JavaScript.\n\nHonest boundary note: that main criterion's 44 inputs carry 34 of the 80 points, well past the 20% threshold for P1, and together with the one covering \"bytes per parameter takes part in the arithmetic\" (12/80) they account for 58% and hold down the required point of unit conversion. But \"return an integer\" is guarded on its own by just 8/80, which makes it the weakest link here -- it checks only the type and does not distinguish how you arrived at the integer."
   },
   {
     "id": "ch07-ex03",
@@ -72,8 +96,8 @@
     "type": "predict",
     "difficulty": 1,
     "minutes": 3,
-    "objective": "Spot which code actually prints a model response",
-    "prompt": "Which of these produce visible output? (multi-select)\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` on its own line\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` followed by `print(answer)`",
+    "objective": "Spot which code reaches the model output",
+    "prompt": "Which of these gets you the model output directly? (multi-select)\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` on a line of its own\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` followed by `print(answer)`",
     "checks": [
       {
         "kind": "output_choice",
@@ -89,7 +113,7 @@
       "enabled": false,
       "criteria": ""
     },
-    "reference": "A, C and D. B is valid Python but Jupyter echoes the last expression; a plain script prints nothing.",
-    "explanation": "You have to capture the result and print it. B looks fine in Jupyter because the last cell expression is echoed, but in a .py script or a server call nothing is shown -- the most common \"the model ran but nothing happened\" cause."
+    "reference": "A, C and D. B is valid Python in itself -- Jupyter echoes the value of the last expression -- but in a .py script or a server call nothing is printed, so it does not count as \"getting the model output directly\".",
+    "explanation": "You have to capture the inference result and print it. B looks fine in Jupyter because the last expression in a cell gets echoed, but in a .py script or a server-side call nothing is printed -- this is the most common cause of \"the model ran but nothing happened\"."
   }
 ]

@@ -1,0 +1,75 @@
+[
+  {
+    "id": "ch01-ex01",
+    "chapter": "chapter-1",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "Tell free, open source and open weights apart",
+    "prompt": "Which of the following statements match this chapter? (multi-select)\n\nA. A model you can chat with for free on a website must be an open source model\nB. A model you can download and run locally has open weights, but the training materials and the licence have to be checked separately\nC. Being allowed to download a model does not mean you are allowed to use it commercially\nD. Calling someone else's hosted open source model over an API and deploying it yourself are the same thing\nE. \"May download\", \"may use commercially\" and \"may modify and redistribute\" are three different permissions",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B, C and E. A is wrong because it treats \"free\" as \"open source\" -- a free chat product is normally hosted by the vendor, so you never get the weights. D is wrong because it treats the API as a property of the model: the API is only an access route, and a model you deploy yourself can equally be served to colleagues over an internal API.",
+    "explanation": "Keep the three concepts apart. Free answers whether you have to pay; open source answers what you can get hold of and what you are allowed to do with it. An open weights model gives you the parameters, but the training data, the training code and the usage permissions each have to be looked at separately -- they map onto the four tiers, highest to lowest, in the G7 reference file.\n\nThe three verbs in the licence need separating too: may download, may use commercially and may modify and redistribute are different permissions. This chapter's example is the Qwen3 family, which uses Apache 2.0, while Kimi K3 has its own terms for some commercial uses -- so \"it runs\" is still one step away from \"it can ship in a commercial product\".\n\nGrading boundary: this exercise has exactly one criterion, namely that the selected letters match the reference answer exactly (in a multi-select, missing one or adding one is wrong). The reasons behind the options are not graded, but those reasons are what you are actually meant to take away."
+  },
+  {
+    "id": "ch01-ex02",
+    "chapter": "chapter-1",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Write a licence checklist for a self-hosted model",
+    "prompt": "You plan to fine-tune a downloaded open source model and run it inside your company's customer service system for the long term. Write down at least three things you would check before going live, and say what risk each one carries if it is not satisfied.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it cover the licence terms themselves (whether commercial use is allowed, whether region or scenario is restricted, what a derivative work must carry), whether the model name and provenance must be retained, and the difference between internal deployment and offering the service to the outside world?"
+    },
+    "reference": "(1) Read the LICENSE text and confirm whether commercial use is allowed and whether region or scenario is restricted; (2) confirm the obligations on derivative works: whether the model name, the licence and the provenance must be retained, and whether a notice of modifications is required (Apache 2.0 asks for the NOTICE and for a statement of changes, MIT only needs the copyright notice kept); (3) confirm the patent clause: Apache 2.0 carries an explicit patent grant and MIT does not, so switching licences can change your risk exposure; (4) if the fine-tuned model merges several models, check the licences of every source model one by one for conflicts; (5) if you plan to offer the model as a service rather than use it internally only, re-confirm that this use falls inside the licence.",
+    "explanation": "This chapter's core warning is that a model being downloadable does not mean it is free to use -- and that warning is easiest to forget after a fine-tune, because the fine-tuned artefact is a new file but the licence obligations do not disappear just because you edited it.\n\nInternal deployment and offering a service to the outside world are two different uses and are worth confirming separately: the first usually carries less risk, the second often triggers more clauses.\n\nThis exercise cannot run a real deployment; what it tests is transferring the chapter's licence points onto a concrete scenario. Grading rests on self-assessment plus an optional AI score. The reference answer gives a checklist you can compare against, and the point is that each item states its risk rather than just listing entries."
+  },
+  {
+    "id": "ch01-ex03",
+    "chapter": "chapter-1",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Decide whether a use case calls for local deployment",
+    "prompt": "A team has to answer questions about internal documents. The data cannot leave the intranet, the daily call volume is large and stable, and the task is knowledge base question answering. What would you choose? (multi-select)\n\nA. Given that the data must not leave the intranet, calling an external API directly is simpler\nB. A locally deployed model can connect to the knowledge base and databases the company already has, and run inference inside the intranet\nC. When call volume is large and stable, the total cost of standing up your own servers can work out cheaper than paying per token forever\nD. Knowledge base question answering has a well-defined input and output shape, which makes it a long-term stable task suited to open source models\nE. As long as the model has enough parameters, local deployment carries no maintenance cost at all",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B, C and D. A is wrong because \"the data must not leave the intranet\" is precisely the hard constraint on an external API -- sending sensitive data to an external service is exactly the situation this chapter is about avoiding. E is wrong because it treats local deployment as costless: beyond the hardware there is also power, cooling, drivers and framework compatibility to pay for, continuously.",
+    "explanation": "The three reasons this chapter gives for deploying locally line up exactly with the three in this scenario: sensitive data (inference stays inside the corporate network), cost (when call volume is large and stable, self-hosting can work out cheaper), and task shape (knowledge base question answering has a well-defined input and output and is stable over time, which leaves a lot of room).\n\nIn the other direction, this chapter also names the cases that do not suit it: few calls, fast-changing business, or tasks that need the latest general capability keep coming back to -- for those, calling an API is more convenient. So the criterion is not \"local is more advanced\" but which side of the constraints this task falls on.\n\nNote that C says \"can work out cheaper\". The chapter's own wording is that the total cost is \"usually\" better, not always. It is the right option because it does not overstate the case.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

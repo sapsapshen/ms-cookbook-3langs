@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch02-ex01",
+    "chapter": "chapter-2",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "Construir la orden de descarga y explicar cada parte",
+    "prompt": "Con una sola orden `modelscope download`, descarga el modelo completo `Qwen/Qwen3-0.6B` al directorio local `./Qwen3-0.6B`. Escribe una función `build_cmd(model, local_dir)` que devuelva esa orden como cadena, y luego imprímela.",
+    "starter": "def build_cmd(model, local_dir):\n    # 返回 modelscope download 命令字符串\n    return \"\"\n\nprint(build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nassert isinstance(c, str) and c.strip(), 'build_cmd 必须返回非空字符串'",
+        "weight": 2
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "modelscope\\s+download",
+        "weight": 4
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "--model[\\s=]+['\"]?Qwen/Qwen3-0\\.6B",
+        "weight": 4
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "--local[-_]dir[\\s=]+['\"]?\\./Qwen3-0\\.6B",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nparts = c.split()\nassert parts[0] == 'modelscope' and parts[1] == 'download', parts[:2]",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nassert 'README.md' not in c, '下载整个模型时不要写文件名，否则只会拿到那一个文件'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('Qwen/Qwen3-0.6B', 'deepseek-ai/DeepSeek-V3'):\n    for _d in ('./out', '/tmp/models'):\n        _c = build_cmd(_m, _d)\n        assert isinstance(_c, str) and _c.strip(), (_m, _d)\n        assert _m in _c, (_m, _d, _c)\n        assert _d in _c, (_m, _d, _c)\n        assert 'README.md' not in _c, (_m, _d, _c)",
+        "weight": 8
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Distingue qué controla `--model` y qué controla `--local_dir`?"
+    },
+    "reference": "def build_cmd(model, local_dir):\n    return f\"modelscope download --model {model} --local_dir {local_dir}\"\n\nprint(build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B'))",
+    "explanation": "Cada una de las dos opciones largas controla una cosa: detrás de `--model` va el nombre del modelo en ModelScope, detrás de `--local_dir` va el directorio donde se guarda en local. La orden empieza por `modelscope download`; el `pip install -U modelscope` que instala el paquete es otra orden distinta.\n\nAl descargar un modelo entero no pongas un nombre de archivo detrás del nombre del modelo: si añades `README.md` solo descargas ese archivo. Añade un nombre de archivo únicamente cuando quieras comprobar primero que la descarga funciona. Una de las comprobaciones vigila exactamente esto: que la cadena `README.md` aparezca en la orden es un fallo, y la comprobación exhaustiva la repite.\n\nSobre la escritura, la corrección no exige un separador concreto: valen tanto `--model Qwen/...` como `--model=Qwen/...`.\n\nLa última comprobación recorre dos nombres de modelo contra dos directorios, cuatro pares de entrada en total, y exige que la orden no esté vacía, que el nombre del modelo y el directorio aparezcan, y que no sobre ningún nombre de archivo: está ahí para impedrir una implementación que tenga esta respuesta escrita a fuego, porque un valor de retorno fijo no cubre otros modelos ni otros directorios. Límite honesto: esas cuatro entradas forman parte del corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch02-ex02",
+    "chapter": "chapter-2",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Elegir la forma de descarga que encaja con el caso",
+    "prompt": "Asumes un proyecto y tienes que descargar `Qwen/Qwen3-0.6B` para ejecutarlo en local. ¿Cuál de estos enfoques coincide con el consejo de este capítulo? (selección múltiple)\n\nA. Solo quiero comprobar rápidamente si la descarga funciona, así que pulso un botón en la página de archivos del modelo y descargo un archivo suelto\nB. Necesito descargar desde un programa de Python y obtener la ruta de guardado, así que uso `snapshot_download`\nC. El equipo ya gestiona los archivos del modelo con Git, así que clonar la URL del repositorio basta y no hace falta Git LFS\nD. No hace falta probar las cuatro formas; elige la que encaje con el caso\nE. Cuando termina la descarga el trabajo está hecho, así que ya se puede empezar a entrenar a gran escala",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, B y D. C falla porque los archivos de modelo suelen ser grandes y la vía de Git exige tener Git y Git LFS instalados; `git lfs install` solo inicializa LFS en el entorno actual, no instala la herramienta. E falla porque este capítulo cierra con «apunta la ruta del modelo a un directorio local y haz funcionar una entrada y una salida», no con empezar a entrenar en cuanto termina la descarga.",
+    "explanation": "La correspondencia que da este capítulo es: unos pocos archivos para mirar rápido en la web, la línea de comandos para el trabajo en terminal, el SDK para un proyecto en Python y Git si ya trabajas con Git. Así que B y D son dos caras de lo mismo: «no hace falta probarlas todas» es justo la conclusión del capítulo.\n\nLa opción de Git tiene una trampa fácil de pisar: `git lfs install` inicializa LFS en el entorno actual, no instala la herramienta. Si el enunciado dice que no hay orden `lfs`, termina primero de instalar la herramienta; hacerlo al revés te deja atascado hasta el final.\n\nE es la más importante de las opciones. Cuando la descarga está hecha, este capítulo te pide abrir el ejemplo de uso, apuntar la ruta al directorio local y hacer funcionar una entrada y una salida. Si te saltas eso, sigues sin saber si un problema es del modelo o del entorno.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch02-ex03",
+    "chapter": "chapter-2",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Usar la Model Card para descartar candidatos",
+    "prompt": "Tienes que elegir un modelo para «reconocimiento de intenciones de atención al cliente en chino» y hay cinco o seis candidatos. Antes de abrir cualquier Model Card, escribe qué información quieres comprobar. Una vez comprobado, si un modelo no cumple los requisitos, ¿cómo te deshaces de él? Escribe tu lista de comprobación y tu regla de descarte.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Cubre la capacidad del modelo y su arquitectura, el ámbito de uso (idiomas, tipos de entrada, restricciones), el entorno y el método, y la licencia, además de una acción de descarte clara cuando algo no se cumple (descartarlo en lugar de conformarse)?"
+    },
+    "reference": "Orden de comprobación: (1) qué es este modelo y qué puede hacer: el nombre del modelo, la introducción básica y la descripción de la arquitectura, para confirmar que vas por buen camino; (2) ámbito de uso: qué idiomas admite, para qué tipo de entrada sirve y qué restricciones tiene, y en un escenario de atención al cliente en chino hay que confirmar la cobertura de idiomas y si admite entradas como la clasificación de intenciones; (3) cómo usarlo: qué entorno necesita, de qué herramientas depende y cómo hay que preparar la entrada, porque un entorno que no puedes instalar equivale a no poder usarlo; (4) licencia: si se permite el uso comercial y si hay restricciones por región o escenario. Regla de descarte: cualquier requisito estricto que no se cumpla descarta el modelo de inmediato dejando por escrito el motivo, sin conformarse; solo las diferencias de preferencia (si ambos sirven) pasan a la ronda de comparación siguiente, y aquí no se decide.",
+    "explanation": "Este capítulo dice que una Model Card merece «una segunda mirada», y lo que merece esa segunda mirada son cuatro tipos de información: qué es este modelo, cuál es su ámbito de uso, cómo se usa y cuál es la licencia. Las tres primeras te confirman que no te has desviado; la última decide si de verdad puedes usarlo.\n\nLa parte de «regla de descarte» se pasa por alto más fácilmente que la propia lista: comprobar no sirve para ordenar a los candidatos, sirve para eliminarlos. Si un requisito estricto no se cumple, el modelo queda fuera, y solo cuando todos pasan empieza la ronda de comparación siguiente, lo que conecta con el aviso del capítulo 1: que se pueda descargar no significa que se pueda usar como quieras.\n\nEste ejercicio no puede ejecutar una descarga real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una lista con la que comparar."
+  }
+]

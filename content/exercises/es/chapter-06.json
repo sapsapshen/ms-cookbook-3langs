@@ -1,0 +1,123 @@
+[
+  {
+    "id": "ch06-ex01",
+    "chapter": "chapter-6",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Valorar si la puntuación de una evaluación es fiable",
+    "prompt": "Cada muestra de un conjunto de evaluación lleva una etiqueta `kind`: `\"basic\"` (preguntas básicas y muy frecuentes), `\"hard\"` (preguntas complejas y de varios saltos), `\"edge\"` (preguntas límite o fuera de rango). Escribe una función `trustworthy(rows)` que decida si la puntuación de este conjunto sirve para comparar modelos directamente: devuelve `\"trustworthy\"` cuando los tres tipos aparecen al menos una vez, y `\"biased\"` en cuanto falta alguno por completo (incluido el caso de que la lista recibida esté vacía).",
+    "starter": "def trustworthy(rows):\n    # 返回 \"trustworthy\" 或 \"biased\"\n    pass\n\ndata = [\n    {'kind': 'basic'},\n    {'kind': 'basic'},\n    {'kind': 'hard'},\n    {'kind': 'edge'},\n]\nprint(trustworthy(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "mix = [{'kind': 'basic'}] * 90 + [{'kind': 'hard'}] * 5 + [{'kind': 'edge'}] * 5\nassert trustworthy(mix) == 'trustworthy'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "only_basic = [{'kind': 'basic'}] * 98 + [{'kind': 'hard'}] * 2\nassert trustworthy(only_basic) == 'biased', '缺 edge 就该判 biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "only_basic2 = [{'kind': 'basic'}] * 98 + [{'kind': 'edge'}] * 2\nassert trustworthy(only_basic2) == 'biased', '缺 hard 就该判 biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'basic'}, {'kind': 'hard'}, {'kind': 'edge'}]) == 'trustworthy', '每种各一条也算覆盖到'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'hard'}]) == 'biased', '只跑长难题的评测集分数没有参考价值'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'edge'}, {'kind': 'edge'}]) == 'biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([]) == 'biased', '空评测集没有任何类型覆盖，不能算可信'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "big = ([{'kind': 'basic'}] * 98 + [{'kind': 'hard'}] * 1 + [{'kind': 'edge'}] * 1)\nassert trustworthy(big) == 'trustworthy', '各占 1% 正好踩线上，按「至少一条」算就是覆盖到了'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "skew = ([{'kind': 'basic'}] * 198 + [{'kind': 'hard'}] * 1 + [{'kind': 'edge'}] * 1)\nassert trustworthy(skew) == 'trustworthy', '比例低到 0.5% 也算覆盖到，判据看的是存在性不是占比'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _small in (1, 2):\n    for _large in (50, 200, 1000):\n        _rows = ([{'kind': 'basic'}] * _large + [{'kind': 'hard'}] * _small\n                 + [{'kind': 'edge'}] * _small)\n        assert trustworthy(_rows) == 'trustworthy', (\n            '占比低到 %.3f%% 也算覆盖到，判据看的是存在性不是占比'\n            % (100.0 * _small / len(_rows)))",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _b in range(0, 5):\n    for _h in range(0, 5):\n        for _e in range(0, 5):\n            for _scale in (1, 40):\n                _rows = ([{'kind': 'basic'}] * _b * _scale\n                         + [{'kind': 'hard'}] * _h * _scale\n                         + [{'kind': 'edge'}] * _e * _scale)\n                _want = 'trustworthy' if (_b and _h and _e) else 'biased'\n                _got = trustworthy(_rows)\n                assert _got == _want, (_b, _h, _e, _scale, _got, _want)",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende la premisa de que la representatividad importa más que el volumen?"
+    },
+    "reference": "KINDS = ('basic', 'hard', 'edge')\n\n\ndef trustworthy(rows):\n    for kind in KINDS:\n        if not any(r['kind'] == kind for r in rows):\n            return 'biased'\n    return 'trustworthy'\n\ndata = [\n    {'kind': 'basic'},\n    {'kind': 'basic'},\n    {'kind': 'hard'},\n    {'kind': 'edge'},\n]\nprint(trustworthy(data))",
+    "explanation": "Este capítulo dice que «cuantos más datos mejor» es un error de concepto: preparas decenas de miles de entradas pero casi todas son simples y repetidas, y la puntuación no vale nada por alta que sea. Un conjunto de pruebas de negocio sensato debería tener un degradado claro: lo básico y muy frecuente del día a día, cierta proporción de preguntas complejas y de varios saltos, y preguntas límite.\n\nEsta función comprueba si ese degradado está: no puede faltar ninguno de los tres tipos. Ojo con que no comprueba que las proporciones sean razonables: el capítulo dice «debe haber cierta proporción» sin dar una cifra, así que las comprobaciones vigilan la **existencia**, no el porcentaje. Entre las entradas hay a propósito un «98 básicas + 2 difíciles, sin casos límite», porque un conjunto con esa forma es justo lo que critica el capítulo, así que devuelve `\"biased\"`.\n\nEl límite que enuncia el enunciado conviene tomárselo al pie de la letra: el 1% sería el umbral si importara la proporción, pero como la regla es «basta con que el tipo exista», incluso 1 pregunta difícil de cada 200 (0.5%) cuenta como cobertura. Lo que realmente dispara `\"biased\"` es un tipo con **ni una** entrada. Las comprobaciones fijan ambas cosas con una entrada `\"trustworthy\"` en esa proporción y con el conjunto vacío, que debe devolver `\"biased\"`.\n\nLa comprobación principal recorre de 0 a 4 elementos de cada tipo con escalas 1 y 40, 250 grupos de entrada en total, y solo devuelve `\"trustworthy\"` cuando los tres son distintos de cero: está ahí para impedir que te aprenses la respuesta, porque un valor de retorno fijo, o uno que solo implemente el umbral del 1%, se descubre enseguida entre esas 250. Límite honesto: esas 250 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch06-ex02",
+    "chapter": "chapter-6",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar qué criterios de elección acepta el capítulo",
+    "prompt": "Estás eligiendo un modelo base para atención al cliente en chino. ¿Cuáles de estos criterios coinciden con este capítulo? (selección múltiple)\n\nA. Entrar directamente en la siguiente ronda con los modelos que más puntúan en MMLU\nB. Hacer una ronda más de evaluación de negocio con tus propios registros reales de consultas y ver cómo se comporta en el escenario concreto\nC. El conjunto de evaluación debe incluir también preguntas complejas y preguntas límite, además de las muy frecuentes\nD. El throughput concurrente y la latencia hasta el primer token tras la puesta en marcha también son métricas de selección\nE. Un modelo puntúa normal en la clasificación, pero los datos de preentrenamiento que vio se parecen mucho a mi negocio, así que merece la pena probarlo más",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B, C, D y E. A falla porque toma la puntuación de una clasificación general como una conclusión: este capítulo cuenta precisamente esa historia, «primero en la general y flojo en el negocio», y las métricas generales solo son una referencia.",
+    "explanation": "El capítulo arranca con una historia de caída: esperar que cuanto más nuevo y mejor en las clasificaciones generales sea el modelo, mejor se portará en tu escenario de negocio, y la realidad es que no siempre es así. La razón es que los modelos difieren en sus datos de preentrenamiento y postentrenamiento; unos han visto muchos datos parecidos a los tuyos y se ajustan sin esfuerzo, otros simplemente no encajan.\n\nAsí que la conclusión es la frase en negrita del capítulo: **para todos los modelos, las métricas generales antes de elegir son solo una referencia, y la elección final depende de cómo se comporten sobre tus propios datos de negocio.** A es exactamente la práctica que esa historia descarta.\n\nE es la forma positiva de lo mismo: cuánto se solapan los datos de preentrenamiento con el negocio, algo que el capítulo incluye entre las razones por las que el ajuste «sale solo».\n\nC corresponde al pasaje sobre el degradado de un conjunto de evaluación; D corresponde a la prueba de rendimiento de inferencia de EvalScope: throughput, latencia de petición, latencia hasta el primer token (TTFT) y tiempo por token de salida (TPOT). La elección no es solo de calidad; el servicio tiene que aguantar la concurrencia.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch06-ex03",
+    "chapter": "chapter-6",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Diseñar un conjunto de evaluación por capas",
+    "prompt": "Tienes que preparar un conjunto de evaluación para «pregunta-respuesta sobre base de conocimiento interna» y comparar tres modelos candidatos. Escribe: (1) qué capas debería tener y qué lleva cada una aproximadamente; (2) por qué no basta con acumular cantidad; (3) cuando tengas las puntuaciones, qué mirarías además de la precisión y cómo decidirías si dos modelos quedan muy juntos.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Menciona las capas (preguntas básicas muy frecuentes, preguntas complejas de varios saltos, preguntas límite), explica que la representatividad y la cobertura importan más que el volumen y menciona las métricas de rendimiento (throughput concurrente, latencia, TTFT) junto con un juicio de negocio combinado?"
+    },
+    "reference": "(1) Las capas: lo básico y muy frecuente del día a día, que es la porción más común de las consultas reales en línea y sirve para sostener el suelo; preguntas complejas y de varios saltos, que necesitan varios saltos o sintetizar varios documentos; preguntas límite, aquellas que la base de conocimiento sencillamente no sabe responder, que quedan fuera de su alcance o están formuladas de forma vaga, pensadas para exponer la alucinación. Los datos proceden de los registros de búsqueda y consulta del día a día del personal.\n\n(2) Por qué no basta con acumular cantidad: decenas de miles de preguntas simples y repetidas dan una puntuación que no vale nada por alta que sea. El valor de un conjunto de evaluación está en la representatividad y la cobertura: tiene que representar el tráfico real, no lo fácil que fue para ti copiar datos.\n\n(3) Qué mirar además de la precisión: si la respuesta es realmente útil (si da en el blanco, si alucina) y el rendimiento de inferencia (throughput bajo concurrencia, latencia de petición, latencia hasta el primer token TTFT, tiempo por token de salida TPOT), porque importa igual que el servicio que vas a lanzar aguante la carga.\n\nCómo decidir cuando las puntuaciones quedan cerca: no mirar el total, mirar las puntuaciones por capa; si dos modelos empatan en total pero uno es claramente mejor en las preguntas difíciles, pondera según la distribución real del negocio; después confirma con datos de negocio en lugar de quedarte en la clasificación pública. Si en las capas clave siguen sin distinguirse, es que el conjunto de evaluación actual no discrimina bastante: primero cambia el conjunto y luego elige el modelo.",
+    "explanation": "Este ejercicio pregunta por el **diseño** de un conjunto de evaluación, y el diseño decide hasta dónde puedes fiarte de la conclusión. La frase del capítulo de que «cuantos más datos mejor es un error de concepto» está en el centro: el valor de un conjunto de evaluación viene de la representatividad y la cobertura.\n\nLa tercera pregunta es la que más merece desplegarse. El capítulo explica que una clasificación general no sirve, pero no dice que un conjunto de evaluación de negocio pueda fallar del mismo modo: si no logras distinguir los modelos, es que el conjunto no discrimina bastante, y entonces lo correcto es cambiar el conjunto en lugar de elegir uno a la fuerza o abandonar.\n\nAdemás, el alcance que describe el capítulo no es solo la calidad: el throughput, el TTFT y el TPOT de la prueba de rendimiento también son criterios de selección. Un modelo con muy buena puntuación que se hunde bajo concurrencia es igual de inservible en producción.\n\nEste ejercicio no puede ejecutar una evaluación real de modelos; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una lista de puntos de diseño con la que comparar."
+  }
+]

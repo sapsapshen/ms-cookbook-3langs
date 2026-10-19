@@ -1,0 +1,75 @@
+[
+  {
+    "id": "ch01-ex01",
+    "chapter": "chapter-1",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "Distinguir gratis, código abierto y pesos abiertos",
+    "prompt": "¿Cuáles de las siguientes afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. Un modelo con el que puedes chatear gratis en una web es necesariamente un modelo de código abierto\nB. Un modelo que puedes descargar y ejecutar localmente tiene pesos abiertos, pero los materiales de entrenamiento y la licencia hay que comprobarlos por separado\nC. Poder descargar un modelo no significa que puedas usarlo comercialmente\nD. Llamar por API al modelo de código abierto que hospeda otra empresa y desplegarlo tú mismo son la misma cosa\nE. «Puedes descargarlo», «puedes usarlo comercialmente» y «puedes modificarlo y redistribuirlo» son tres permisos distintos",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B, C y E. A falla porque equipara «gratis» con «código abierto»: un producto de chat gratuito normalmente lo hospeda el fabricante, así que nunca llegas a los pesos. D falla porque trata la API como una propiedad del modelo: la API solo es una vía de acceso, y un modelo que despliegas tú mismo también puede servirse a tus compañeros mediante una API interna.",
+    "explanation": "Hay que memorizar los tres conceptos por separado: gratis dice si tienes que pagar, código abierto dice qué puedes obtener y qué te permiten hacer con ello. Un modelo con pesos abiertos te da los parámetros, pero los datos de entrenamiento, el código de entrenamiento y los permisos de uso hay que revisarlos cada uno por su lado; corresponden a los cuatro niveles, de mayor a menor, del documento de referencia de G7.\n\nLos tres verbos de la licencia también hay que separarlos: puede descargar, puede usarse comercialmente y puede modificarse y redistribuirse son permisos distintos. El ejemplo de este capítulo es la familia Qwen3, que usa Apache 2.0, mientras que Kimi K3 tiene sus propios términos para ciertos usos comerciales, así que «ya funciona» todavía está a un paso de «se puede meter en un producto comercial».\n\nLímite de la corrección: este ejercicio tiene un único criterio, que las letras elegidas coincidan exactamente con la respuesta de referencia (en una selección múltiple, falta una o sobra una y cuenta como error). Las razones detrás de las opciones no se corrigen, pero esas razones son justamente lo que te llevas."
+  },
+  {
+    "id": "ch01-ex02",
+    "chapter": "chapter-1",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Escribir una lista de comprobación de licencia",
+    "prompt": "Planeas ajustar un modelo de código abierto descargado y ejecutarlo a largo plazo dentro del sistema de atención al cliente de tu empresa. Escribe al menos tres cosas que revisarías antes de salir a producción, y qué riesgo lleva cada una si no se cumple.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Cubre los propios términos de la licencia (si se permite el uso comercial, si hay restricciones por región o escenario, qué debe llevar una obra derivada), si se deben conservar el nombre del modelo y su procedencia, y la diferencia entre desplegar internamente y ofrecer el servicio al exterior?"
+    },
+    "reference": "(1) Lee el texto de LICENSE y confirma si se permite el uso comercial y si hay restricciones de región o escenario; (2) confirma las obligaciones sobre obras derivadas: si hay que conservar el nombre del modelo, la licencia y la procedencia, y si hace falta un aviso de modificaciones (Apache 2.0 pide el NOTICE y una descripción de los cambios; MIT solo exige conservar el aviso de copyright); (3) confirma la cláusula de patentes: Apache 2.0 incluye una concesión de patentes explícita y MIT no, así que cambiar de licencia puede cambiar tu exposición al riesgo; (4) si el modelo ajustado fusiona varios modelos, revisa una a una las licencias de cada modelo de origen para descartar conflictos; (5) si planeas ofrecer el modelo como servicio en vez de usarlo solo internamente, vuelve a confirmar que ese uso está dentro del alcance de la licencia.",
+    "explanation": "El aviso central de este capítulo es que «que el modelo se pueda descargar no significa que puedas usarlo como quieras», y ese aviso es el más fácil de olvidar después de un ajuste: el artefacto ajustado es un archivo nuevo, pero las obligaciones de la licencia no desaparecen solo porque lo hayas editado.\n\nDespliegue interno y ofrecer un servicio al exterior son dos usos distintos y merece la pena confirmarlos por separado: el primero suele llevar menos riesgo, el segundo suele activar más cláusulas.\n\nEste ejercicio no puede ejecutar un despliegue real; lo que evalúa es trasladar los puntos de licencia del capítulo a un escenario concreto. La corrección se apoya en la autoevaluación y en una puntuación opcional por IA. La respuesta de referencia ofrece una lista con la que comparar, y lo importante es que cada punto indique su riesgo en lugar de solo enumerar apartados."
+  },
+  {
+    "id": "ch01-ex03",
+    "chapter": "chapter-1",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Decidir si un caso de uso pide despliegue local",
+    "prompt": "Un equipo tiene que responder preguntas sobre documentos internos. Los datos no pueden salir de la intranet, el volumen diario de llamadas es grande y estable, y la tarea es pregunta-respuesta sobre una base de conocimiento. ¿Qué elegirías? (selección múltiple)\n\nA. Dado que los datos no pueden salir de la intranet, llamar directamente a una API externa es más cómodo\nB. Un modelo desplegado localmente puede conectarse a la base de conocimiento y a las bases de datos que la empresa ya tiene, y hacer la inferencia dentro de la intranet\nC. Cuando el volumen de llamadas es grande y estable, el coste total de montar tus propios servidores puede salir más barato que seguir pagando por token\nD. La pregunta-respuesta sobre una base de conocimiento tiene una entrada y una salida bien definidas, así que es una tarea estable a largo plazo adecuada para modelos de código abierto\nE. Mientras el modelo tenga suficientes parámetros, el despliegue local no tiene ningún coste de mantenimiento",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B, C y D. A falla porque «los datos no pueden salir de la intranet» es justamente la restricción dura de una API externa: mandar datos sensibles a un servicio externo es exactamente lo que este capítulo quiere evitar. E falla porque trata el despliegue local como si no costara nada: además del hardware hay también consumo eléctrico, refrigeración, controladores y compatibilidad de frameworks que se pagan de forma continua.",
+    "explanation": "Las tres razones que da este capítulo para desplegar localmente coinciden exactamente con las tres de este escenario: datos sensibles (la inferencia se queda dentro de la red corporativa), coste (con volumen alto y estable, montarlo uno mismo puede salir más barato) y forma de la tarea (la pregunta-respuesta sobre una base de conocimiento tiene entrada y salida claras y es estable en el tiempo, lo que deja mucho margen).\n\nEn la dirección contraria, este capítulo también señala los casos que no le van bien: pocas llamadas, negocio que cambia rápido o tareas que necesitan siempre la última capacidad general; para eso es más cómodo llamar a una API. Así que el criterio no es «lo local es más avanzado», sino en qué lado de las restricciones cae esta tarea.\n\nFíjate en que C dice «puede salir más barato». La formulación del capítulo es que el coste total suele ser mejor, no siempre. Es la opción correcta porque no afirma más de lo que puede sostener.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  }
+]

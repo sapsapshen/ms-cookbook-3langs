@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch03-ex01",
+    "chapter": "chapter-3",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Ordenar registros QA por campo y descartar vacíos",
+    "prompt": "Elige de unos datos de pregunta-respuesta las muestras utilizables para entrenar. Dada una lista de registros, cada uno un diccionario con los campos `question` y `answer` que guardan la pregunta y la respuesta, escribe una función `clean(rows)` que devuelva una lista nueva: descarta los registros cuya `question` o `answer` esté vacía (vacía una vez quitados los espacios de los extremos) y quita los espacios de los extremos de `question` y `answer` en cada registro que conserves. El orden de entrada no debe cambiar.",
+    "starter": "def clean(rows):\n    # 返回清理后的列表\n    return rows\n\ndata = [\n    {'question': '什么是模型量化？', 'answer': '降低参数的表示精度。'},\n    {'question': '  ', 'answer': '这条答案不该留下来。'},\n    {'question': 'LoRA 是什么？', 'answer': '  参数高效微调方法。  '},\n    {'question': 'GGUF 是什么格式？', 'answer': ''},\n]\nprint(clean(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': ' 问题 ', 'answer': ' 答案 '}])\nassert out == [{'question': '问题', 'answer': '答案'}], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': 'a1'}, {'question': '   ', 'answer': 'a2'}, {'question': 'q3', 'answer': 'a3'}])\nassert len(out) == 2 and [r['question'] for r in out] == ['q1', 'q3'], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': ''}, {'question': 'q2', 'answer': '   '}])\nassert out == [], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': 'a1'}])\nassert len(out) == 1 and set(out[0]) == {'question', 'answer'}, out",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = [{'question': 'q1', 'answer': ' a1 '}, {'question': 'q2', 'answer': 'a2'}]\nsnapshot = [dict(r) for r in src]\nclean(src)\nassert src == snapshot, 'clean 不应该改动传入的字典'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 8):\n    for _pad in (' ', '', '   '):\n        for _blank_side in (0, 1):\n            _rows = []\n            for _i in range(_n):\n                _q = _pad + f'问题{_n - _i}' + _pad\n                _a = f'答案{_i}' + _pad\n                if _i % 2 == _blank_side:\n                    _a = _pad\n                _rows.append({'question': _q, 'answer': _a, 'source': 'tag'})\n            _before = [{k: v for k, v in r.items()} for r in _rows]\n            _out = clean(_rows)\n            _want = [{'question': f'问题{_n - _i}', 'answer': f'答案{_i}'}\n                     for _i in range(_n) if _i % 2 != _blank_side]\n            assert _out == _want, (_n, _pad, _blank_side, _out, _want)\n            for _r in _out:\n                assert set(_r) == {'question', 'answer'}, ('多余键', _r)\n            assert _rows == _before, 'clean 不应该改动传入的字典'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': ' b ', 'answer': ' x '}, {'question': ' a ', 'answer': ' y '}])\nassert [r['question'] for r in out] == ['b', 'a'], '顺序必须和输入一致，不能重新排序'",
+        "weight": 4
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Comprueba la vaciedad antes de quitar espacios, para no confundir un texto en blanco con contenido válido?"
+    },
+    "reference": "def clean(rows):\n    out = []\n    for row in rows:\n        q = row['question'].strip()\n        a = row['answer'].strip()\n        if q and a:\n            out.append({'question': q, 'answer': a})\n    return out\n\ndata = [\n    {'question': '\\u4ec0\\u4e48\\u662f\\u6a21\\u578b\\u91cf\\u5316\\uff1f', 'answer': '\\u964d\\u4f4e\\u53c2\\u6570\\u7684\\u8868\\u793a\\u7cbe\\u5ea6\\u3002'},\n    {'question': '  ', 'answer': '\\u8fd9\\u6761\\u7b54\\u6848\\u4e0d\\u8be5\\u7559\\u4e0b\\u6765\\u3002'},\n    {'question': 'LoRA \\u662f\\u4ec0\\u4e48\\uff1f', 'answer': '  \\u53c2\\u6570\\u9ad8\\u6548\\u5fae\\u8c03\\u65b9\\u6cd5\\u3002  '},\n    {'question': 'GGUF \\u662f\\u4ec0\\u4e48\\u683c\\u5f0f\\uff1f', 'answer': ''},\n]\nprint(clean(data))",
+    "explanation": "Este capítulo dice que «ya que los datos están descargados, no se los pases todo al modelo a toda prisa»: saca primero unas muestras y busca valores vacíos, texto corrupto o errores evidentes, y luego confirma que los campos encajan con lo que espera el código de entrenamiento. Esta función hace los dos primeros de esos pasos.\n\nHay un punto donde el orden se invierte con facilidad: llama a `strip()` primero y comprueba la vaciedad después. Al revés, una cadena como `'   '` pasa la comprobación y entra en el conjunto de entrenamiento: no está vacía, pero no hay nada dentro. La comprobación principal vigila justo eso: alimenta `answer` con valores formados solo por espacios, probando tanto `''` como `'   '`.\n\nOther dos límites: los diccionarios devueltos conservan solo las claves `question` y `answer` (los datos en bruto suelen traer extras como el origen o el anotador, que el entrenamiento no quiere), y los diccionarios recibidos no se deben modificar en el sitio: la lista original se queda exactamente como estaba.\n\nEl orden también entra en la comprobación principal: numera las filas en orden descendente, así que una implementación que las ordene no puede coincidir y suspende.\n\nLa última comprobación no mira una sola entrada: recorre de 0 a 7 filas contra tres tipos de relleno de espacios y dos lados en los que puede caer el valor vacío, 48 grupos de entrada en total, recalculando el resultado esperado en cada caso, comparando las claves devueltas y confirmando que los diccionarios de entrada no se mutaron. Está ahí para impedir que te aprendas la respuesta: una tabla de búsqueda o un valor de retorno fijo no cubren estas entradas. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch03-ex02",
+    "chapter": "chapter-3",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar si el uso del dataset encaja con el capítulo",
+    "prompt": "Vas a hacer un ajuste fino sobre un conjunto de datos de pregunta-respuesta de código abierto. ¿Cuáles de estas prácticas coinciden con este capítulo? (selección múltiple)\n\nA. Echar un vistazo a unas muestras en la «vista previa de datos» para confirmar en qué columna está la pregunta, en cuál la respuesta y si hay etiquetas\nB. Como en tu cabeza la tarea es «pregunta-respuesta», ves esa palabra en el nombre del conjunto y te pones a escribir el código de entrenamiento\nC. El mismo conjunto se actualiza, así que hay que apuntar también su versión, o el experimento no se podrá reproducir\nD. Da igual que las muestras pensadas para comprobar el modelo acaben metidas en el conjunto de entrenamiento antes de tiempo\nE. `MsDataset.load` permite cargar solo un subconjunto, así que no hace falta leer el conjunto entero cada vez",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C y E. B falla porque la respuesta humana y la respuesta del modelo pueden estar en campos distintos, así que si no miras los campos estás adivinando, y los nombres de campo que escribas casi nunca quadrarán. D falla porque el conjunto de entrenamiento y el de prueba deben quedar separados: mezclarlos pronto deja la puntuación bonita y no te dice nada sobre cómo se comporta el modelo con preguntas nuevas.",
+    "explanation": "El orden de esta sección es intencionado: primeiro aclara qué quieres hacer, luego hojea unas muestras en la vista previa, confirma los campos, anota la versión y ya entonces carga. A, C y E caen exactamente en los pasos de vista previa, versión y carga.\n\nB es la forma clásica de salir mal. La formulación del capítulo es «en qué columna está la pregunta, en cuál la respuesta, si hay etiquetas, si un registro es un fragmento de texto o un conjunto de turnos de diálogo... todo eso se puede ver primero. Así, cuando escribas el código de procesamiento no tendrás que adivinar nombres de campo», y adivinar los campos por el nombre es justo lo que te pide que evites.\n\nD merece un párrafo propio: si mezclas el conjunto de prueba en el de entrenamiento la puntuación se ve mejor, pero esa puntuación ya no responde a ninguna pregunta. Por eso este capítulo le dedica un párrafo aparte.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch03-ex03",
+    "chapter": "chapter-3",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Escribir una lista previa al entrenamiento del dataset",
+    "prompt": "Has encontrado un conjunto de datos en ModelScope y piensas llevarlo tal cual a un ajuste fino. Escribe qué comprobarías en cada una de las tres etapas: antes de descargar, después de descargar y antes de entregárselo al modelo. Di también en qué etapa, si aparece un problema, se vendría abajo tu diseño de tarea original.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Organiza la respuesta en torno a las tres etapas (antes de descargar: si la tarea encaja con los datos y qué filtro se usó; después de descargar: previsualizar campos, registrar la versión, separar entrenamiento y prueba; antes de entregar: valores vacíos y texto corrupto, consistencia del formato de las respuestas) y señala que la estructura de campos que no encaja con la tarea, o no separar entrenamiento y prueba, son las dos clases de problema más graves?"
+    },
+    "reference": "Antes de descargar: si la tarea encaja con los datos: busca por etiqueta de palabra clave y categoría de tarea y confirma que estos datos corresponden a la tarea que quieres y no a otra de nombre parecido; comprueba que la cobertura es suficiente.\nDespués de descargar: (1) previsualiza muestras para confirmar qué columna es la pregunta, cuál la respuesta y cuál las etiquetas, y si hay campos de más, para no adivinar nombres de campo después; (2) registra la versión del conjunto: los mismos datos se actualizan, y las muestras, los campos o la partición pueden cambiar, así que sin versión el experimento no es reproducible; (3) extrae por separado los datos de entrenamiento y los de prueba; las muestras destinadas a medir el modelo no pueden meterse antes en el conjunto de entrenamiento.\nAntes de entregárselo al modelo: saca unas filas y busca valores vacíos, texto corrupto o errores evidentes, y confirma que los campos encajan con lo que espera el código de entrenamiento; si las respuestas a un mismo tipo de pregunta varían mucho de formato, ordénalas antes de entrenar.\nLa clase más grave es una estructura de campos que no encaja con la tarea: la respuesta humana y la respuesta del modelo pueden estar en campos distintos, así que qué lees depende de la tarea que querías hacer. Si la estructura de campos de todo el conjunto no es la que esperabas, el conjunto no está «casi bien», es inservible: cambia los datos o cambia el diseño de la tarea.",
+    "explanation": "La lógica de este capítulo es una cadena: antes de buscar datos aclara qué quieres hacer, filtra previsualizando en vez de por el nombre, anota la versión y la partición al cargar, y haz una última comprobación por muestreo antes de entregar. Cada una de las tres etapas detiene una clase de problema, y si falta un eslabón se filtra al entrenamiento.\n\nLa última pregunta es el centro de este ejercicio. Casi todos los problemas anteriores son «está sucio y hay que limpiarlo», mientras que una estructura de campos que no encaja con la tarea es «vas en dirección equivocada»: tira abajo el diseño de tarea original, no la calidad de los datos. Los dos requieren respuestas distintas: el primero se arregla modificando los datos, el segundo, cambiando el conjunto o la tarea.\n\nEste ejercicio no puede ejecutar una carga real de datos ni un entrenamiento; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una lista con la que comparar."
+  }
+]

@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch02-ex01",
+    "chapter": "chapter-2",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "Build a model download command and explain each part",
+    "prompt": "With a single `modelscope download` command, download the whole `Qwen/Qwen3-0.6B` model to the local directory `./Qwen3-0.6B`. Write a function `build_cmd(model, local_dir)` that returns this command as a string, then print it.",
+    "starter": "def build_cmd(model, local_dir):\n    # 返回 modelscope download 命令字符串\n    return \"\"\n\nprint(build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nassert isinstance(c, str) and c.strip(), 'build_cmd 必须返回非空字符串'",
+        "weight": 2
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "modelscope\\s+download",
+        "weight": 4
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "--model[\\s=]+['\"]?Qwen/Qwen3-0\\.6B",
+        "weight": 4
+      },
+      {
+        "kind": "stdout_matches",
+        "pattern": "--local[-_]dir[\\s=]+['\"]?\\./Qwen3-0\\.6B",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nparts = c.split()\nassert parts[0] == 'modelscope' and parts[1] == 'download', parts[:2]",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "c = build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B')\nassert 'README.md' not in c, '下载整个模型时不要写文件名，否则只会拿到那一个文件'",
+        "weight": 2
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _m in ('Qwen/Qwen3-0.6B', 'deepseek-ai/DeepSeek-V3'):\n    for _d in ('./out', '/tmp/models'):\n        _c = build_cmd(_m, _d)\n        assert isinstance(_c, str) and _c.strip(), (_m, _d)\n        assert _m in _c, (_m, _d, _c)\n        assert _d in _c, (_m, _d, _c)\n        assert 'README.md' not in _c, (_m, _d, _c)",
+        "weight": 8
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it tell apart what `--model` and `--local_dir` each control?"
+    },
+    "reference": "def build_cmd(model, local_dir):\n    return f\"modelscope download --model {model} --local_dir {local_dir}\"\n\nprint(build_cmd('Qwen/Qwen3-0.6B', './Qwen3-0.6B'))",
+    "explanation": "Each of the two long options controls one thing: after `--model` comes the model's name on ModelScope, after `--local_dir` comes the directory it is saved to locally. The command starts with `modelscope download`; the `pip install -U modelscope` that installs the package is a different command.\n\nWhen downloading a whole model, do not put a file name after the model name -- add `README.md` and you download only that one file. Only append a file name when you first want to check that the download path works. One of the checks watches exactly this: the string `README.md` appearing in the command is a failure, and the exhaustive check runs it again.\n\nOn spelling, grading does not insist on a separator: both `--model Qwen/...` and `--model=Qwen/...` pass.\n\nThe final check runs two model names against two directories, four input pairs in total, and requires the command to be non-empty, the model name and the directory to be present, and no stray file name -- this one is there to stop an implementation that hardcodes this one answer: a hardcoded return value cannot cover other models and directories. Honest boundary: those four inputs are part of the public corpus, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch02-ex02",
+    "chapter": "chapter-2",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Pick the download method that fits the situation",
+    "prompt": "You take over a project and have to download `Qwen/Qwen3-0.6B` to run inference locally. Which approach matches this chapter's advice? (multi-select)\n\nA. You only want to check quickly whether the download works, so click a button on the model files page and grab a single file first\nB. You need to download from inside a Python program and get the save path back, so use `snapshot_download`\nC. The team already manages model files with Git, so cloning the repository URL is enough and Git LFS is not needed\nD. You do not have to try all four ways; pick one that fits the situation\nE. Once the download finishes the job is done, so you can start large-scale training right away",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, B and D. C is wrong because model files are usually large, and the Git route needs Git and Git LFS installed first; `git lfs install` only initialises LFS in the current environment, it does not install the tool itself. E is wrong because this chapter closes with \"point the model path at a local directory and get one input and one output working\", not with starting training right after the download.",
+    "explanation": "The mapping this chapter gives is: a few files for a quick look at the web page, the command line for terminal work, the SDK for a Python project, Git if you already live in a Git workflow. So B and D are two sides of the same thing -- \"you do not have to try them all\" is precisely the chapter's conclusion.\n\nThe Git option has a trap that is easy to fall into: `git lfs install` initialises LFS in the current environment, it does not install the tool. When the prompt says there is no `lfs` command, finish installing the tool first; doing it in the other order leaves you stuck all the way through.\n\nE is the most important of the options. Once the download is done, this chapter asks you to open the usage example, point the path at the local directory, and get one input and one output working first. Skip that and you still do not know whether a problem is the model's or the environment's.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch02-ex03",
+    "chapter": "chapter-2",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Use the Model Card to rule out unsuitable candidates",
+    "prompt": "You have to pick a model for \"Chinese customer service intent recognition\" and there are five or six candidates. Before opening any Model Card, write down what information you want to check. Once you have checked it and a model fails the requirements, how would you dispose of it? Write down both your checklist and your disposal rule.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it cover model capability and architecture, scope of use (languages, input types, restrictions), runtime and method, and licence -- plus a definite disposal action when a requirement fails (drop it rather than make do)?"
+    },
+    "reference": "Order of checking: (1) what is this model and what can it do -- the model name, the basic introduction and the architecture notes, to confirm you are on the right track; (2) scope of use -- which languages it supports, what input it suits, what restrictions it has, and for a Chinese customer service scenario you need to confirm language coverage and whether it supports inputs like intent classification; (3) how to use it -- what runtime it needs, which tools it depends on, how the input has to be prepared, because a runtime you cannot install means the model cannot be used; (4) licence -- whether commercial use is allowed and whether region or scenario is restricted. Disposal rule: any hard requirement that fails drops the model immediately with the reason written down, no making do; only genuine preference differences (both work) move on to the next round of comparison, and are not decided here.",
+    "explanation": "This chapter says a Model Card is \"worth a second look\", and what it is worth a second look for is four kinds of information: what this model is, what its scope of use is, how to use it, and the licence. The first three help you confirm you are not on the wrong track; the last one decides whether you can actually use it.\n\nThe \"disposal rule\" half is easier to miss than the checklist itself: checking is not for ranking the candidates, it is for eliminating them. A hard requirement that fails means the model is out, and only once everything passes does the next round of comparison begin -- which echoes chapter 1's warning that being downloadable does not mean being free to use.\n\nThis exercise cannot run a real download; grading rests on self-assessment plus an optional AI score, and the reference answer gives a checklist you can compare against."
+  }
+]

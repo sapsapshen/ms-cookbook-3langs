@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch04-ex01",
+    "chapter": "chapter-4",
+    "type": "code",
+    "difficulty": 1,
+    "minutes": 8,
+    "objective": "Decide whether the free GPU quota fits an experiment",
+    "prompt": "The free ModelScope GPU is an NVIDIA A10 with 24GB of VRAM and 36 free hours. Write a function `can_fit(weight_gb, batch_hint)` that decides whether this experiment fits: `weight_gb` is the GB the model weights take, and `batch_hint` is a hint multiplier (default 1). Return `\"ok\"` when `weight_gb * batch_hint` is at most 24, and `\"too-big\"` otherwise.",
+    "starter": "def can_fit(weight_gb, batch_hint=1):\n    # 返回 \"ok\" 或 \"too-big\"\n    pass\n\nprint(can_fit(14))\nprint(can_fit(30))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14) == 'ok'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24) == 'ok', '正好等于 24GB 也算装得下'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24.5) == 'too-big' and can_fit(30) == 'too-big'",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14, 1.5) == 'ok', '14 x 1.5 = 21，仍然装得下'",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14, 2) == 'too-big', 'batch_hint 必须参与计算，不能只是摆设'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24.0001) == 'too-big', '只比 24 大一点点也要判 too-big'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _w in (0.5, 7, 13.5, 24, 24.25, 24.5, 25, 48, 70):\n    for _b in (1, 1.0001, 1.2, 1.5, 2, 3.7):\n        _got = can_fit(_w, _b)\n        _want = 'ok' if _w * _b <= 24 else 'too-big'\n        assert _got == _want, (_w, _b, _got, _want)",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand this is a rough estimate rather than a precise VRAM prediction?"
+    },
+    "reference": "def can_fit(weight_gb, batch_hint=1):\n    if weight_gb * batch_hint <= 24:\n        return 'ok'\n    return 'too-big'\n\nprint(can_fit(14))\nprint(can_fit(30))",
+    "explanation": "This chapter says the free GPU is an NVIDIA A10 with 24GB of VRAM and 36 free hours, so the \"does it fit\" line sits at 24GB.\n\nThe boundary is \"at most\", not \"less than\": `can_fit(24)` must return `\"ok\"`, because filling the VRAM exactly still runs, and one of the checks watches exactly that; in the other direction `can_fit(24.0001)`, which is only a hair over 24, plus the 24.25GB and 24.5GB weight cases, must all return `\"too-big\"`. Three implementations fail on these inputs: writing `!=`, writing `<`, and inventing a 0.5GB tolerance along the lines of \"leave a little slack so anything under 24.5GB counts\".\n\n`batch_hint` is a required point rather than decoration: an implementation that never uses it in the arithmetic returns `\"ok\"` for `can_fit(14, 2)` (14 really is under 24), when the right answer is `\"too-big\"`.\n\nWorth being explicit: the arithmetic here is this chapter's kind of \"rough estimate\". It counts weights times a multiplier and nothing else -- no KV cache, no framework overhead, no activations. Actually running on a 24GB card usually means also shrinking the batch and the context length. So the function answers \"is there hope at this order of magnitude\", not \"will it definitely run\": it will not tell you whether the margin is enough.\n\nThe final check runs nine weight cases against six multiplier cases, 54 input pairs in total, recomputing the expected value with `weight * hint <= 24` for each; it is there to stop answer-lookup: a hardcoded return value cannot cover 54 inputs. Honest boundary: those 54 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch04-ex02",
+    "chapter": "chapter-4",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "Judge whether free resources are used correctly",
+    "prompt": "You have finished your first experiment on a ModelScope Notebook. Which of these practices match this chapter? (multi-select)\n\nA. Keep the files you want to retain under `/mnt/workspace`, because the 100GB of persistent storage is mounted there\nB. Once the experiment is done you just close the browser window, the cloud instance stops and the GPU stops consuming quota\nC. After the GPU quota runs out you can go back to the free CPU environment to process data and debug code\nD. Long jobs need a save-progress plan in advance, and the files training produces go into `/mnt/workspace`\nE. Just leaving the page frees the resources, and you can pick up where you left off when you come back",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C and D. B and E fail on the same point: merely leaving the page or closing the browser is not the same as having stopped the cloud machine; you have to go back to the Notebook page and stop the instance by hand.",
+    "explanation": "This chapter has one throughline: free resources are shared and quota-limited, so \"give them back promptly\" matters more than \"how you use them\".\n\nA and D are the same mechanism applied twice. `/mnt/workspace` carries 100GB of persistent storage, and files elsewhere are not kept after the instance closes by default, so training artefacts that must survive have to land in that directory. The chapter's `mkdir -p /mnt/workspace/models /mnt/workspace/data /mnt/workspace/outputs` exists for exactly this.\n\nB and E are a very practical trap, and the chapter spends a paragraph on it: closing the browser does not stop the cloud machine, and the quota keeps ticking away.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch04-ex03",
+    "chapter": "chapter-4",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Plan a small validation run on free resources",
+    "prompt": "You are just getting started and want to get one small experiment working on free resources before deciding whether to buy hardware. Write down how you would arrange it: what you do on CPU first, under what conditions you move to GPU, and how you wrap up when the experiment is over.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it arrange CPU before GPU, give the reason for moving to GPU (such as model size, or the need for inference or small-scale fine-tuning), and mention writing files to /mnt/workspace and stopping the instance when the experiment ends?"
+    },
+    "reference": "On CPU first: download files, process data, debug code. The CPU environment has 8 cores, 32GB of RAM and no time limit, so you can take the data and the code to a working state slowly without racing the quota. The goal here is to have the code and the data ready, not to produce results.\n\nThe reason to move to GPU: move up when you need model inference or a small-scale fine-tune AND the model size falls inside what an A10's 24GB of VRAM can cover. The reference path this chapter gives is \"open the environment, create a Notebook, download a small model, get the example running\", validating the whole chain on a small model first.\n\nOnce you are up there: write the files you want to keep to `/mnt/workspace`, and plan checkpoint saves for long jobs so that an instance expiring mid-run does not lose the work.\n\nWrapping up: stop the instance when the task is done -- closing the browser does not count, go back to the Notebook page and stop it by hand. Once the quota is used up you can go back to the free CPU environment to keep processing data and debugging code.",
+    "explanation": "The sentence this chapter opens with is the point of the exercise: when you start learning you do not have to buy a new computer first, get one small experiment running and find out how much resource you actually need. What this asks about is that move -- \"see the requirement clearly before spending money\".\n\nCPU before GPU has two reasons stacked together: the CPU environment has no time limit and the debugging stage never needed a GPU anyway, whereas the moment you are on a GPU the quota burns by the hour, so it is worth saving for the step that genuinely needs the compute.\n\nThe wrap-up question is easy to miss, and it happens to be the one thing the chapter gives a paragraph of its own to: the most expensive cost on free resources is not GPU hours, it is the hours of instances you forget to stop.\n\nThis exercise cannot perform real environment operations; grading rests on self-assessment plus an optional AI score, and the reference answer gives an arrangement you can compare against."
+  }
+]

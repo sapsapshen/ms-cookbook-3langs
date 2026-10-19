@@ -1,0 +1,103 @@
+[
+  {
+    "id": "ch05-ex01",
+    "chapter": "chapter-5",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Encajar una necesidad de negocio en una tarea",
+    "prompt": "El primer paso al elegir un modelo es traducir la necesidad de negocio a una tarea de modelo. Escribe una función `classify(goal, in_types, out_types)`: primero decide el tipo de tarea a partir del objetivo de negocio `goal` -- `\"generate\"` corresponde a la tarea de generación, `\"categorize\"` a la de clasificación, `\"extract\"` a la de extracción de información y `\"rank\"` a la de recuperación y ordenación. Después decide la modalidad de datos: `in_types` y `out_types` son cada una una cadena (`\"text\"`, `\"image\"`, `\"audio\"`, `\"video\"`). Devuelve `\"\\u5355\\u6a21\\u6001\"` (una sola modalidad) cuando coincidan y `\"\\u591a\\u6a21\\u6001\"` (multimodal) cuando no. La función devuelve una cadena con la forma `\"<tipo de tarea>-<modalidad>\"`, por ejemplo `\"\\u5206\\u7c7b\\u4efb\\u52a1-\\u5355\\u6a21\\u6001\"`.\n\nLas seis etiquetas son cadenas en chino y la corrección las compara de forma exacta, así que escríbelas todas con escapes `\\uXXXX` tal y como se muestran. Los escapes no son otro valor, solo la forma de mantener el código fuente en ASCII; en tiempo de ejecución la cadena es el propio texto chino.",
+    "starter": "def classify(goal, in_types, out_types):\n    # 返回 \"任务类型-单模态\" 或 \"任务类型-多模态\"\n    pass\n\nprint(classify('categorize', 'text', 'text'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert classify('categorize', 'text', 'text') == '分类任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('extract', 'text', 'text') == '信息抽取任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('generate', 'text', 'image') == '生成任务-多模态', '输入输出类型不同就是多模态任务'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('rank', 'image', 'image') == '检索与排序任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('generate', 'video', 'audio') == '生成任务-多模态', '多模态不看类型是否相邻'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('categorize', 'audio', 'text') == '分类任务-多模态', '语音输入文本输出也是多模态'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _g in ('generate', 'categorize', 'extract', 'rank'):\n    for _i in ('text', 'image', 'audio', 'video'):\n        for _o in ('text', 'image', 'audio', 'video'):\n            _got = classify(_g, _i, _o)\n            _task = {'generate': '生成任务', 'categorize': '分类任务',\n                     'extract': '信息抽取任务', 'rank': '检索与排序任务'}[_g]\n            _mode = '单模态' if _i == _o else '多模态'\n            assert _got == f'{_task}-{_mode}', (_g, _i, _o, _got)",
+        "weight": 16
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Sigue el orden «primero el objetivo, después la modalidad de datos»?"
+    },
+    "reference": "TASKS = {\n    'generate': '\\u751f\\u6210\\u4efb\\u52a1',\n    'categorize': '\\u5206\\u7c7b\\u4efb\\u52a1',\n    'extract': '\\u4fe1\\u606f\\u62bd\\u53d6\\u4efb\\u52a1',\n    'rank': '\\u68c0\\u7d22\\u4e0e\\u6392\\u5e8f\\u4efb\\u52a1',\n}\n\n\ndef classify(goal, in_types, out_types):\n    task = TASKS[goal]\n    mode = '\\u5355\\u6a21\\u6001' if in_types == out_types else '\\u591a\\u6a21\\u6001'\n    return f'{task}-{mode}'\n\nprint(classify('categorize', 'text', 'text'))",
+    "explanation": "El orden que da este capítulo es «primero mira el objetivo final de la pregunta de negocio, después los tipos de dato de entrada y salida», y esta función es exactamente esos dos pasos: el objetivo decide el tipo de tarea y los tipos de dato deciden si la modalidad es única o múltiple.\n\nLos cuatro tipos de tarea se corresponden con los cuatro objetivos: `generate` generación, `categorize` clasificación, `extract` extracción de información, `rank` recuperación y ordenación. Las comprobaciones cubren cada uno de los cuatro objetivos al menos una vez, y la comprobación principal recorre las 64 combinaciones de 4 objetivos x 4 entradas x 4 salidas.\n\nLa decisión de multimodalidad solo mira si coinciden o no, nunca si los tipos son adyacentes. `classify('generate', 'video', 'audio')` sigue siendo multimodal, y también `classify('categorize', 'audio', 'text')`, es decir voz que entra y texto que sale: exactamente la forma de pensar del primer ejemplo del capítulo.\n\nConviene decirlo claro: esto es una traducción mecánica de la tabla de este capítulo y no contiene ningún criterio de selección de modelos. En un caso real, alguien suele tener que descomponer antes el objetivo de negocio; la función solo se encarga de la clasificación una vez que eso está resuelto.\n\nLa última comprobación recalcula el valor esperado para cada una de las 64 entradas y lo compara: está ahí para impedir que te aprenses la respuesta, porque una tabla de búsqueda no cubre 64 combinaciones. Límite honesto: esas 64 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch05-ex02",
+    "chapter": "chapter-5",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Elegir cómo filtrar y comparar modelos",
+    "prompt": "Tienes que elegir un modelo para «extraer información clave de contratos en chino». ¿Cuáles de estas prácticas coinciden con este capítulo? (selección múltiple)\n\nA. Empezar por el filtro «tipo de tarea» en la izquierda de la biblioteca de modelos y elegir extracción de información; la plataforma filtra automáticamente los modelos que llevan esa etiqueta\nB. Cuando todavía quedan muchos candidatos, seguir acotando por framework, licencia, arquitectura e idioma\nC. Los modelos de propósito general suelen tener más descargas que los verticales especializados, así que el más descargado es el más adecuado\nD. La actividad de la comunidad se ve en la rapidez de respuesta de Issues y Discussions, así que hay que entrar en la página de la tarjeta del modelo\nE. Para un uso comercial conviene filtrar la licencia a las permisivas, como Apache 2.0 o MIT",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, B, D y E. C falla porque comparar descargas entre dominios distintos no significa nada: los modelos de propósito general ya tienen notablemente más descargas que los verticales especializados, y el consejo de este capítulo es comparar dentro del mismo tipo de tarea.",
+    "explanation": "Este capítulo da cuatro señales de popularidad: número de descargas, número de me gusta, fecha de actualización y actividad de la comunidad. Todas sirven para «darte una referencia mientras acotas» y ninguna «decide a quién eliges».\n\nC falla porque confunde un problema de medición con un problema de calidad. El aviso del capítulo es la clave: los modelos de propósito general suelen tener notablemente más descargas que los verticales especializados, así que comparar las cifras entre dominios distintos no dice gran cosa; compara dentro del mismo tipo de tarea. Del mismo modo, «actualizado hace mucho tiempo» señala riesgo de compatibilidad, no una capacidad menor.\n\nEl orden de A también es correcto: la etiqueta de tarea es el filtro más directo y es lo que se recomienda primero; las demás condiciones vienen después.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch05-ex03",
+    "chapter": "chapter-5",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Descomponer un pipeline de documentos en tareas",
+    "prompt": "Tienes que construir un sistema de procesamiento de «contratos escaneados»: la entrada es la imagen de un escaneo y la salida debe ser una tabla estructurada con los campos del contrato. Escribe en qué tareas de modelo lo descompondrías, qué tipo de dato usa cada una, qué cambiarías cuando un paso rinde mal y por qué aquí harían falta varios modelos en lugar de uno.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Lo descompone en pasos independientes como OCR, análisis de maquetación y extracción de información siguiendo la idea de varios modelos del capítulo, explica sustituir un paso en lugar de rehacer todo el sistema, y cuenta qué falla cuando un solo modelo cubre todo el flujo?"
+    },
+    "reference": "La descomposición: (1) OCR, reconocer el texto del escaneo: imagen dentro, texto fuera, multimodal; (2) análisis de maquetación, decidir qué es cada elemento de la página y dónde está: imagen dentro, información estructurada fuera, multimodal; (3) extracción de información, sacar del texto reconocido los campos del contrato (contraparte, importe, plazo y demás): texto dentro, campos estructurados fuera, una sola modalidad; los contratos con muchas tablas necesitan además reconocimiento de tablas, que también es un paso independiente.\n\nSustitución de un solo paso: cuando un paso rinde mal, cambias únicamente el modelo de ese paso, sin rehacer el resto del sistema. Los pasos sin dependencias entre ellos (distintas páginas de un contrato largo) además pueden procesarse en paralelo, lo que reduce el tiempo total. Para los pasos donde importa la precisión elige un modelo grande; para los que importan la velocidad, uno pequeño.\n\nPor qué varios modelos: este capítulo dice que un sistema de negocio suele usar más de un modelo. En toda la cadena, «leer los caracteres de los píxeles», «determinar la estructura de maquetación» y «extraer campos semánticos» son tres capacidades distintas. Si se lo encargas todo a un solo modelo grande, cuando algo falle no sabrás en qué paso está el error ni qué conviene cambiar.\n\nUn paso más allá: el otro aviso del capítulo también aplica aquí. Si esta cadena sirve o no al final depende de cómo se comporte sobre datos reales de negocio; las puntuaciones de las clasificaciones generales solo son una referencia.",
+    "explanation": "Este ejercicio se corresponde con la sección final del capítulo, «un trabajo también puede hacerlo entre varios modelos», cuyo ejemplo es justo un sistema de procesamiento de documentos: clasificación de documentos, OCR, análisis de maquetación, reconocimiento de tablas y extracción de información. Los tres rasgos que da este capítulo son: cada modelo se ocupa de una tarea independiente, un paso que rinde mal se puede cambiar por su cuenta y las tareas independientes se pueden lanzar en paralelo.\n\nLa última pregunta es el verdadero punto del ejercicio. La respuesta no está en «varios modelos son mejores», sino en la **rendición de cuentas**: una vez que lo divides, cada paso se puede medir y cambiar por separado. Eso va en la misma línea que el razonamiento sobre evaluación del capítulo 6: cuando un sistema no puede localizar un problema, la puntuación de evaluación tampoco sirve de nada.\n\nLa otra frase del capítulo, que las métricas generales solo son una referencia y que la elección final depende de cómo se comporta sobre datos de negocio, también aplica: cada modelo de esta cadena debería haberse validado sobre sus propias muestras de contrato.\n\nEste ejercicio no puede ejecutar un pipeline real de documentos; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una descomposición con la que comparar."
+  }
+]

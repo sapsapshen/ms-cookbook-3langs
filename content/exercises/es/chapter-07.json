@@ -5,9 +5,9 @@
     "type": "code",
     "difficulty": 1,
     "minutes": 5,
-    "objective": "Construir una presentación con una f-string",
-    "prompt": "Define dos variables: `name` con tu nombre y `role` con lo que quieres aprender. Luego imprime una frase china que diga quién eres y qué quieres aprender, construida con una f-string a partir de esas dos variables. El starter muestra la plantilla de la frase que debes usar.",
-    "starter": "name = \"\"\nrole = \"\"\n# Imprime la línea china con una f-string, usando las dos variables.\n# Plantilla: 我是{name}，我想学{role}   (\"Soy {name}, quiero aprender {role}\")\n",
+    "objective": "Montar una presentación con variables y f-string",
+    "prompt": "Define dos variables: `name` con tu nombre y `role` con lo que quieres aprender. Luego imprime una frase construida con una f-string a partir de esas dos variables. La frase tiene que ser la línea china `\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\"` («Soy {name}, quiero aprender {role}»). Escribe los caracteres chinos como escapes `\\uXXXX` para que el código fuente siga en ASCII; la corrección comprueba el texto chino impreso.",
+    "starter": "name = \"\"\nrole = \"\"\n# 在下面打印那句话\n",
     "checks": [
       {
         "kind": "stdout_matches",
@@ -16,31 +16,31 @@
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and name.strip(), 'name must be a non-empty string'",
+        "code": "assert isinstance(name, str) and name.strip(), 'name 必须是非空字符串'",
         "weight": 2
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and role.strip(), 'role must be a non-empty string'",
+        "code": "assert isinstance(role, str) and role.strip(), 'role 必须是非空字符串'",
         "weight": 2
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of name (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "code": "assert isinstance(name, str) and name.strip() and ''.join(name.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 name 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
         "weight": 5
       },
       {
         "kind": "assert_python",
-        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), 'the printed line must contain the value of role (ignoring line breaks and spaces) -- interpolate the variable, do not hand-write the literal'",
+        "code": "assert isinstance(role, str) and role.strip() and ''.join(role.split()) in ''.join(__sils_stdout.split()), '打印出来的句子里必须出现 role 的值（忽略换行与空格差异）—— 用变量，不要手写字面量'",
         "weight": 5
       }
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "¿Se usaron realmente dos variables en lugar de escribir el texto dentro de la cadena?"
+      "criteria": "¿Se usaron de verdad dos variables en lugar de escribir el texto dentro de la cadena?"
     },
-    "reference": "name = \"Mian\"\nrole = \"desarrollo de agentes\"\n# Los escapes \\u mantienen esta respuesta sin CJK e imprimen la frase china.\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
-    "explanation": "Una f-string incrusta valores con {} y evita concatenar a mano. Asigna name y role antes de imprimir, si no la frase queda con huecos. La línea impresa se mantiene en chino a propósito, para que la comprobación la valide literalmente; las secuencias de escape son esa misma frase escrita en ASCII. La corrección mira tres cosas con cuatro aserciones: que ambas variables tienen texto, que la línea impresa tiene la forma «Soy ... , quiero aprender ...» y que la línea impresa lleva de verdad los dos valores. La aserción de forma exige contenido real después de la parte «quiero aprender»: imprimir media frase suspende, mientras que repartir el nombre y el objetivo en líneas distintas es válido. El punto de texto no vacío está guardado dos veces, una por la propia variable y otra porque su valor tiene que aparecer en la salida, así que dejarlo en blanco siempre suspende. Esto último es lo que suspende a quien rellena las variables correctamente pero escribe el texto a mano."
+    "reference": "name = \"\\u6c88\\u6110\"\nrole = \"Agent \\u5f00\\u53d1\"\nprint(f\"\\u6211\\u662f{name}\\uff0c\\u6211\\u60f3\\u5b66{role}\")",
+    "explanation": "Una f-string incrusta un valor con {} y evita concatenar cadenas a mano. Fíjate en que name y role tienen que asignarse antes de usarlas, o la frase queda con huecos. La corrección automática mira tres cosas con cuatro criterios: si ambas variables tienen texto, si la frase impresa tiene la forma «Soy ..., quiero aprender ...» y si la frase impresa lleva de verdad los dos valores. El criterio de forma exige contenido real después de la parte «quiero aprender»: imprimir media frase suspende, mientras que imprimir el nombre y el objetivo en líneas distintas es válido. El punto de texto no vacío lo vigilan dos criterios a la vez: uno comprueba que la variable no esté vacía y otro que su valor aparezca de verdad en la salida, así que dejarlo en blanco siempre suspende. El tercero suspende a quien rellena las variables correctamente pero escribe el texto a mano."
   },
   {
     "id": "ch07-ex02",
@@ -48,23 +48,47 @@
     "type": "code",
     "difficulty": 2,
     "minutes": 8,
-    "objective": "Calcular los bytes necesarios para cargar un modelo en VRAM",
-    "prompt": "Un modelo tiene 7 mil millones de parámetros y se carga en precisión fp16 (2 bytes por parámetro). Calcula el tamaño total de los pesos y guárdalo en `weight_bytes`.",
-    "starter": "params_billion = 7\nbytes_per_param = 2\n# calcula y asigna weight_bytes\n",
+    "objective": "Calcular los bytes que necesita un modelo en VRAM",
+    "prompt": "Un modelo tiene 7 mil millones de parámetros y se carga en precisión fp16 (2 bytes por parámetro). Escribe una función `weight_bytes(params_billion, bytes_per_param)` que devuelva el número total de bytes que ocupan los pesos: `params_billion` es el número de parámetros en **miles de millones** (así que 7 mil millones se pasa como `7`) y `bytes_per_param` son los bytes por parámetro (2 para fp16). Debe devolver un entero.",
+    "starter": "def weight_bytes(params_billion, bytes_per_param):\n    # 返回权重总字节数（整数）\n    raise NotImplementedError\n",
     "checks": [
       {
-        "kind": "var_equals",
-        "name": "weight_bytes",
-        "value": 14000000000,
-        "weight": 3
+        "kind": "assert_python",
+        "code": "assert weight_bytes(7, 2) == 14000000000, weight_bytes(7, 2)",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(0.5, 2) == 1000000000, '0.5 十亿 = 5 亿参数'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(70, 2) == 140000000000, weight_bytes(70, 2)",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_bytes(7, 1) == 7000000000 and weight_bytes(7, 4) == 28000000000, '每参数字节数要参与计算'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert isinstance(weight_bytes(7, 2), int), '必须返回整数'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _pb in (0.5, 1, 1.5, 2, 3, 7, 8, 13, 70, 175, 405):\n    for _bpp in (1, 2, 4, 8):\n        assert weight_bytes(_pb, _bpp) == int(_pb * 1_000_000_000 * _bpp), (_pb, _bpp)",
+        "weight": 34
       }
     ],
     "llm_rubric": {
       "enabled": false,
-      "criteria": "¿Entiende la persona que el número de parámetros está en miles de millones?"
+      "criteria": "¿Entiende que el número de parámetros está expresado en miles de millones?"
     },
-    "reference": "params_billion = 7\nbytes_per_param = 2\nweight_bytes = params_billion * 1_000_000_000 * bytes_per_param",
-    "explanation": "7 mil millones = 7 x 10^9. Multiplicado por 2 bytes da 1,4 x 10^10 bytes, unos 13 GB. Eso son solo los pesos; un despliegue real también necesita la caché KV y las activaciones."
+    "reference": "def weight_bytes(params_billion, bytes_per_param):\n    return int(params_billion * 1_000_000_000 * bytes_per_param)",
+    "explanation": "7 mil millones = 7 x 10^9. Multiplicado por 2 bytes por parámetro da 1.4 x 10^10 bytes, unos 13 GB. Eso son solo los pesos; un despliegue real también necesita la caché KV y las activaciones.\n\n**La unidad es todo el ejercicio.** `params_billion` va en miles de millones, así que hay que multiplicar por `1_000_000_000` y no por `1_000`. Perder un cero es el error más habitual, y el número que sale también «parece un número de bytes», por eso las comprobaciones abarcan a propósito once recuentos de parámetros, de 0.5 mil millones a 405 mil millones, y cuatro valores de bytes por parámetro (1, 2, 4 y 8): 44 pares de entrada en total, para distinguir los dos casos. Una implementación que solo recuerda la respuesta de 7 mil millones en fp16 se delata ahí sí o sí.\n\n**Los bytes por parámetro tienen que participar de verdad en el cálculo.** Para el mismo modelo de 7 mil millones, fp32 son 4 bytes e int8 es 1 byte, cuatro veces de diferencia. Una implementación que fije el segundo parámetro en 2 suspende en `weight_bytes(7, 1)`.\n\n**Hay que devolver un entero.** En JavaScript todos los números son float, y dividir en Python también devuelve float, así que devuelve un entero. Una comprobación lo revisa por separado, porque «el cálculo estaba bien pero el tipo es float» es justo lo que queda al venir de JavaScript.\n\nNota honesta sobre el límite: los 44 inputs de la comprobación principal aportan 34 de los 80 puntos, muy por encima del umbral del 20% para P1, y junto con la que cubre «los bytes por parámetro participant en el cálculo» (12/80) suman el 58% y sostienen el punto obligatorio de conversión de unidades. Pero «devolver un entero» lo vigila por sí solo con 8/80, lo que lo convierte en el eslabón más débil: solo comprueba el tipo y no distingue cómo llegaste al entero."
   },
   {
     "id": "ch07-ex03",
@@ -72,8 +96,8 @@
     "type": "predict",
     "difficulty": 1,
     "minutes": 3,
-    "objective": "Detectar qué código muestra la respuesta del modelo",
-    "prompt": "¿Cuáles de estos producen salida visible? (selección múltiple)\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` en una línea sola\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` seguido de `print(answer)`",
+    "objective": "Detectar qué código llega a la salida del modelo",
+    "prompt": "¿Cuál de estos te da directamente la salida del modelo? (selección múltiple)\n\nA. `print(model.generate(prompt))`\nB. `model.generate(prompt)` en una línea sola\nC. `print(model(prompt))`\nD. `answer = model.generate(prompt)` seguido de `print(answer)`",
     "checks": [
       {
         "kind": "output_choice",
@@ -89,7 +113,7 @@
       "enabled": false,
       "criteria": ""
     },
-    "reference": "A, C y D. B es Python válido, pero Jupyter muestra la última expresión; un script normal no imprime nada.",
-    "explanation": "Hay que capturar el resultado e imprimirlo. B parece funcionar en Jupyter porque se muestra la última expresión de la celda, pero en un script .py o en una llamada al servidor no aparece nada: la causa más común de \"el modelo corrió pero no pasó nada\"."
+    "reference": "A, C y D. B es Python válido en sí mismo: Jupyter muestra el valor de la última expresión, pero en un script .py o en una llamada al servidor no se imprime nada, así que no cuenta como «obtener la salida del modelo directamente».",
+    "explanation": "Hay que capturar el resultado de la inferencia e imprimirlo. B parece funcionar en Jupyter porque la última expresión de una celda se muestra, pero en un script .py o en una llamada al servidor no se imprime nada: es la causa más habitual de «el modelo corrió pero no pasó nada»."
   }
 ]

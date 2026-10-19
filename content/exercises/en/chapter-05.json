@@ -1,0 +1,103 @@
+[
+  {
+    "id": "ch05-ex01",
+    "chapter": "chapter-5",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Map a business need onto a model task category",
+    "prompt": "The first step in choosing a model is translating the business need into a model task. Write a function `classify(goal, in_types, out_types)`: first decide the task type from the business goal `goal` -- `\"generate\"` maps to the generation task, `\"categorize\"` to the classification task, `\"extract\"` to the information extraction task, `\"rank\"` to the retrieval and ranking task. Then decide the data modality: `in_types` and `out_types` are each a single string (`\"text\"`, `\"image\"`, `\"audio\"`, `\"video\"`). Return `\"\\u5355\\u6a21\\u6001\"` (single modality) when the two match and `\"\\u591a\\u6a21\\u6001\"` (multi modality) when they do not. The function returns one string of the form `\"<task type>-<data modality>\"`, for example `\"\\u5206\\u7c7b\\u4efb\\u52a1-\\u5355\\u6a21\\u6001\"`.\n\nAll six labels are Chinese strings and the grader compares them exactly, so write every one of them with `\\uXXXX` escapes exactly as shown. The escapes are not a different value, only a way of keeping the source ASCII; at runtime the string is the Chinese text itself.",
+    "starter": "def classify(goal, in_types, out_types):\n    # 返回 \"任务类型-单模态\" 或 \"任务类型-多模态\"\n    pass\n\nprint(classify('categorize', 'text', 'text'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert classify('categorize', 'text', 'text') == '分类任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('extract', 'text', 'text') == '信息抽取任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('generate', 'text', 'image') == '生成任务-多模态', '输入输出类型不同就是多模态任务'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('rank', 'image', 'image') == '检索与排序任务-单模态'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('generate', 'video', 'audio') == '生成任务-多模态', '多模态不看类型是否相邻'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert classify('categorize', 'audio', 'text') == '分类任务-多模态', '语音输入文本输出也是多模态'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _g in ('generate', 'categorize', 'extract', 'rank'):\n    for _i in ('text', 'image', 'audio', 'video'):\n        for _o in ('text', 'image', 'audio', 'video'):\n            _got = classify(_g, _i, _o)\n            _task = {'generate': '生成任务', 'categorize': '分类任务',\n                     'extract': '信息抽取任务', 'rank': '检索与排序任务'}[_g]\n            _mode = '单模态' if _i == _o else '多模态'\n            assert _got == f'{_task}-{_mode}', (_g, _i, _o, _got)",
+        "weight": 16
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it follow the order of \"goal first, then data modality\"?"
+    },
+    "reference": "TASKS = {\n    'generate': '\\u751f\\u6210\\u4efb\\u52a1',\n    'categorize': '\\u5206\\u7c7b\\u4efb\\u52a1',\n    'extract': '\\u4fe1\\u606f\\u62bd\\u53d6\\u4efb\\u52a1',\n    'rank': '\\u68c0\\u7d22\\u4e0e\\u6392\\u5e8f\\u4efb\\u52a1',\n}\n\n\ndef classify(goal, in_types, out_types):\n    task = TASKS[goal]\n    mode = '\\u5355\\u6a21\\u6001' if in_types == out_types else '\\u591a\\u6a21\\u6001'\n    return f'{task}-{mode}'\n\nprint(classify('categorize', 'text', 'text'))",
+    "explanation": "The order this chapter gives is \"look at the final goal of the business question first, then at the data types of input and output\", and this function is exactly those two steps: the goal decides the task type, the data types decide single versus multi modality.\n\nThe four task types correspond to the four goals: `generate` generation, `categorize` classification, `extract` information extraction, `rank` retrieval and ranking. The checks cover each of the four goals at least once, and the main check runs all 64 combinations of 4 goals x 4 inputs x 4 outputs.\n\nThe multi-modality decision only looks at \"same or different\", never at whether the types are adjacent. `classify('generate', 'video', 'audio')` is still multi modality, and so is `classify('categorize', 'audio', 'text')`, that is speech in and text out -- which is exactly the way of thinking in the chapter's first example.\n\nWorth stating plainly: this is a mechanical translation of the table in this chapter and contains no model selection judgement at all. In a real scenario a person usually has to break the business goal down first; the function only does the categorisation after that is settled.\n\nThe final check recomputes the expected value for each of the 64 inputs and compares -- it is there to stop answer-lookup: a lookup table cannot cover 64 combinations. Honest boundary: those 64 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch05-ex02",
+    "chapter": "chapter-5",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Pick the right ways to filter and compare models",
+    "prompt": "You have to choose a model for \"extracting key fields from Chinese contracts\". Which of these practices match this chapter? (multi-select)\n\nA. Start in the \"task type\" filter on the left of the model library and pick information extraction; the platform then filters out the models carrying that tag\nB. With many candidates still left, narrow the range further by framework, licence, architecture, language\nC. General purpose models usually have more downloads than vertical specialist models, so the most downloaded one suits best\nD. Community activity shows up in how fast Issues and Discussions get answered, so you have to open the model card page\nE. For a commercial use case you should filter the licence down to permissive ones such as Apache 2.0 or MIT",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, B, D and E. C is wrong because comparing downloads across domains is not meaningful -- general purpose models already have significantly more downloads than vertical specialists, and this chapter's advice is to compare within the same kind of task.",
+    "explanation": "This chapter gives four popularity signals: download count, likes, update time and community activity. Every one of them exists to \"give you a reference while narrowing the range\"; not one of them \"decides who you pick\".\n\nC is wrong because it mistakes a measurement problem for a quality problem. The chapter's own warning is the key: general purpose models usually have significantly more downloads than vertical specialists, so comparing the numbers across domains means little -- compare within the same kind of task. Likewise \"updated too long ago\" flags a compatibility risk, not a weaker ability.\n\nA's ordering is also right: the task tag is the most direct filter and is what gets recommended first; the other conditions come after it.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch05-ex03",
+    "chapter": "chapter-5",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Break a document pipeline into model tasks",
+    "prompt": "You have to build a \"scanned contract\" processing system: the input is an image of a scan and the output has to be a structured table of contract fields. Write down which model tasks you would split it into, what data type each one uses, what you would change when one step performs badly, and why this might need several models rather than one.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it break the pipeline into independent steps such as OCR, layout analysis and information extraction along this chapter's multi-model lines, does it explain replacing one step rather than rebuilding the whole system, and does it explain what goes wrong when one model covers the entire flow?"
+    },
+    "reference": "The breakdown: (1) OCR, recognising the text in the scan -- image in, text out, multi modality; (2) layout analysis, deciding what each element on the page is and where it sits -- image in, structured information out, multi modality; (3) information extraction, pulling the contract fields (party, amount, term and so on) out of the recognised text -- text in, structured fields out, single modality; contracts with lots of tables also need table recognition, which is an independent step too.\n\nSingle step replacement: when a step performs badly you swap the model for that one step only, without reworking the rest of the system. Steps with no dependency between them (different pages of a multi-page contract, say) can also run in parallel, which cuts the total time. Pick a large model for the steps where accuracy matters and a small one where speed matters.\n\nWhy several models: this chapter says a business system usually does not use just one model. Along the whole chain, \"read the characters out of the pixels\", \"work out the layout structure\" and \"extract the semantic fields\" are three different abilities. Hand all of it to one large model and, when something goes wrong, you neither know which step failed nor what to swap.\n\nOne step further: the chapter's other warning applies here too. Whether this chain is usable in the end depends on how it performs on real business data; general leaderboard scores are only a reference.",
+    "explanation": "This exercise maps onto the chapter's closing section, \"one job can also be done by several models together\", whose example is exactly a document processing system: document classification, OCR, layout analysis, table recognition, information extraction. The three features this chapter gives are: each model owns one independent task, a step that performs badly can be swapped on its own, and independent tasks can run in parallel.\n\nThe last question is the real point of the exercise. The answer is not \"several models are better\" but **accountability**: once you split it up, every step can be tested and replaced on its own. That runs along the same line as the evaluation thinking in chapter 6 -- when a system cannot localise a problem, an evaluation score has nothing to stand on either.\n\nThe chapter's other line, that general metrics are only a reference and the final model choice still depends on how it performs on business data, applies here too: every model along this chain should have been validated on its own contract samples.\n\nThis exercise cannot run a real document pipeline; grading rests on self-assessment plus an optional AI score, and the reference answer gives a breakdown you can compare against."
+  }
+]

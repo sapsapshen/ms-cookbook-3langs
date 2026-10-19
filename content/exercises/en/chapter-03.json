@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch03-ex01",
+    "chapter": "chapter-3",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Tidy QA records by field and drop empty values",
+    "prompt": "Pick out the samples from question answering data that are usable for training. Given a list of records, each a dict whose `question` and `answer` fields hold the question and the answer, write a function `clean(rows)` that returns a new list: drop any record whose `question` or `answer` is empty (empty once leading and trailing whitespace is stripped), and strip leading and trailing whitespace from both fields of every record you keep. The input order must not change.",
+    "starter": "def clean(rows):\n    # 返回清理后的列表\n    return rows\n\ndata = [\n    {'question': '什么是模型量化？', 'answer': '降低参数的表示精度。'},\n    {'question': '  ', 'answer': '这条答案不该留下来。'},\n    {'question': 'LoRA 是什么？', 'answer': '  参数高效微调方法。  '},\n    {'question': 'GGUF 是什么格式？', 'answer': ''},\n]\nprint(clean(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': ' 问题 ', 'answer': ' 答案 '}])\nassert out == [{'question': '问题', 'answer': '答案'}], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': 'a1'}, {'question': '   ', 'answer': 'a2'}, {'question': 'q3', 'answer': 'a3'}])\nassert len(out) == 2 and [r['question'] for r in out] == ['q1', 'q3'], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': ''}, {'question': 'q2', 'answer': '   '}])\nassert out == [], out",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': 'q1', 'answer': 'a1'}])\nassert len(out) == 1 and set(out[0]) == {'question', 'answer'}, out",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "src = [{'question': 'q1', 'answer': ' a1 '}, {'question': 'q2', 'answer': 'a2'}]\nsnapshot = [dict(r) for r in src]\nclean(src)\nassert src == snapshot, 'clean 不应该改动传入的字典'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in range(0, 8):\n    for _pad in (' ', '', '   '):\n        for _blank_side in (0, 1):\n            _rows = []\n            for _i in range(_n):\n                _q = _pad + f'问题{_n - _i}' + _pad\n                _a = f'答案{_i}' + _pad\n                if _i % 2 == _blank_side:\n                    _a = _pad\n                _rows.append({'question': _q, 'answer': _a, 'source': 'tag'})\n            _before = [{k: v for k, v in r.items()} for r in _rows]\n            _out = clean(_rows)\n            _want = [{'question': f'问题{_n - _i}', 'answer': f'答案{_i}'}\n                     for _i in range(_n) if _i % 2 != _blank_side]\n            assert _out == _want, (_n, _pad, _blank_side, _out, _want)\n            for _r in _out:\n                assert set(_r) == {'question', 'answer'}, ('多余键', _r)\n            assert _rows == _before, 'clean 不应该改动传入的字典'",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = clean([{'question': ' b ', 'answer': ' x '}, {'question': ' a ', 'answer': ' y '}])\nassert [r['question'] for r in out] == ['b', 'a'], '顺序必须和输入一致，不能重新排序'",
+        "weight": 4
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it test for emptiness before stripping, so that blank text is not mistaken for valid content?"
+    },
+    "reference": "def clean(rows):\n    out = []\n    for row in rows:\n        q = row['question'].strip()\n        a = row['answer'].strip()\n        if q and a:\n            out.append({'question': q, 'answer': a})\n    return out\n\ndata = [\n    {'question': '\\u4ec0\\u4e48\\u662f\\u6a21\\u578b\\u91cf\\u5316\\uff1f', 'answer': '\\u964d\\u4f4e\\u53c2\\u6570\\u7684\\u8868\\u793a\\u7cbe\\u5ea6\\u3002'},\n    {'question': '  ', 'answer': '\\u8fd9\\u6761\\u7b54\\u6848\\u4e0d\\u8be5\\u7559\\u4e0b\\u6765\\u3002'},\n    {'question': 'LoRA \\u662f\\u4ec0\\u4e48\\uff1f', 'answer': '  \\u53c2\\u6570\\u9ad8\\u6548\\u5fae\\u8c03\\u65b9\\u6cd5\\u3002  '},\n    {'question': 'GGUF \\u662f\\u4ec0\\u4e48\\u683c\\u5f0f\\uff1f', 'answer': ''},\n]\nprint(clean(data))",
+    "explanation": "This chapter says \"once the data is downloaded, do not hand all of it to the model straight away\" -- pull out a few samples first and look for empty values, garbled text or obvious mistakes, then confirm the fields match what the training code expects. This function does the first two of those steps.\n\nThere is one spot where the order is easy to get backwards: call `strip()` first and only then test for emptiness. The other way round lets a string like `'   '` pass the check and enter the training set -- it is not empty, but there is nothing inside it. The main check watches exactly this by feeding in `answer` values that are all whitespace, trying both `''` and `'   '`.\n\nTwo more boundaries: the returned dicts keep only the `question` and `answer` keys (raw data often carries extras like source or annotator, which training does not want), and the dicts passed in must not be modified in place -- the original list stays exactly as it was.\n\nOrder also makes it into the main check: it numbers the rows in descending order, so an implementation that sorts cannot line up and fails.\n\nThe final check does not look at a single input; it runs row counts 0 through 7 against three kinds of whitespace padding and two sides on which the blank value can fall, 48 input groups in total, recomputing the expected result for each, comparing the returned keys, and confirming the input dicts were not mutated. It is there to stop answer-lookup: a lookup table or a hardcoded return value cannot cover these inputs. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch03-ex02",
+    "chapter": "chapter-3",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge whether a dataset's use matches this chapter",
+    "prompt": "You are about to fine-tune on an open source question answering dataset. Which of these practices match this chapter? (multi-select)\n\nA. Look at a few samples in \"data preview\" first to confirm which column holds the question, which holds the answer, and whether there are labels\nB. Since the task in your head is \"question answering\", you see question answering in the dataset name and start writing the training code straight away\nC. The same dataset gets updated, so record the dataset version too, otherwise the experiment cannot be reproduced\nD. It does not matter if the samples you meant to use for checking the model are mixed into the training set early\nE. `MsDataset.load` can load just one subset, so there is no need to read the whole dataset every time",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C and E. B is wrong because the human answer and the model answer may live in different fields, so without looking at the fields you are guessing, and the field names you write down will mostly not match. D is wrong because the training set and the test set must be kept apart: mixing them in early makes the score look good while telling you nothing about how the model handles new questions.",
+    "explanation": "The order in this section is deliberate: work out what you are trying to do, look through a few samples in the preview, confirm the fields, record the version, then load it in. A, C and E land on the preview, the version and the loading steps respectively.\n\nB is the classic way this goes wrong. The chapter's own wording is \"which column holds the question, which holds the answer, whether there are labels, whether one record is a passage of text or a set of dialogue turns -- you can see all of that first. Then when you write the processing code you will not have to guess at field names\", and guessing fields from the name is exactly what it is telling you not to do.\n\nD deserves a note of its own: mix the test set into the training set and the score looks good, but that score no longer answers any question. That is why this chapter gives it a paragraph of its own.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch03-ex03",
+    "chapter": "chapter-3",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Write a pre-training checklist for a dataset",
+    "prompt": "You found a dataset on ModelScope and plan to take it straight into a fine-tune. Write down what you would check in each of the three stages -- before downloading, after downloading, and before handing it to the model -- and say which stage, if it turns up a problem, would overturn your original task design.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it organise the answer around the three stages (before downloading: does the task match the data and what filter was used; after downloading: previewing fields, recording the version, splitting train and test; before handing over: empty values and garbled text, consistency of the answer format), and does it name the field structure not matching the task, or train and test not being separated, as the two most fatal classes of problem?"
+    },
+    "reference": "Before downloading: does the task match the data -- search by keyword tag and task category and confirm this data corresponds to the task you mean rather than to a similarly named one; check that the coverage is broad enough.\nAfter downloading: (1) preview samples to confirm which column is the question, which the answer and which the labels, and whether there are extra fields, so you are not guessing field names later; (2) record the dataset version -- the same dataset gets updated, and the training samples, the fields or the split may all change, so without the version the experiment cannot be reproduced; (3) pull the training data and the test data separately; samples meant to check the model's performance cannot be mixed into the training set early.\nBefore handing it to the model: pull out a few rows and look for empty values, garbled text or obvious mistakes, and confirm the fields match what the training code expects; if the answers to the same kind of question vary wildly in format, tidy them before training.\nThe most fatal class is a field structure that does not match the task -- the human answer and the model answer may live in different fields, so what you decide to read depends on what task you meant to do. If the field structure of the whole dataset is not what you expected, the dataset is not \"nearly right\", it is unusable: change the dataset or change the task design.",
+    "explanation": "The logic of this chapter is a chain: work out what you want before you look for data, filter by previewing rather than by name, record the version and the split as you load it, and sample-check once more before handing it to the model. Each of the three stages stops a different class of problem, and missing one link lets it leak into training.\n\nThe last question is the point of this exercise. Most of the problems above are \"dirty and needs cleaning\", while a field structure that does not match the task is \"pointed the wrong way\" -- it overturns the original task design, not the quality of the data. The two call for completely different responses: the first means fixing the data, the second means changing either the dataset or the task.\n\nThis exercise cannot run a real dataset load or training; grading rests on self-assessment plus an optional AI score, and the reference answer gives a checklist you can compare against."
+  }
+]

@@ -1,0 +1,123 @@
+[
+  {
+    "id": "ch06-ex01",
+    "chapter": "chapter-6",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Judge whether an evaluation set's score is worth trusting",
+    "prompt": "Every sample in an evaluation set carries a `kind` tag: `\"basic\"` (everyday high-frequency questions), `\"hard\"` (complex multi-hop questions), `\"edge\"` (out-of-range or boundary questions). Write a function `trustworthy(rows)` that decides whether this set's score can be used to compare models directly: return `\"trustworthy\"` when all three kinds appear at least once, and `\"biased\"` as soon as any kind is missing entirely (including when the list passed in is empty).",
+    "starter": "def trustworthy(rows):\n    # 返回 \"trustworthy\" 或 \"biased\"\n    pass\n\ndata = [\n    {'kind': 'basic'},\n    {'kind': 'basic'},\n    {'kind': 'hard'},\n    {'kind': 'edge'},\n]\nprint(trustworthy(data))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "mix = [{'kind': 'basic'}] * 90 + [{'kind': 'hard'}] * 5 + [{'kind': 'edge'}] * 5\nassert trustworthy(mix) == 'trustworthy'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "only_basic = [{'kind': 'basic'}] * 98 + [{'kind': 'hard'}] * 2\nassert trustworthy(only_basic) == 'biased', '缺 edge 就该判 biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "only_basic2 = [{'kind': 'basic'}] * 98 + [{'kind': 'edge'}] * 2\nassert trustworthy(only_basic2) == 'biased', '缺 hard 就该判 biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'basic'}, {'kind': 'hard'}, {'kind': 'edge'}]) == 'trustworthy', '每种各一条也算覆盖到'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'hard'}]) == 'biased', '只跑长难题的评测集分数没有参考价值'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([{'kind': 'edge'}, {'kind': 'edge'}]) == 'biased'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert trustworthy([]) == 'biased', '空评测集没有任何类型覆盖，不能算可信'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "big = ([{'kind': 'basic'}] * 98 + [{'kind': 'hard'}] * 1 + [{'kind': 'edge'}] * 1)\nassert trustworthy(big) == 'trustworthy', '各占 1% 正好踩线上，按「至少一条」算就是覆盖到了'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "skew = ([{'kind': 'basic'}] * 198 + [{'kind': 'hard'}] * 1 + [{'kind': 'edge'}] * 1)\nassert trustworthy(skew) == 'trustworthy', '比例低到 0.5% 也算覆盖到，判据看的是存在性不是占比'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _small in (1, 2):\n    for _large in (50, 200, 1000):\n        _rows = ([{'kind': 'basic'}] * _large + [{'kind': 'hard'}] * _small\n                 + [{'kind': 'edge'}] * _small)\n        assert trustworthy(_rows) == 'trustworthy', (\n            '占比低到 %.3f%% 也算覆盖到，判据看的是存在性不是占比'\n            % (100.0 * _small / len(_rows)))",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _b in range(0, 5):\n    for _h in range(0, 5):\n        for _e in range(0, 5):\n            for _scale in (1, 40):\n                _rows = ([{'kind': 'basic'}] * _b * _scale\n                         + [{'kind': 'hard'}] * _h * _scale\n                         + [{'kind': 'edge'}] * _e * _scale)\n                _want = 'trustworthy' if (_b and _h and _e) else 'biased'\n                _got = trustworthy(_rows)\n                assert _got == _want, (_b, _h, _e, _scale, _got, _want)",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand the premise that representativeness matters more than volume?"
+    },
+    "reference": "KINDS = ('basic', 'hard', 'edge')\n\n\ndef trustworthy(rows):\n    for kind in KINDS:\n        if not any(r['kind'] == kind for r in rows):\n            return 'biased'\n    return 'trustworthy'\n\ndata = [\n    {'kind': 'basic'},\n    {'kind': 'basic'},\n    {'kind': 'hard'},\n    {'kind': 'edge'},\n]\nprint(trustworthy(data))",
+    "explanation": "This chapter says \"the more data the better\" is a misconception: prepare tens of thousands of items but have most of them be simple and repetitive, and the score is worthless no matter how high it is. A sensible business test set should have a clear gradient -- everyday high-frequency basics, a certain share of complex multi-hop questions, and boundary questions.\n\nThis function checks whether that gradient is there: not one of the three kinds may be missing. Note that it does not check whether the proportions are sensible -- the chapter says \"there should be a certain proportion\" without giving a number, so the checks watch **existence**, not proportion. Among the inputs are deliberately a set of \"98 basic + 2 hard, no edge\", because a dataset shaped like that is exactly what the chapter criticises, so it returns `\"biased\"`.\n\nThe boundary stated in the prompt deserves to be taken at face value: 1% would be the threshold if proportions mattered, but since \"the kind only has to exist\" is the rule, even 1 hard question in 200 (0.5%) counts as covered. What actually triggers `\"biased\"` is a kind with **not one** entry. The checks pin both of those down with a `\"trustworthy\"` input at that ratio and with the empty set that must return `\"biased\"`.\n\nThe main check runs 0 to 4 of each kind at scale 1 and scale 40, 250 input groups in total, and only returns `\"trustworthy\"` when all three are non-empty -- it is there to stop answer-lookup: a hardcoded return value, or one that only implements the 1% threshold, shows up across those 250. Honest boundary: those 250 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch06-ex02",
+    "chapter": "chapter-6",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge which selection criteria this chapter accepts",
+    "prompt": "You are choosing a base model for Chinese customer service. Which of these criteria match this chapter? (multi-select)\n\nA. Take the handful of models with the highest MMLU scores straight into the next round\nB. Run one more business evaluation on your own real consultation records and see how it does in the actual scenario\nC. The evaluation set should hold some complex multi-hop and boundary questions alongside the high-frequency ones\nD. Concurrent throughput and time to first token after launch are also metrics to choose on\nE. A model scores middling on the leaderboard, but the pretraining data it saw is highly similar to my business, so it is worth testing further",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "B",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B, C, D and E. A is wrong because it treats a general leaderboard score as a conclusion -- this chapter tells exactly that story, \"top of the general leaderboard, average in the business\", and general metrics are only a reference.",
+    "explanation": "The chapter opens with a story about falling into a pit: assuming the newer and better-on-general-benchmarks model will excel in your business scenario turns out not to be true. The reason is that models differ in their pretraining and post-training data; some have seen large amounts of similar business data and fine-tune with ease, others simply do not click.\n\nSo the conclusion is the chapter's bolded line: **for every model, general metrics are only a reference before selection, and the final choice still depends on how it performs on your own business data.** A is precisely the practice that story rules out.\n\nE is the positive form of the same thing -- how much the pretraining data overlaps with the business, which the chapter lists as one of the reasons fine-tuning \"naturally comes easy\".\n\nC corresponds to the passage on the gradient of an evaluation set; D corresponds to EvalScope's inference performance stress test: throughput, request latency, time to first token (TTFT) and time per output token (TPOT). Selection is not only about quality; the service has to hold up under concurrency.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch06-ex03",
+    "chapter": "chapter-6",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Design a layered business evaluation set",
+    "prompt": "You have to prepare an evaluation set for \"internal knowledge base question answering\" to compare three candidate models. Write down: (1) what layers the set should have and roughly what belongs in each; (2) why you cannot just pile up quantity; (3) once you have the scores, what else besides accuracy you would look at, and how you would decide if two models come out close.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it mention layering (high-frequency basics, complex multi-hop questions, boundary questions), does it explain that representativeness and coverage matter more than volume, and does it mention performance metrics (concurrent throughput, latency, TTFT) alongside a combined business judgement?"
+    },
+    "reference": "(1) The layers: everyday high-frequency basics -- the most common slice of real online consultations, there to hold the floor; complex multi-hop questions -- questions that need several hops or synthesis across documents; boundary questions -- ones the knowledge base simply cannot answer, that fall outside its scope, or are asked vaguely, there to expose hallucination. The data comes from employees' everyday search and question answering records.\n\n(2) Why you cannot just pile up quantity: tens of thousands of simple repetitive questions produce a score that is worthless however high it is. The value of an evaluation set lies in representativeness and coverage -- it has to represent real traffic, not how easy it was for you to copy data.\n\n(3) What else besides accuracy: whether the answer is actually useful (does it hit the point, does it hallucinate), and inference performance (throughput under concurrency, request latency, time to first token TTFT, time per output token TPOT), because whether the service you are about to launch can take the load matters just as much.\n\nHow to decide when the scores are close: do not look at the total, look at the per-layer scores -- if two models tie overall but one is clearly better on the hard questions, weight by the actual business distribution; then confirm on business data rather than stopping at the public leaderboard. If they still cannot be told apart on the key layers, the current evaluation set simply does not discriminate enough: fix the evaluation set first, then choose the model.",
+    "explanation": "This exercise asks about the **design** of an evaluation set, and the design decides how far you can trust the conclusion. The chapter's line that \"the more data the better is a misconception\" sits at the centre: the value of an evaluation set comes from representativeness and coverage.\n\nThe third question deserves the most unpacking. The chapter explains that a general leaderboard does not count, but it does not say that a business evaluation set can fail in the same way -- if you cannot tell the models apart, the evaluation set does not discriminate enough, and then the right move is to change the evaluation set rather than pick one anyway or give up.\n\nAlso, the scope the chapter describes is not only quality: throughput, TTFT and TPOT from the inference performance stress test are selection criteria too. A model with a great quality score that collapses under concurrency is just as unusable in production.\n\nThis exercise cannot run a real model evaluation; grading rests on self-assessment plus an optional AI score, and the reference answer gives a set of design points you can compare against."
+  }
+]

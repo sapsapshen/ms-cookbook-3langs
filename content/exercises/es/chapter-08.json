@@ -1,0 +1,140 @@
+[
+  {
+    "id": "ch08-ex01",
+    "chapter": "chapter-8",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Estimar la huella de pesos según la precisión",
+    "prompt": "El tamaño de un modelo se expresa en B, donde 1B son mil millones de parámetros. Escribe una función `weight_gb(params_b, precision)` que estime cuántos GB ocupan los pesos: FP32 son 4 GB por cada 1B de parámetros, FP16 y BF16 son 2 GB por cada 1B cada uno, INT8 es 1 GB por cada 1B e INT4 es 0.5 GB por cada 1B. Las precisiones siempre se pasan en mayúsculas (`\"FP32\"`, `\"FP16\"`, `\"BF16\"`, `\"INT8\"`, `\"INT4\"`). Lanza `ValueError` ante una precisión desconocida.",
+    "starter": "def weight_gb(params_b, precision):\n    # 返回权重占用的 GB 数\n    pass\n\nprint(weight_gb(7, 'FP16'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'FP16') == 14",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'FP32') == 28",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'BF16') == 14, 'BF16 和 FP16 同为 2GB/1B'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert weight_gb(7, 'INT8') == 7 and weight_gb(7, 'INT4') == 3.5",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    weight_gb(7, 'fp16')\n    assert False, '小写精度名应该抛出 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    weight_gb(7, 'FP8')\n    assert False, '未知精度应该抛出 ValueError'\nexcept ValueError:\n    pass",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _p in ('FP32', 'FP16', 'BF16', 'INT8', 'INT4'):\n    for _n in (0.5, 1, 7, 8, 13, 70, 175):\n        _per = {'FP32': 4, 'FP16': 2, 'BF16': 2, 'INT8': 1, 'INT4': 0.5}[_p]\n        _got = weight_gb(_n, _p)\n        assert _got == _n * _per, (_p, _n, _got)",
+        "weight": 22
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in ('', 'fp32', 'FP8', 'INT2', 'FP16 '):\n    try:\n        weight_gb(7, _bad)\n        assert False, '未知精度应该抛出 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 12
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que esta es la huella estática de los pesos, sin caché KV ni sobrecarga del framework?"
+    },
+    "reference": "PER_GB = {\n    'FP32': 4,\n    'FP16': 2,\n    'BF16': 2,\n    'INT8': 1,\n    'INT4': 0.5,\n}\n\n\ndef weight_gb(params_b, precision):\n    if precision not in PER_GB:\n        raise ValueError('unknown precision: ' + precision)\n    return params_b * PER_GB[precision]\n\nprint(weight_gb(7, 'FP16'))",
+    "explanation": "La fórmula de estimación de este capítulo es «pesos del modelo = número de parámetros x el almacenamiento por cada 1B de parámetros en esa precisión», y esta función es esa fórmula.\n\nLa línea de BF16 merece un apunte propio: igual que FP16 son 2 GB por cada 1B, pero no son lo mismo, y tanto una tabla de búsqueda como un `if precision in ('FP16', 'BF16')` sirven; lo importante es no tratar BF16 como FP32. Una comprobación vigila exactamente eso.\n\nEl resultado de INT4 es `3.5`, no `4` (`7 x 0.5`); no lo redondees.\n\nEl enunciado fija las precisiones en mayúsculas, así que `'fp16'` en minúsculas, `'FP16 '` con espacio final y nombres como `'FP8'` o `'INT2'` cuentan como desconocidos y deben lanzar `ValueError`. Un grupo de entradas incorrectas verifica el lanzamiento una a una: sin eso, una implementación que devolviera 0 al no encontrar la clave sacaría nota perfecta.\n\nLo que calcula este ejercicio son **solo los pesos**, sin caché KV, sobrecarga del framework ni activaciones; este capítulo dice que la VRAM de inferencia añade eso, y que el entrenamiento añade gradientes, estado del optimizador y una copia FP32. Así que la función responde «cuánto ocupa de forma estática», no «cuánta VRAM hace falta para ejecutarlo».\n\nLa última comprobación recorre 5 precisiones contra 7 recuentos de parámetros, 35 entradas en total, recalculando cada una con la fórmula: está ahí para impedir que te aprenses la respuesta, porque un valor de retorno fijo no cubre 35 entradas. Límite honesto: esas 35 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch08-ex02",
+    "chapter": "chapter-8",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Distinguir la VRAM de inferencia de la de entrenamiento",
+    "prompt": "El mismo modelo necesita recursos muy distintos para inferencia y para entrenamiento. Escribe dos funciones:\n\n`infer_gb(params_b, precision)` devuelve los GB de los pesos en inferencia, con las mismas cifras de precisión que el ejercicio «estimar la huella de pesos según la precisión» (FP32 es 4, FP16 y BF16 son 2, INT8 es 1, INT4 es 0.5, por cada 1B de parámetros).\n\n`train_gb(params_b, precision)` devuelve la VRAM en GB para entrenamiento. El entrenamiento completo necesita 16 GB por cada 1B de parámetros: pesos, gradientes, estado del optimizador y una copia FP32, una porción cada uno. El entrenamiento con LoRA solo carga los pesos base y no actualiza los parámetros originales, y los parámetros LoRA añadidos, junto con sus gradientes y su estado del optimizador, se estiman en 0.5 GB por cada 1B de parámetros.\n\n`train_gb` recibe un tercer parámetro `mode`, que será `\"full\"` o `\"lora\"`.",
+    "starter": "def infer_gb(params_b, precision):\n    pass\n\n\ndef train_gb(params_b, precision, mode):\n    pass\n\nprint(infer_gb(7, 'FP16'), train_gb(7, 'FP16', 'full'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert infer_gb(7, 'FP16') == 14 and infer_gb(7, 'INT4') == 3.5",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'FP16', 'full') == 112, '7 x 16 = 112GB'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'FP16', 'lora') == 17.5, '7 x 2 = 14GB 权重，加上 7 x 0.5 = 3.5GB LoRA 开销'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'INT4', 'lora') == 7.0, '量化基础权重后 LoRA 也跟着省：7 x (0.5 + 0.5)'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'FP16', 'full') > infer_gb(7, 'FP16'), '完整训练一定比推理吃资源'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert train_gb(7, 'INT4', 'lora') < train_gb(7, 'FP16', 'lora')",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _p in ('FP32', 'FP16', 'BF16', 'INT8', 'INT4'):\n    for _n in (0.5, 1, 7, 13, 70):\n        _per = {'FP32': 4, 'FP16': 2, 'BF16': 2, 'INT8': 1, 'INT4': 0.5}[_p]\n        assert infer_gb(_n, _p) == _n * _per, ('infer', _p, _n)\n        assert train_gb(_n, _p, 'full') == _n * 16, ('full', _p, _n)\n        assert train_gb(_n, _p, 'lora') == _n * (_per + 0.5), ('lora', _p, _n)",
+        "weight": 22
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que los 16 GB por cada 1B del entrenamiento completo son cuatro porciones iguales?"
+    },
+    "reference": "PER_GB = {'FP32': 4, 'FP16': 2, 'BF16': 2, 'INT8': 1, 'INT4': 0.5}\n\n\ndef infer_gb(params_b, precision):\n    if precision not in PER_GB:\n        raise ValueError('unknown precision: ' + precision)\n    return params_b * PER_GB[precision]\n\n\ndef train_gb(params_b, precision, mode):\n    if precision not in PER_GB:\n        raise ValueError('unknown precision: ' + precision)\n    if mode == 'full':\n        return params_b * 16\n    if mode == 'lora':\n        return params_b * (PER_GB[precision] + 0.5)\n    raise ValueError('unknown mode: ' + mode)\n\nprint(infer_gb(7, 'FP16'), train_gb(7, 'FP16', 'full'))",
+    "explanation": "Este capítulo pregunta «por qué entrenar el mismo modelo consume más recursos», y la respuesta es que el entrenamiento tiene que guardar a la vez los pesos, los gradientes, el estado del optimizador y los resultados intermedios.\n\nLos 16 GB por cada 1B del entrenamiento completo son esos cuatro sumados: 2 GB de pesos (FP16) + 2 GB de gradientes + 8 GB de estado del optimizador + 4 GB de copia FP32. El estado del optimizador son 8 GB porque Adam guarda dos estados FP32 (el momento y la varianza), es decir 2 x 4 GB. Esa es también la razón por la que no depende de `precision`: la cifra de entrenamiento se fija en 16 GB por cada 1B.\n\nLoRA es otra historia: los pesos originales solo se cargan, no se actualizan, y este capítulo dice que los parámetros añadidos son apenas del 0.1% al 1% del modelo original, así que la sobrecarga de gradientes y optimizador es despreciable. Aquí se estima de forma uniforme en 0.5 GB por cada 1B, tal como especifica el enunciado. Así que `train_gb(7, 'FP16', 'lora')` da 7 x (2 + 0.5) = 17.5 GB frente a los 112 GB del entrenamiento completo: un orden de magnitud de diferencia, que es justo lo que permite decir que LoRA deja ejecutar un modelo de 7B en una tarjeta de 24 GB.\n\nFíjate en que la respuesta de LoRA **depende** de `precision`: `train_gb(7, 'INT4', 'lora')` da 7 x (0.5 + 0.5) = 7 GB, no 17.5 GB, porque los pesos base están cuantizados. Así que una implementación que escriba la rama de LoRA como `params_b * 16` o `params_b * 2` suspende en esas dos entradas.\n\nTodo esto es una estimación **estática**: no cuenta activaciones, caché KV ni sobrecarga del framework, así que la necesidad real es mayor.\n\nLa última comprobación recorre 5 precisiones contra 5 recuentos de parámetros, 25 entradas en total, y ejercita `infer_gb` más las ramas full y lora de `train_gb`: está ahí para impedir que te aprenses la respuesta, porque un valor de retorno fijo no cubre estas entradas. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch08-ex03",
+    "chapter": "chapter-8",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Decidir para qué sirve cada uno de CPU y GPU",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. En escenarios con mucha lógica condicional y planificación de tareas, la CPU es más eficiente\nB. Cualquier tarea de deep learning es necesariamente más rápida en GPU que en CPU\nC. Cuando la tarea de cálculo es pequeña, la GPU no puede aprovechar bien sus recursos y la CPU puede ser más eficiente\nD. Entrenar del todo un modelo de 7B en FP16 necesita al menos unos 112 GB de VRAM, más las activaciones\nE. Los escenarios de inferencia con pocos parámetros y poco tráfico los cubre bien una CPU",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B falla porque presenta la GPU como más rápida sin condiciones. El matiz del capítulo es «solo cuando la tarea de cálculo es grande se nota claramente la ventaja de la GPU»: con pocos datos no se aprovecha la potencia de cálculo, y la sobrecarga de transferencia y planificación entre CPU y GPU hace que la CPU sea más eficiente.",
+    "explanation": "La comparación CPU/GPU de este capítulo no es una frase que diga «la GPU es más rápida»; tiene condiciones.\n\nLa CPU se orienta al cálculo general: cada núcleo tiene una capacidad de control y cálculo bastante completa y puede bifurcarse, saltar y planificar según lo que esté ejecutando, así que los escenarios con mucha lógica (sistemas operativos, consultas de base de datos) son su terreno. La GPU se apoya en muchas unidades de cómputo trabajando en paralelo y encaja con tareas de mucho volumen y alta repetición (multiplicación de matrices, convolución).\n\nC es la frase que más fácilmente se pasa por alto en ese pasaje, y es por donde se cae B.\n\nD y E son las dos conclusiones de estimación del capítulo: entrenar del todo un modelo de 7B en FP16 necesita al menos 7 x 16 Byte, unos 112 GB, y más con las activaciones; mientras que los escenarios de inferencia con pocos parámetros y poco tráfico los cubre bien una CPU, y la cuantización puede bajar aún más la huella.\n\nConviene recordar que este capítulo también advierte que elegir no es solo cosa del dispositivo: una GPU arrastra costes continuos de compra, electricidad, refrigeración, controladores y compatibilidad de frameworks, y las configuraciones con varias GPUs suman comunicación entre dispositivos y configuración de software.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  }
+]

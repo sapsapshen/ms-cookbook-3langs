@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ch04-ex01",
+    "chapter": "chapter-4",
+    "type": "code",
+    "difficulty": 1,
+    "minutes": 8,
+    "objective": "Decidir si la cuota GPU gratuita alcanza",
+    "prompt": "La GPU gratuita de ModelScope es una NVIDIA A10 con 24GB de VRAM y 36 horas gratuitas. Escribe una función `can_fit(weight_gb, batch_hint)` que decida si este experimento cabe: `weight_gb` son los GB que ocupan los pesos del modelo y `batch_hint` es un coeficiente orientativo (1 por defecto). Devuelve `\"ok\"` cuando `weight_gb * batch_hint` sea como mucho 24, y `\"too-big\"` en caso contrario.",
+    "starter": "def can_fit(weight_gb, batch_hint=1):\n    # 返回 \"ok\" 或 \"too-big\"\n    pass\n\nprint(can_fit(14))\nprint(can_fit(30))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14) == 'ok'",
+        "weight": 4
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24) == 'ok', '正好等于 24GB 也算装得下'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24.5) == 'too-big' and can_fit(30) == 'too-big'",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14, 1.5) == 'ok', '14 x 1.5 = 21，仍然装得下'",
+        "weight": 5
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(14, 2) == 'too-big', 'batch_hint 必须参与计算，不能只是摆设'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert can_fit(24.0001) == 'too-big', '只比 24 大一点点也要判 too-big'",
+        "weight": 6
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _w in (0.5, 7, 13.5, 24, 24.25, 24.5, 25, 48, 70):\n    for _b in (1, 1.0001, 1.2, 1.5, 2, 3.7):\n        _got = can_fit(_w, _b)\n        _want = 'ok' if _w * _b <= 24 else 'too-big'\n        assert _got == _want, (_w, _b, _got, _want)",
+        "weight": 10
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que se trata de una estimación aproximada y no de una predicción exacta de VRAM?"
+    },
+    "reference": "def can_fit(weight_gb, batch_hint=1):\n    if weight_gb * batch_hint <= 24:\n        return 'ok'\n    return 'too-big'\n\nprint(can_fit(14))\nprint(can_fit(30))",
+    "explanation": "Este capítulo dice que la GPU gratuita es una NVIDIA A10 con 24GB de VRAM y 36 horas gratuitas, así que la línea de «¿cabe o no?» está en 24GB.\n\nEl límite es «como mucho», no «menos que»: `can_fit(24)` debe devolver `\"ok\"`, porque llenar la VRAM exacta todavía funciona, y una de las comprobaciones vigila justo eso; en el otro extremo, `can_fit(24.0001)`, que apenas se pasa de 24, junto con los casos de pesos de 24.25GB y 24.5GB, deben devolver `\"too-big\"`. Tres implementaciones fallan en estas entradas: escribir `!=`, escribir `<` e inventarse una tolerancia de 0.5GB al estilo de «dejo un poco de margen, así que hasta 24.5GB cuenta».\n\n`batch_hint` es un punto obligatorio y no decoración: una implementación que no lo usa en el cálculo devuelve `\"ok\"` para `can_fit(14, 2)` (14 realmente es menor que 24), cuando la respuesta correcta es `\"too-big\"`.\n\nConviene ser explícito: aquí la aritmética es la de una «estimación aproximada», tal como la entiende este capítulo. Cuenta pesos por coeficiente y nada más: ni la caché KV, ni la sobrecarga del framework, ni las activaciones. En la práctica, para correr en una tarjeta de 24GB suele hacer falta además reducir el batch y la longitud de contexto. Así que la función responde «¿hay esperanza a este orden de magnitud?», no «¿funcionará seguro?»: no te va a decir si el margen basta.\n\nLa última comprobación recorre nueve casos de peso contra seis casos de coeficiente, 54 pares de entrada en total, recalculando el valor esperado con `weight * hint <= 24` en cada caso; está ahí para impedir que te aprenses la respuesta: un valor de retorno fijo no cubre 54 entradas. Límite honesto: esas 54 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch04-ex02",
+    "chapter": "chapter-4",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "Valorar el uso correcto de los recursos gratuitos",
+    "prompt": "Has terminado tu primer experimento en un Notebook de ModelScope. ¿Cuáles de estas prácticas coinciden con este capítulo? (selección múltiple)\n\nA. Deja los archivos que quieras conservar bajo `/mnt/workspace`, porque ahí está montado el almacenamiento persistente de 100GB\nB. Al terminar el experimento solo cierras la ventana del navegador, la instancia en la nube se detiene y la GPU deja de consumir cuota\nC. Cuando se agote la cuota de GPU puedes volver al entorno de CPU gratuito para procesar datos y depurar código\nD. Los trabajos largos necesitan planificar el guardado de progreso por adelantado, y los archivos que produce el entrenamiento van a `/mnt/workspace`\nE. Con solo salir de la página se liberan los recursos, y al volver puedes continuar donde lo dejaste",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "A, C y D. B y E fallan en lo mismo: salir de la página o cerrar el navegador no es detener la máquina de la nube; hay que volver a la página del Notebook y detener la instancia a mano.",
+    "explanation": "Este capítulo tiene un solo hilo conductor: los recursos gratuitos son compartidos y tienen cuota, así que «devolverlos a tiempo» importa más que «cómo los usas».\n\nA y D son el mismo mecanismo aplicado dos veces. `/mnt/workspace` da 100GB de almacenamiento persistente, y los archivos de otras rutas no se conservan tras cerrar la instancia por defecto, así que los artefactos de entrenamiento que deban sobrevivir tienen que caer en ese directorio. El `mkdir -p /mnt/workspace/models /mnt/workspace/data /mnt/workspace/outputs` del capítulo existe exactamente para esto.\n\nB y E son una trampa muy práctica, y el capítulo le dedica un párrafo: cerrar el navegador no detiene la máquina de la nube, y la cuota sigue corriendo.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch04-ex03",
+    "chapter": "chapter-4",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Planificar una prueba pequeña en recursos gratuitos",
+    "prompt": "Acabas de empezar y quieres dejar funcionando un experimento pequeño en recursos gratuitos antes de decidir si compras hardware. Escribe cómo lo organizarías: qué haces primero en CPU, bajo qué condiciones subes a GPU y cómo cierras cuando termine el experimento.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Ordena CPU antes que GPU, da el motivo para subir a GPU (tamaño del modelo o necesidad de inferencia o ajuste fino a pequeña escala) y menciona escribir los archivos en /mnt/workspace y detener la instancia al terminar?"
+    },
+    "reference": "Primero en CPU: descargar archivos, procesar datos, depurar código. El entorno de CPU tiene 8 núcleos, 32GB de RAM y sin límite de tiempo, así que puedes dejar los datos y el código funcionando poco a poco sin pelear con la cuota. Aquí el objetivo es tener el código y los datos preparados, no sacar resultados.\n\nEl motivo para subir a GPU: sube cuando necesites inferencia o un ajuste fino a pequeña escala Y el tamaño del modelo quepa en los 24GB de VRAM de una A10. La ruta de referencia que da este capítulo es «abre el entorno, crea un Notebook, descarga un modelo pequeño, haz correr el ejemplo», validando toda la cadena sobre un modelo pequeño primero.\n\nUna vez arriba: escribe en `/mnt/workspace` los archivos que quieras conservar y planifica de antemano el guardado de progreso en los trabajos largos, para que una instancia que caduca a mitad no te tire el trabajo.\n\nCierre: detén la instancia cuando termines la tarea; cerrar el navegador no cuenta, vuelve a la página del Notebook y párala a mano. Cuando se agote la cuota puedes volver al entorno de CPU gratuito para seguir procesando datos y depurando código.",
+    "explanation": "La frase con la que abre este capítulo es la idea del ejercicio: cuando empiezas no hace falta comprar antes un equipo nuevo, deja funcionar un experimento pequeño y comprueba cuánto recurso necesitas de verdad. Lo que se pregunta aquí es ese movimiento: «ver el requisito con claridad antes de gastar dinero».\n\nCPU antes que GPU junta dos motivos: el entorno de CPU no tiene límite de tiempo y la fase de depuración no necesitaba GPU de todas formas; en cambio, en cuanto subes a GPU la cuota se consume por horas, así que conviene reservarla para el paso que sí necesita cómputo.\n\nLa pregunta del cierre se pasa por alto con facilidad, y es justo la que este capítulo desarrolla en un párrafo propio: en recursos gratuitos el coste más caro no son las horas de GPU, son las horas de instancias que olvidas detener.\n\nEste ejercicio no puede ejecutar operaciones reales de entorno; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia da una organización con la que comparar."
+  }
+]

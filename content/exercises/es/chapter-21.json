@@ -1,1 +1,102 @@
-[]
+[
+  {
+    "id": "ch21-ex01",
+    "chapter": "chapter-21",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar qué puede hacer un modelo abierto de generación",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con los dos modelos que presenta este capítulo? (selección múltiple)\n\nA. Lo que genera Z-Image no es solo «una cara bonita»; también resuelve tareas de maquetación más difíciles como renderizar texto\nB. Z-Image solo se da bien con retratos; de paisajes y objetos no sabe\nC. MiniMax H3 da al vídeo abierto sentido de dirección, y se ocupa de planos y composición\nD. Los clips de los modelos de vídeo abiertos siguen fallando a menudo en la continuidad de plano y necesitan cribado manual\nE. «Abierto» significa que estos modelos publican todos sus datos de entrenamiento y su código de entrenamiento",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B es lo contrario de lo que dice este capítulo: Z-Image hace más que retratos. E confunde «pesos abiertos» con «todo el proceso de entrenamiento es abierto»: los datos de entrenamiento, el código de entrenamiento y los permisos de uso hay que comprobarlos por separado.",
+    "explanation": "Este capítulo presenta dos modelos y no es largo; lo que se busca en la pregunta es no leer la presentación de forma demasiado estrecha.\n\nA coincide con la propia formulación del capítulo: Z-Image «ya no es solo hacer que las caras queden bien». Esa frase está escrita precisamente contra la idea estrecha de que solo hace retratos, así que elegir B es justo la impresión que este capítulo corrige.\n\nC y D describen MiniMax H3 en conjunto. La frase con la que abre el capítulo es que el vídeo abierto «empieza a tener sentido de dirección», es decir la capacidad de manejar planos y composición, que es la dirección en la que ha mejorado frente a los modelos de vídeo abiertos anteriores. Pero «tener sentido de dirección» no quiere decir «no tener defectos», así que la frase de D sobre que la continuidad de plano falla a menudo y hace falta cribar a mano va emparejada con C: el progreso es real y también lo son los límites.\n\nE es la distinción que este libro repite una y otra vez, y aquí también vale. «Abierto» cubre cosas distintas según el contexto, y justo por eso existe en el capítulo 1 esa escala de cuatro niveles de apertura: poder ejecutar los pesos y tener publicados tanto los datos como el código de entrenamiento son dos cosas distintas. Antes de juzgar qué puede hacer un modelo, conviene ver con claridad en qué nivel estás.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch21-ex02",
+    "chapter": "chapter-21",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 6,
+    "objective": "Evaluar capacidad y coste al elegir un AIGC",
+    "prompt": "Tienes que elegir un modelo abierto de generación de imagen o vídeo para tu negocio. Escribe tu marco de evaluación: qué dimensiones de capacidad mirar, cómo probar, qué resultado te hace pensar que no sirve para tu escenario y cómo decides si el beneficio compensa el coste de cómputo.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Cubre las dimensiones de capacidad (calidad de imagen, renderizado de texto, controlabilidad, consistencia), menciona hacer pruebas con tus propios datos de negocio, tiene en cuenta el coste del cribado manual e incluye el coste de cómputo y de ingeniería en el juicio sobre el beneficio?"
+    },
+    "reference": "Mira al menos cuatro dimensiones de capacidad: (1) calidad de imagen y estabilidad de estilo; (2) controlabilidad, si es capaz de generar el contenido indicado por el prompt, y este capítulo menciona en particular tareas de maquetación como el renderizado de texto; (3) consistencia, cuánta diferencia hay entre varias generaciones del mismo prompt y si el mismo sujeto se reproduce de forma fiable; (4) velocidad y estabilidad de generación, incluido si la tasa de fallos es alta.\n\nCómo probar: ejecuta los prompts que de verdad vas a usar en tu negocio, no los prompts de ejemplo oficiales. Compara el mismo lote de prompts entre los candidatos y repítelo varias veces para observar la estabilidad. En los modelos de vídeo hay que mirar además problemas como la continuidad de plano: este capítulo señala que el vídeo abierto sigue fallando a menudo en esto y necesita cribado manual.\n\nQué resultado se considera no apto: que no salga nada utilizable en el escenario clave del negocio, que la tasa de fallos sea tan alta que el coste de cribar supere el beneficio, o que no se alcance la precisión de control que hace falta. Si se cumple cualquiera de las tres, cambia de modelo o cambia de enfoque.\n\nSi el beneficio compensa el coste de cómputo: suma el cómputo de entrenamiento, ajuste fino e inferencia, y suma las horas de personal de «generar y cribar». Si un modelo da una imagen más bonita pero hace falta que tres personastarden media jornada, su ventaja por imagen no significa nada.\n\nPor último, de vuelta al punto del capítulo 1: si puedes usarlo comercialmente depende de la licencia, y un modelo por capaz que sea no entra en la lista si la licencia no lo permite.",
+    "explanation": "Este ejercicio va del valor metodológico de los diez casos del capítulo: si un modelo «llega hasta donde» algo, eso solo queda demostrado al probarlo con tus propios datos.\n\nLa segunda pregunta (qué resultado se considera no apto) y la tercera (beneficio frente a coste) son el verdadero punto. La diferencia entre los modelos abiertos y los productos cerrados no suele estar en la calidad puntual, sino en el **coste total**: un modelo con una calidad media algo menor pero un 90% utilizable es más útil que uno algo mejor que solo es utilizable el 50%. Esa es la lectura práctica de la frase del capítulo sobre el vídeo abierto «que sigue fallando a menudo y necesita cribado manual»: el cribado tiene precio.\n\nEl recordatorio sobre la licencia de la cuarta pregunta no es relleno. Es donde aterriza la conclusión del capítulo 1 aplicado a una selección: la primera puerta no es la capacidad, es si puedes usarlo de forma legal.\n\nEste ejercicio no puede ejecutar una generación real de modelos; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un marco de evaluación con el que comparar."
+  },
+  {
+    "id": "ch21-ex03",
+    "chapter": "chapter-21",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Planificar clips con un límite por clip",
+    "prompt": "El límite oficial de H3 son 15 segundos por clip, y los vídeos más largos se hacen empalmando: el primer clip se detiene en un fotograma estable, el siguiente continúa desde ese mismo fotograma y después se recortan los fotogramas repetidos.\n\nEscribe una función `plan_segments(total_seconds, max_per_segment)` que devuelva cuántos clips hay que generar:\n\n- `total_seconds` es la duración total objetivo del vídeo terminado en segundos, y `max_per_segment` es el límite por clip en segundos, ambos enteros positivos;\n- el número de clips es `ceil(total_seconds / max_per_segment)`;\n- y guarda el **número de costuras** en la variable global `seams`. El número de costuras es el número de clips menos uno: hay una costura entre cada par de clips, así que después del último no queda ninguna.",
+    "starter": "seams = 0\n\n\ndef plan_segments(total_seconds, max_per_segment):\n    # 返回段数，并把接缝数存进全局变量 seams\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(15, 15) == 1, '正好一段，不需要拼接'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(16, 15) == 2, '超过上限一点点就要两段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(30, 15) == 2, '30 秒正好是两段'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(31, 15) == 3, '31 秒要三段'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "plan_segments(45, 15)\nassert seams == 2, seams",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "plan_segments(15, 15)\nassert seams == 0, '只有一段时不存在接缝'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in range(1, 61):\n    for _cap in (5, 10, 15, 20):\n        _want = -(-_t // _cap)\n        assert plan_segments(_t, _cap) == _want, (_t, _cap)\n        assert seams == _want - 1, (_t, _cap, seams, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que el número de clips se redondea hacia arriba y que las costuras son una menos?"
+    },
+    "reference": "def plan_segments(total_seconds, max_per_segment):\n    count = -(-total_seconds // max_per_segment)\n    global seams\n    seams = count - 1\n    return count",
+    "explanation": "Este ejercicio es el clip de acción en primera persona de 30 segundos del capítulo: el límite de H3 son 15 segundos por clip, el autor empalma dos clips de 15 segundos, y **la costura cae en el segundo 15**, donde durante un visionado normal es difícil de detectar.\n\n**El número de clips se redondea hacia arriba.** 30 segundos son exactamente 2 clips, pero 31 segundos obligan a 3, aunque el último clip sea de un solo segundo: sigue siendo un clip. Usar la división entera `total // cap` convierte 31 segundos en 2 clips y se come un segundo en silencio. Las comprobaciones incluyen 16 y 31 como los casos «justo pasado un clip» y «justo pasado un clip entero».\n\n**El número de costuras es uno menos que el de clips.** Es la parte que más fácil se escribe como `count`. Este capítulo dice que el autor «empalma dos clips de 15 segundos», y la costura cae **entre** clips, así que 2 clips tienen 1 costura y 3 clips tienen 2. Escribirlo como el número de clips cuenta una costura después de cada clip e inventa una de más, y por eso este ejercicio la pide por separado.\n\n**El número de costuras se recalcula en cada llamada.** Las comprobaciones llaman a `plan_segments` dos veces seguidas y miran `seams` en medio; una implementación que solo asigne en la primera llamada deja un valor viejo.\n\nLa comprobación principal recorre duraciones objetivo de 1 a 60 segundos contra límites por clip de 5, 10, 15 y 20, 240 combinaciones en total, con el número de clips calculado de forma independiente con aritmética entera: está ahí para impedir una tabla de búsqueda, que no puede cubrir esas 240.\n\nNota honesta sobre la corrección: el número de costuras lo vigilan dos comprobaciones juntas, 14/100 y 30/100 (44% en total), lo que basta por sí solo para P1. Pero «sin empalmar dentro del límite por clip» lo vigila solo la de 12/100, y eso lo convierte en el eslabón más débil: únicamente cubre la única entrada `plan_segments(15, 15)`."
+  }
+]

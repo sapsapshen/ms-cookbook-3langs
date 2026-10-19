@@ -1,1 +1,102 @@
-[]
+[
+  {
+    "id": "ch21-ex01",
+    "chapter": "chapter-21",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge what an open source generation model can do",
+    "prompt": "Which of these statements match the two models this chapter introduces? (multi-select)\n\nA. What Z-Image produces is not just \"a pretty face\"; it also handles harder layout work such as rendering text\nB. Z-Image is only good at portraits; it cannot do landscapes or objects\nC. MiniMax H3 gives open source video a sense of direction, handling shot and composition\nD. Clips from open source video models still often get shot continuity wrong and need manual screening\nE. \"Open source\" means these models publish all of their training data and training code",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B is the opposite of what this chapter says: Z-Image does more than portraits. E mixes up \"open weights\" with \"the whole training process is open\" -- the training data, the training code and the usage permissions each have to be checked separately.",
+    "explanation": "This chapter introduces two models and is not long; the point of the question is not to read the introduction too narrowly.\n\nA matches the chapter's own wording, that Z-Image \"is already more than making faces look good\". That sentence is written precisely against the narrow idea that it only does portraits, so choosing B is exactly the impression this chapter corrects.\n\nC and D describe MiniMax H3 together. The chapter's title line is that open source video \"is starting to have a sense of direction\", meaning the ability to handle shots and composition -- that is the direction of progress over earlier open source video models. But \"has a sense of direction\" does not mean \"has no flaws\", so D's point about shot continuity often going wrong and needing manual screening comes as a pair with C: the progress is real and so are the limits.\n\nE is the distinction this book keeps coming back to, and it applies here as well. \"Open source\" covers different things in different contexts, which is exactly why chapter 1 has that four-tier scale of openness: being able to run the weights and having both the training data and the training code published are two different things. Before judging what a model can do, it is worth seeing which tier you actually have.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch21-ex02",
+    "chapter": "chapter-21",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 6,
+    "objective": "Assess capability and cost when choosing an AIGC model",
+    "prompt": "You have to choose an open source image or video generation model for your own business. Write down your evaluation framework: which capability dimensions to look at, how to test, what result makes you conclude it does not suit your scenario, and how you decide whether the benefit justifies the compute cost.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it cover the capability dimensions (image quality, text rendering, controllability, consistency), does it mention testing with your own business data, does it account for the cost of manual screening, and does it fold compute and engineering cost into the benefit judgement?"
+    },
+    "reference": "Look at at least four capability dimensions: (1) image quality and style stability; (2) controllability -- whether it can generate the specified content from the prompt, and this chapter in particular mentions layout tasks like rendering text; (3) consistency -- how much repeated generations of the same prompt differ, and whether the same subject reproduces reliably; (4) generation speed and stability, including whether the failure rate is high.\n\nHow to test: run the prompts you will really use in your own business, not the official example prompts. Compare the same batch of prompts across the candidates and repeat several times to observe stability. Video models need an extra look at problems like shot continuity -- this chapter notes that open source video still often gets this wrong and needs manual screening.\n\nWhat counts as unsuitable: no usable result in the key business scenario, a failure rate high enough that the manual screening cost outweighs the benefit, or the required control precision not being reachable. If any one of those holds, change the model or change the approach.\n\nWhether the benefit is worth the compute: add up the compute for training, fine-tuning and inference, and add up the total person-hours for \"generate plus screen\". If a model produces a prettier single image but takes three people half a day to find one usable one, its per-image advantage means nothing.\n\nFinally, back to chapter 1's point: whether you may use it commercially depends on the licence, and a model however capable does not become a candidate if the licence forbids it.",
+    "explanation": "This exercise is about the methodological value of this chapter's ten cases: whether a model \"can get as far as\" something only holds when you run your own data through it.\n\nThe second question (what counts as unsuitable) and the third (benefit versus compute) are the real point here. The gap between open source models and closed products is often not in single-point quality but in **total cost**: a model slightly lower on average quality but 90% usable beats one slightly higher that is only 50% usable. That is the practical meaning of this chapter's remark that open source video \"still often gets it wrong and needs manual screening\" -- manual screening has a price.\n\nThe licence reminder in the fourth question is not filler. It is where chapter 1's conclusion lands in a selection: the first gate on the list is not capability, it is whether you may legally use it at all.\n\nThis exercise cannot run real model generation; grading rests on self-assessment plus an optional AI score, and the reference answer gives an evaluation framework you can compare against."
+  },
+  {
+    "id": "ch21-ex03",
+    "chapter": "chapter-21",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Plan video segments under a per-clip limit",
+    "prompt": "H3's official limit is 15 seconds per clip, and longer videos are made by stitching: the first clip stops on a stable frame, the next continues from that same frame, and the repeated frames are cut out afterwards.\n\nWrite a function `plan_segments(total_seconds, max_per_segment)` that returns how many clips have to be generated:\n\n- `total_seconds` is the target total length of the finished video in seconds and `max_per_segment` is the per-clip limit in seconds, both positive integers;\n- the number of clips is `ceil(total_seconds / max_per_segment)`;\n- and store the number of **seams** in the global variable `seams`. The seam count is the clip count minus 1 -- there is one seam between each pair of clips, so there is no seam after the last one.",
+    "starter": "seams = 0\n\n\ndef plan_segments(total_seconds, max_per_segment):\n    # 返回段数，并把接缝数存进全局变量 seams\n    raise NotImplementedError\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(15, 15) == 1, '正好一段，不需要拼接'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(16, 15) == 2, '超过上限一点点就要两段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(30, 15) == 2, '30 秒正好是两段'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert plan_segments(31, 15) == 3, '31 秒要三段'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "plan_segments(45, 15)\nassert seams == 2, seams",
+        "weight": 14
+      },
+      {
+        "kind": "assert_python",
+        "code": "plan_segments(15, 15)\nassert seams == 0, '只有一段时不存在接缝'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _t in range(1, 61):\n    for _cap in (5, 10, 15, 20):\n        _want = -(-_t // _cap)\n        assert plan_segments(_t, _cap) == _want, (_t, _cap)\n        assert seams == _want - 1, (_t, _cap, seams, _want)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the clip count rounds up while the seam count is one less?"
+    },
+    "reference": "def plan_segments(total_seconds, max_per_segment):\n    count = -(-total_seconds // max_per_segment)\n    global seams\n    seams = count - 1\n    return count",
+    "explanation": "This exercise is the 30 second first-person action clip from this chapter: H3's per-clip limit is 15 seconds, the author strings together two 15 second clips, and **the seam sits at second 15**, where it is hard to notice during normal viewing.\n\n**The clip count rounds up.** 30 seconds is exactly 2 clips, but 31 seconds must be 3 -- even if the last clip is only 1 second long, it is still a clip. Using floor division `total // cap` turns 31 seconds into 2 clips, which silently eats a second. The checks include 16 and 31 as the \"just over one clip\" and \"just over a whole clip\" cases.\n\n**The seam count is one less than the clip count.** That is the piece most easily written as `count`. This chapter says the author \"strings together two 15 second clips\", and the seam falls **between** two clips, so 2 clips have 1 seam and 3 clips have 2. Writing it as the clip count counts a seam after every clip and invents one extra -- which is why this exercise asks for it separately.\n\n**The seam count is recomputed on every call.** The checks call `plan_segments` twice in a row and inspect `seams` in between; an implementation that only assigns on the first call leaves a stale value behind.\n\nThe main check runs target lengths of 1 to 60 seconds against per-clip limits of 5, 10, 15 and 20, 240 combinations in total, with the expected clip count computed independently with integer arithmetic -- it is there to stop a lookup table: it cannot cover those 240.\n\nHonest boundary note on grading: the seam count is guarded by two checks together, 14/100 and 30/100 (44% combined), which is enough on its own for P1. But \"no stitching within the per-clip limit\" is guarded by 12/100 alone, making it the weakest link: it only covers the single input `plan_segments(15, 15)`."
+  }
+]

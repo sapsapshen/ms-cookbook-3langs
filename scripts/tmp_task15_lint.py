@@ -96,7 +96,7 @@ CAPS_GLUE = re.compile(r'[a-z]{2}[A-Z][a-zA-Z]+')
 # was confirmed to be a legitimate product or library name, not a splice.
 CAMEL_OK = {
     'elScope', 'alScope', 'inHash', 'imHash', 'vaScript', 'enAI',
-    'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO',
+    'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO', 'niMax', 'niCoder', 'niMoonshot',
 }
 
 # An English function word fused onto the end of a Spanish word, and the

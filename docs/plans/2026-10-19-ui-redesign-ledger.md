@@ -96,3 +96,19 @@ reading.css 后者居上 shadow（唯一独有存活值：`--sidebar-width:270px
   （低饱和）不动所以高光仍是白的。seedling 是绿的所以不动（正确）。
 - **机械证明**：全站 CSS（katex 除外）token 块之外 hex = 0。
 - 验证：116 pytest + check-site PASS。
+
+## B3 完成（commit 8197be9）— 品牌更名
+
+- chrome 全量去魔搭/ModelScope：index.html 72 处、locale 三语各 ~30 key、
+  app.py 4 条用户可见串、analytics.html 4 处、app.js 1 处、paper.js footer 链接。
+- OAuth 提供方保留 modelscope（登录基础设施，动了会全员登出）；
+  贡献者 profile 链接保留（署名而非品牌），只中性化标签。
+- 书标题从源头改（content/manifest.json + build-content.py 硬编码），
+  content.js 与 exercises.js 重新生成——下次构建不会再覆盖回旧名。
+- 真实浏览器视觉验证（agent-browser + Chromium，本地 uvicorn）：
+  首页（SILS 字标/黄 CTA/金色搭搭/暖底）、阅读页（白头/暖侧栏/文章排版）、
+  练习面板（3 题+未完成徽标）、暗色 footer band（黄 pill/白导航/琥珀链接）、
+  讨论区（tab 渲染）全部符合方向；练习卡展开态经 DOM 验证
+  （open:1/run:1/editor:1）。viewport 命令在此环境固定 1254×564，
+  移动宽度未做截图（响应式规则本次未动，仅换色）。
+- 验证：116 pytest + 12 node 套件 + check-site 全绿；全站 CSS token 块外 hex=0。

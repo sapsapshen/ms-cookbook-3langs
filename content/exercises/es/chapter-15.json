@@ -1,1 +1,159 @@
-[]
+[
+  {
+    "id": "ch15-ex01",
+    "chapter": "chapter-15",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Calcular métricas de clasificación con una matriz",
+    "prompt": "Dada una matriz de confusión cuyas filas son las clases reales y cuyas columnas son las clases predichas, escribe una función `metrics(matrix)` que devuelva un diccionario:\n\n`accuracy` es la suma de la diagonal dividida entre la suma de todos los elementos. `per_class` es un diccionario por clase, con la clase como clave y como valor `{\"precision\": ..., \"recall\": ..., \"f1\": ...}`. Para una clase dada, la precisión es su diagonal dividida entre la suma de esa **columna**, el recall es la diagonal dividida entre la suma de esa **fila**, y un denominador cero da 0.0. El f1 es `2 x precision x recall / (precision + recall)`, y cuando ambos son 0 el f1 es 0.0.\n\nRedondea todos los resultados a 4 decimales.",
+    "starter": "def metrics(matrix):\n    # 返回 {'accuracy': ..., 'per_class': {...}}\n    return {}\n\nprint(metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['accuracy'] == 0.8933, '对角线 45+47+42=134，总共 150 条'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][0]['recall'] == 0.9, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][0]['precision'] == 0.8654, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][2]['recall'] == 0.84, '软件故障这一行是 6+2+42=50'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][2]['precision'] == 0.8936, '软件故障这一列是 3+2+42=47'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 0], [0, 5]])\nassert m['per_class'][0]['precision'] == 0.0 and m['per_class'][0]['recall'] == 0.0 and m['per_class'][0]['f1'] == 0.0, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 0], [0, 5]])\nassert m['per_class'][1]['f1'] == 1.0, '唯一预测正确的那一类 f1 是 1.0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 1], [1, 0]])\nassert m['per_class'][0]['precision'] == 0.0 and m['per_class'][0]['f1'] == 0.0\nassert m['per_class'][1]['precision'] == 0.0 and m['per_class'][1]['f1'] == 0.0",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (2, 3, 4):\n    for _i in range(_n):\n        for _j in range(_n):\n            _mat = [[0] * _n for _ in range(_n)]\n            _mat[_i][_j] = 7\n            for _c in range(_n):\n                if _c != _i:\n                    _mat[_i][_c] = 1\n                if _c != _j:\n                    _mat[_c][_j] = 1\n            _m = metrics(_mat)\n            _total = sum(sum(r) for r in _mat)\n            _diag = sum(_mat[_k][_k] for _k in range(_n))\n            assert abs(_m['accuracy'] - round(_diag / _total, 4)) < 1e-12, (_mat, _m)\n            for _c in range(_n):\n                _col = sum(_mat[_r][_c] for _r in range(_n))\n                _row = sum(_mat[_c])\n                _p = round(_mat[_c][_c] / _col, 4) if _col else 0.0\n                _rc = round(_mat[_c][_c] / _row, 4) if _row else 0.0\n                _f = round(2 * _p * _rc / (_p + _rc), 4) if (_p + _rc) else 0.0\n                _got = _m['per_class'][_c]\n                assert abs(_got['precision'] - _p) < 1e-12, (_mat, _c, _got, _p)\n                assert abs(_got['recall'] - _rc) < 1e-12, (_mat, _c, _got, _rc)\n                assert abs(_got['f1'] - _f) < 1e-12, (_mat, _c, _got, _f)",
+        "weight": 27
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Distingue filas y columnas: el recall mira la fila y la precisión la columna?"
+    },
+    "reference": "def metrics(matrix):\n    n = len(matrix)\n    total = sum(sum(row) for row in matrix)\n    diag = sum(matrix[i][i] for i in range(n))\n    accuracy = round(diag / total, 4) if total else 0.0\n    per_class = {}\n    for i in range(n):\n        row_sum = sum(matrix[i])\n        col_sum = sum(matrix[r][i] for r in range(n))\n        precision = round(matrix[i][i] / col_sum, 4) if col_sum else 0.0\n        recall = round(matrix[i][i] / row_sum, 4) if row_sum else 0.0\n        if precision + recall:\n            f1 = round(2 * precision * recall / (precision + recall), 4)\n        else:\n            f1 = 0.0\n        per_class[i] = {'precision': precision, 'recall': recall, 'f1': f1}\n    return {'accuracy': accuracy, 'per_class': per_class}\n\nprint(metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]]))",
+    "explanation": "Este capítulo dice que en la matriz de confusión «cada fila representa la clase real de los datos y cada columna la clase que predijo el modelo», y esa frase decide cuál de las dos fórmulas divide entre qué:\n\n**El recall divide entre la fila.** La clase 0 tiene 50 muestras reales (45+2+3) y 45 se predijeron bien, así que recall = 45/50 = 0.9. El recall mide «de esta clase en la respuesta correcta, cuánto se reconoció».\n\n**La precisión divide entre la columna.** La columna 0 suma 45+1+6 = 52, que es cuántas veces dijo el modelo «esto es una avería de red», y solo 45 fueron correctas, así que precisión = 45/52 = 0.8654. La precisión mide «de lo que el modelo dijo que era esta clase, cuánto era cierto».\n\nIntercambiar las dos es el error más habitual, y el ejemplo del capítulo está construido para destaparlo: las sumas de fila y de columna de la clase 0 y de la clase 2 no coinciden (la clase 0 suma 50 en fila y 52 en columna; la clase 2 suma 50 en fila y 47 en columna), así que invertirlo cambia los números al instante. Las comprobaciones fijan cada uno por separado.\n\nLa precisión global es la diagonal sobre el total: 134 / 150, unos 0.8933. Ese número por sí solo no enseña «qué dos clases se confunden», y eso es justo lo que motive introducir la matriz de confusión para analizarla clase por clase.\n\n**Un denominador cero da 0.0.** En `[[0, 0], [0, 5]]` la clase 0 no aparece nunca en la verdad de referencia ni se predice nunca, así que su fila y su columna suman 0. Lanzar ahí un ZeroDivisionError sería un error: eso es «esta clase no tiene muestras», no «el modelo se equivocó».\n\n**La precisión también es 0 cuando no hay solape alguno.** En una matriz totalmente errada como `[[0, 1], [1, 0]]` ambas clases tienen precisión 0 (la diagonal es 0) y recall 0, así que el f1 también es 0. El error fácil aquí es suponer que «el modelo predijo algo, así que la precisión no debería ser 0».\n\nSobre el f1: las comprobaciones redondean precisión y recall primero y luego calculan el f1, así que el orden de tu implementación tiene que coincidir. Dicho esto, medido sobre este conjunto de entradas, calcular el f1 con los valores sin redondear y redondear después da el mismo resultado que redondear primero: la diferencia es demasiado pequeña para verse con 4 decimales. Así que este no es el punto del capítulo; no te atasques aquí.\n\nEste capítulo también explica para qué sirve la matriz: 6 averías de software se clasificaron como averías de red, así que esas dos clases se confunden con facilidad y puedes añadir datos de entrenamiento en consecuencia. Eso es lo que hace que las métricas por clase sean más útiles que una sola precisión global.\n\nLa comprobación principal construye 27 formas de «una correcta más algunos errores» en matrices de 2x2 a 4x4 y recalcula cada valor celda a celda: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch15-ex02",
+    "chapter": "chapter-15",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Calcular métricas de extracción a nivel de entidad",
+    "prompt": "En el reconocimiento de entidades, la respuesta correcta tiene un conjunto de entidades `gold` y el modelo produce un conjunto `pred`. Escribe una función `entity_scores(gold, pred)` que devuelva un diccionario con los tres recuentos `tp`, `fp`, `fn` y los tres valores `precision`, `recall`, `f1` (con 4 decimales):\n\nuna entidad presente en ambos conjuntos cuenta como TP, una que está solo en `pred` cuenta como FP y una que está solo en `gold` cuenta como FN. precision = TP / (TP + FP), recall = TP / (TP + FN), con denominador cero dando 0.0; f1 = `2 x precision x recall / (precision + recall)`, y cuando ambos son 0 el f1 es 0.0.",
+    "starter": "def entity_scores(gold, pred):\n    # 返回 tp/fp/fn 与 precision/recall/f1\n    return {}\n\nprint(entity_scores({'张伟', '北京'}, {'张伟', '上海'}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'张伟', '北京'}, {'张伟', '上海'})\nassert (s['tp'], s['fp'], s['fn']) == (1, 1, 1), s",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'张伟', '北京'}, {'张伟', '上海'})\nassert s['precision'] == 0.5 and s['recall'] == 0.5 and s['f1'] == 0.5, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, {'a', 'b'})\nassert (s['tp'], s['fp'], s['fn']) == (2, 0, 0), s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, {'a', 'b'})\nassert s['precision'] == 1.0 and s['recall'] == 1.0 and s['f1'] == 1.0, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a'}, {'b'})\nassert (s['tp'], s['fp'], s['fn']) == (0, 1, 1) and s['f1'] == 0.0, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores(set(), {'a', 'b'})\nassert (s['tp'], s['fp'], s['fn']) == (0, 2, 0), '标准答案为空时全是 FP'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, set())\nassert (s['tp'], s['fp'], s['fn']) == (0, 0, 2), '模型没输出时全是 FN'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores(set(), set())\nassert (s['tp'], s['fp'], s['fn']) == (0, 0, 0)\nassert s['precision'] == 0.0 and s['recall'] == 0.0 and s['f1'] == 0.0, '两边都空时三个数值都是 0.0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b', 'c'}, {'a', 'b', 'd', 'e'})\nassert (s['tp'], s['fp'], s['fn']) == (2, 2, 1), s\nassert abs(s['precision'] - 0.5) < 1e-12 and abs(s['recall'] - round(2 / 3, 4)) < 1e-12, s",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "import itertools\n_entities = ['a', 'b', 'c', 'd']\nfor _mask_g in range(16):\n    for _mask_p in range(16):\n        _g = {_entities[_i] for _i in range(4) if _mask_g >> _i & 1}\n        _p = {_entities[_i] for _i in range(4) if _mask_p >> _i & 1}\n        _s = entity_scores(_g, _p)\n        _tp, _fp, _fn = len(_g & _p), len(_p - _g), len(_g - _p)\n        assert (_s['tp'], _s['fp'], _s['fn']) == (_tp, _fp, _fn), (_g, _p, _s)\n        _pr = round(_tp / (_tp + _fp), 4) if (_tp + _fp) else 0.0\n        _rc = round(_tp / (_tp + _fn), 4) if (_tp + _fn) else 0.0\n        _f = round(2 * _pr * _rc / (_pr + _rc), 4) if (_pr + _rc) else 0.0\n        assert abs(_s['precision'] - _pr) < 1e-12, (_g, _p, _s, _pr)\n        assert abs(_s['recall'] - _rc) < 1e-12, (_g, _p, _s, _rc)\n        assert abs(_s['f1'] - _f) < 1e-12, (_g, _p, _s, _f)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Distingue la medida a nivel de entidad de la precisión a nivel de campo?"
+    },
+    "reference": "def entity_scores(gold, pred):\n    tp = len(gold & pred)\n    fp = len(pred - gold)\n    fn = len(gold - pred)\n    precision = round(tp / (tp + fp), 4) if (tp + fp) else 0.0\n    recall = round(tp / (tp + fn), 4) if (tp + fn) else 0.0\n    if precision + recall:\n        f1 = round(2 * precision * recall / (precision + recall), 4)\n    else:\n        f1 = 0.0\n    return {'tp': tp, 'fp': fp, 'fn': fn,\n            'precision': precision, 'recall': recall, 'f1': f1}\n\nprint(entity_scores({'\\u5f20\\u4f1f', '\\u5317\\u4eac'}, {'\\u5f20\\u4f1f', '\\u4e0a\\u6d77'}))",
+    "explanation": "Este capítulo define TP, FP y FN con claridad: la entidad que el modelo identificó correctamente es TP, la que identificó pero está mal es FP, y la que estaba en la respuesta correcta y el modelo no identificó es FN. Escrito con conjuntos eso es `tp = gold & pred`, `fp = pred - gold`, `fn = gold - pred`.\n\n**Esto es a nivel de entidad, no de campo.** Este capítulo señala explícitamente el defecto de la precisión por campo: «no permite saber qué entidades dejó sin extraer el modelo», así que una tarea con varias entidades necesita la medida a nivel de entidad. Los denominadores son distintos: la precisión por campo divide entre el número total de campos a extraer, mientras que aquí el recall divide entre el número total de entidades de la respuesta correcta.\n\n**Los tres casos de conjunto vacío hay que gestionarlos, y cada uno da un resultado distinto**: una respuesta correcta vacía lo convierte todo en FP (el modelo se inventó entidades), una predicción vacía lo convierte todo en FN (no extrajo nada), y ambos vacíos dan 0.0 en los tres valores. Una implementación que solo calcula «cuando no sea cero» o que lance una excepción suspenderá en estos casos, y las comprobaciones los listan por separado.\n\n**El f1 usa precisión y recall ya redondeados.** Las comprobaciones redondean primero y luego calculan el f1, así que el orden de tu implementación tiene que coincidir.\n\nEl bucle principal de las comprobaciones enumera las 16 x 16 = 256 combinaciones de gold/pred sobre cuatro entidades (incluidos todos los casos vacíos y todos los solapes parciales) y recalcula los tres recuentos y los tres valores con operaciones de conjuntos en cada una. Está ahí para impedir que te aprenses la respuesta: una tabla de búsqueda no cubre ninguna de esas 256 combinaciones. Límite honesto: esas 256 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch15-ex03",
+    "chapter": "chapter-15",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Elegir cómo evaluar un modelo ajustado",
+    "prompt": "Has ajustado un modelo de pregunta-respuesta y quieres saber si ha mejorado. ¿Cuáles de estas prácticas coinciden con este capítulo? (selección múltiple)\n\nA. En una tarea de clasificación calcula exactitud, precisión, recall y F1, y mira la matriz de confusión cuando quieras saber qué dos clases se confunden\nB. Con la exactitud global basta; el comportamiento por clase da igual\nC. En una tarea de extracción usa precisión, recall y F1 a nivel de entidad, porque la precisión por campo no deja ver qué entidades se quedaron fuera\nD. Una respuesta generada no tiene una única respuesta correcta, así que hay que juzgarla en varias dimensiones: corrección, completitud, relevancia, cumplimiento del formato y alucinación\nE. Una respuesta fluida y bien formateada ya cuenta como buena generación; los hechos no necesitan una comprobación aparte",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B contradice a A directamente: la exactitud es un único número y no deja ver qué dos clases mezcla el modelo. E falla porque este capítulo dice de forma explícita que «aunque la respuesta sea fluida y esté bien formateada, si contiene hechos o conclusiones erróneas no se puede considerar que el modelo haya generado bien».",
+    "explanation": "Este capítulo da tres conjuntos de métricas, uno por tipo de tarea, y cuál usas depende de la forma de la tarea y no de cuál dé menos trabajo.\n\nA es la sección de clasificación. Este capítulo dice que exactitud, precisión, recall y F1 expresan el resultado global con un solo número, «pero si quieres saber qué clases suele equivocar el modelo» hace falta la matriz de confusión para analizarlo más a fondo; y ese ejemplo de 3x3 existe para mostrar que «la avería de software se clasifica a menudo como avería de red, así que aún hay margen para mejorar la capacidad del modelo de distinguir esas dos clases».\n\nC es el defecto que este señala en la precisión por campo: puede decirte «la precisión en nombres de empresa es esta», pero «no permite saber qué entidades dejó sin extraer el modelo». De esa frase sale directamente la conclusión: una tarea con varias entidades necesita además la medida a nivel de entidad.\n\nD es el arranque de la sección de generación: la salida del modelo normalmente no tiene una respuesta estándar única, así que hay que evaluarla en varias dimensiones. E es el error que este capítulo repite: la corrección es el requisito más básico, y la fluidez junto con el formato no sustituyen la exactitud factual.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  }
+]

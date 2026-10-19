@@ -1,1 +1,159 @@
-[]
+[
+  {
+    "id": "ch15-ex01",
+    "chapter": "chapter-15",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Compute classification metrics from a confusion matrix",
+    "prompt": "Given a confusion matrix whose rows are the true classes and whose columns are the predicted classes, write a function `metrics(matrix)` that returns a dict:\n\n`accuracy` is the sum of the diagonal over the sum of all elements. `per_class` is a dict per class, keyed by class index, whose value is `{\"precision\": ..., \"recall\": ..., \"f1\": ...}`. For a given class, precision is that class's diagonal over the sum of that **column**, recall is the diagonal over the sum of that **row**, and a zero denominator gives 0.0. f1 is `2 x precision x recall / (precision + recall)`, and when both are 0 the f1 is 0.0.\n\nRound every result to 4 decimals.",
+    "starter": "def metrics(matrix):\n    # 返回 {'accuracy': ..., 'per_class': {...}}\n    return {}\n\nprint(metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]]))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['accuracy'] == 0.8933, '对角线 45+47+42=134，总共 150 条'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][0]['recall'] == 0.9, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][0]['precision'] == 0.8654, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][2]['recall'] == 0.84, '软件故障这一行是 6+2+42=50'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]])\nassert m['per_class'][2]['precision'] == 0.8936, '软件故障这一列是 3+2+42=47'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 0], [0, 5]])\nassert m['per_class'][0]['precision'] == 0.0 and m['per_class'][0]['recall'] == 0.0 and m['per_class'][0]['f1'] == 0.0, m['per_class'][0]",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 0], [0, 5]])\nassert m['per_class'][1]['f1'] == 1.0, '唯一预测正确的那一类 f1 是 1.0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "m = metrics([[0, 1], [1, 0]])\nassert m['per_class'][0]['precision'] == 0.0 and m['per_class'][0]['f1'] == 0.0\nassert m['per_class'][1]['precision'] == 0.0 and m['per_class'][1]['f1'] == 0.0",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (2, 3, 4):\n    for _i in range(_n):\n        for _j in range(_n):\n            _mat = [[0] * _n for _ in range(_n)]\n            _mat[_i][_j] = 7\n            for _c in range(_n):\n                if _c != _i:\n                    _mat[_i][_c] = 1\n                if _c != _j:\n                    _mat[_c][_j] = 1\n            _m = metrics(_mat)\n            _total = sum(sum(r) for r in _mat)\n            _diag = sum(_mat[_k][_k] for _k in range(_n))\n            assert abs(_m['accuracy'] - round(_diag / _total, 4)) < 1e-12, (_mat, _m)\n            for _c in range(_n):\n                _col = sum(_mat[_r][_c] for _r in range(_n))\n                _row = sum(_mat[_c])\n                _p = round(_mat[_c][_c] / _col, 4) if _col else 0.0\n                _rc = round(_mat[_c][_c] / _row, 4) if _row else 0.0\n                _f = round(2 * _p * _rc / (_p + _rc), 4) if (_p + _rc) else 0.0\n                _got = _m['per_class'][_c]\n                assert abs(_got['precision'] - _p) < 1e-12, (_mat, _c, _got, _p)\n                assert abs(_got['recall'] - _rc) < 1e-12, (_mat, _c, _got, _rc)\n                assert abs(_got['f1'] - _f) < 1e-12, (_mat, _c, _got, _f)",
+        "weight": 27
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it tell rows from columns: recall looks at the row, precision at the column?"
+    },
+    "reference": "def metrics(matrix):\n    n = len(matrix)\n    total = sum(sum(row) for row in matrix)\n    diag = sum(matrix[i][i] for i in range(n))\n    accuracy = round(diag / total, 4) if total else 0.0\n    per_class = {}\n    for i in range(n):\n        row_sum = sum(matrix[i])\n        col_sum = sum(matrix[r][i] for r in range(n))\n        precision = round(matrix[i][i] / col_sum, 4) if col_sum else 0.0\n        recall = round(matrix[i][i] / row_sum, 4) if row_sum else 0.0\n        if precision + recall:\n            f1 = round(2 * precision * recall / (precision + recall), 4)\n        else:\n            f1 = 0.0\n        per_class[i] = {'precision': precision, 'recall': recall, 'f1': f1}\n    return {'accuracy': accuracy, 'per_class': per_class}\n\nprint(metrics([[45, 2, 3], [1, 47, 2], [6, 2, 42]]))",
+    "explanation": "This chapter says the confusion matrix has \"each row standing for the true class of the data and each column for the class the model predicted\", and that sentence decides which of the two formulas divides by what:\n\n**Recall divides by the row.** Class 0 has 50 true samples (45+2+3) and 45 of them were predicted correctly, so recall = 45/50 = 0.9. Recall measures \"of this class in the ground truth, how much was recognised\".\n\n**Precision divides by the column.** Column 0 adds up to 45+1+6 = 52, which is how many times the model said \"this is a network fault\" in total, and only 45 of those were right, so precision = 45/52 = 0.8654. Precision measures \"of what the model called this class, how much really was\".\n\nSwapping the two is the most common mistake, and this chapter's example is built to expose it: the row and column sums for class 0 and class 2 are not equal (class 0 has a row sum of 50 and a column sum of 52; class 2 has a row sum of 50 and a column sum of 47), so getting it backwards changes the numbers immediately. The checks pin both separately.\n\nOverall accuracy is the diagonal over the total: 134 / 150, about 0.8933. That number on its own does not show \"which two classes get confused\" -- which is exactly why this chapter introduces the confusion matrix for per-class analysis.\n\n**A zero denominator gives 0.0.** In `[[0, 0], [0, 5]]` class 0 never appears in the ground truth and is never predicted, so both its row and column sum to 0. Raising ZeroDivisionError here would be wrong: that is \"this class has no samples\", not \"the model got it wrong\".\n\n**Precision is also 0 when there is no overlap at all.** In a fully wrong matrix like `[[0, 1], [1, 0]]` both classes have precision 0 (the diagonal is 0) and recall 0, so f1 is 0 as well. The easy mistake here is assuming \"the model predicted something, so precision should not be 0\".\n\nOn f1: the checks round precision and recall first and then compute f1, so the order in your implementation has to match. That said, measured on this input set, computing f1 from unrounded values and rounding the result gives the same answer as rounding first -- the difference is too small to see at 4 decimals. So this is not the point of the chapter; do not get stuck on it.\n\nThis chapter also explains what the matrix is for: 6 software faults were misjudged as network faults, so those two classes are easy to confuse and you can add training data accordingly. That is what makes per-class metrics more useful than a single accuracy.\n\nThe main check builds 27 \"one correct plus some misclassifications\" shapes across 2x2 to 4x4 matrices and recomputes every value cell by cell -- it is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch15-ex02",
+    "chapter": "chapter-15",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 14,
+    "objective": "Compute extraction metrics at the entity level",
+    "prompt": "In named entity recognition the ground truth has a set of entities `gold` and the model outputs a set `pred`. Write a function `entity_scores(gold, pred)` that returns a dict with the three counts `tp`, `fp`, `fn` and the three values `precision`, `recall`, `f1` (to 4 decimals):\n\nan entity present in both sets counts as TP, one only in `pred` counts as FP, one only in `gold` counts as FN. precision = TP / (TP + FP), recall = TP / (TP + FN), with a zero denominator giving 0.0; f1 = `2 x precision x recall / (precision + recall)`, and when both are 0 the f1 is 0.0.",
+    "starter": "def entity_scores(gold, pred):\n    # 返回 tp/fp/fn 与 precision/recall/f1\n    return {}\n\nprint(entity_scores({'张伟', '北京'}, {'张伟', '上海'}))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'张伟', '北京'}, {'张伟', '上海'})\nassert (s['tp'], s['fp'], s['fn']) == (1, 1, 1), s",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'张伟', '北京'}, {'张伟', '上海'})\nassert s['precision'] == 0.5 and s['recall'] == 0.5 and s['f1'] == 0.5, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, {'a', 'b'})\nassert (s['tp'], s['fp'], s['fn']) == (2, 0, 0), s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, {'a', 'b'})\nassert s['precision'] == 1.0 and s['recall'] == 1.0 and s['f1'] == 1.0, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a'}, {'b'})\nassert (s['tp'], s['fp'], s['fn']) == (0, 1, 1) and s['f1'] == 0.0, s",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores(set(), {'a', 'b'})\nassert (s['tp'], s['fp'], s['fn']) == (0, 2, 0), '标准答案为空时全是 FP'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b'}, set())\nassert (s['tp'], s['fp'], s['fn']) == (0, 0, 2), '模型没输出时全是 FN'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores(set(), set())\nassert (s['tp'], s['fp'], s['fn']) == (0, 0, 0)\nassert s['precision'] == 0.0 and s['recall'] == 0.0 and s['f1'] == 0.0, '两边都空时三个数值都是 0.0'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "s = entity_scores({'a', 'b', 'c'}, {'a', 'b', 'd', 'e'})\nassert (s['tp'], s['fp'], s['fn']) == (2, 2, 1), s\nassert abs(s['precision'] - 0.5) < 1e-12 and abs(s['recall'] - round(2 / 3, 4)) < 1e-12, s",
+        "weight": 16
+      },
+      {
+        "kind": "assert_python",
+        "code": "import itertools\n_entities = ['a', 'b', 'c', 'd']\nfor _mask_g in range(16):\n    for _mask_p in range(16):\n        _g = {_entities[_i] for _i in range(4) if _mask_g >> _i & 1}\n        _p = {_entities[_i] for _i in range(4) if _mask_p >> _i & 1}\n        _s = entity_scores(_g, _p)\n        _tp, _fp, _fn = len(_g & _p), len(_p - _g), len(_g - _p)\n        assert (_s['tp'], _s['fp'], _s['fn']) == (_tp, _fp, _fn), (_g, _p, _s)\n        _pr = round(_tp / (_tp + _fp), 4) if (_tp + _fp) else 0.0\n        _rc = round(_tp / (_tp + _fn), 4) if (_tp + _fn) else 0.0\n        _f = round(2 * _pr * _rc / (_pr + _rc), 4) if (_pr + _rc) else 0.0\n        assert abs(_s['precision'] - _pr) < 1e-12, (_g, _p, _s, _pr)\n        assert abs(_s['recall'] - _rc) < 1e-12, (_g, _p, _s, _rc)\n        assert abs(_s['f1'] - _f) < 1e-12, (_g, _p, _s, _f)",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it tell the entity-level measure apart from field-level accuracy?"
+    },
+    "reference": "def entity_scores(gold, pred):\n    tp = len(gold & pred)\n    fp = len(pred - gold)\n    fn = len(gold - pred)\n    precision = round(tp / (tp + fp), 4) if (tp + fp) else 0.0\n    recall = round(tp / (tp + fn), 4) if (tp + fn) else 0.0\n    if precision + recall:\n        f1 = round(2 * precision * recall / (precision + recall), 4)\n    else:\n        f1 = 0.0\n    return {'tp': tp, 'fp': fp, 'fn': fn,\n            'precision': precision, 'recall': recall, 'f1': f1}\n\nprint(entity_scores({'\\u5f20\\u4f1f', '\\u5317\\u4eac'}, {'\\u5f20\\u4f1f', '\\u4e0a\\u6d77'}))",
+    "explanation": "This chapter defines TP, FP and FN clearly: an entity the model identified correctly is TP, an entity the model identified wrongly is FP, and an entity in the ground truth the model missed is FN. Written as sets that is `tp = gold & pred`, `fp = pred - gold`, `fn = gold - pred`.\n\n**This is entity level, not field level.** This chapter calls out the flaw in field accuracy explicitly -- it \"cannot tell you which entities the model missed\" -- so a task containing several entities needs the entity-level measure. The denominators differ: field accuracy divides by the total number of fields to extract, while the recall here divides by the total number of entities in the ground truth.\n\n**All three empty cases have to be handled, and each gives a different answer**: an empty ground truth makes everything FP (the model hallucinated entities), an empty prediction makes everything FN (everything was missed), and both empty gives 0.0 for all three values. An implementation that only computes \"when non-zero\" or that raises will fail on these; the checks list them separately.\n\n**f1 uses precision and recall after rounding.** The checks round first and then compute f1, so the order in your implementation has to match.\n\nThe main check enumerates all 16 x 16 = 256 gold/pred combinations over four entities (including every empty case and every partial overlap) and recomputes the three counts and three values with set operations for each. It is there to stop answer-lookup: a lookup table cannot cover any of those 256 combinations. Honest boundary: those 256 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch15-ex03",
+    "chapter": "chapter-15",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Pick an evaluation method for a fine-tuned model",
+    "prompt": "You have fine-tuned a question answering model and want to know whether it got better. Which of these practices match this chapter? (multi-select)\n\nA. For a classification task compute accuracy, precision, recall and F1, and look at the confusion matrix when you want to know which two classes get confused\nB. Overall accuracy on its own is enough; the per-class behaviour does not matter\nC. For an extraction task use entity-level precision, recall and F1, because field accuracy cannot show which entities were missed\nD. A generated answer has no single correct reference, so judge it on several dimensions: correctness, completeness, relevance, format following and hallucination\nE. An answer that reads fluently in well formed output counts as good generation; the facts do not need a separate check",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "C",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "B contradicts A directly: accuracy is a single number and cannot show which two classes the model mixes up. E is wrong because this chapter says outright that \"even if the answer is fluent and well formatted, if it contains wrong facts or conclusions the model cannot be said to have generated well\".",
+    "explanation": "This chapter gives three sets of metrics, one per task type, and which one you use depends on the shape of the task rather than on which is less work.\n\nA is the classification section. This chapter says accuracy, precision, recall and F1 express the overall result as a single number, \"but if you want to know which classes the model tends to get wrong\" you need the confusion matrix for further analysis -- and that 3x3 example exists to show that \"software fault is relatively often misjudged as network fault, so there is room to improve the model's ability to tell those two classes apart\".\n\nC is the flaw this chapter points at in field accuracy: it can tell you \"the accuracy on company names is this\", but it \"cannot tell you which entities the model missed\". That sentence leads straight to the conclusion: a task with several entities needs the entity-level measure on top.\n\nD is the opening of the generation section: model output usually has no single standard answer, so it has to be judged along several dimensions. E is the mistake this chapter keeps warning against -- correctness is the most basic requirement, and fluency plus formatting cannot stand in for factual accuracy.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

@@ -1441,6 +1441,87 @@ await check('切换语言后重新渲染，面板仍然可用', () => {
     assert.ok(pulls(h).some(call => call.url.includes('chapter=chapter-7')), 'going back did not re-ask for it');
   });
 
+  await check('按章节拉取：别章的进度不算「服务端没有」，不因此回写', async () => {
+    // The chapterId handed to merge() is what keeps a chapter-scoped pull from
+    // declaring every OTHER chapter's local work unknown. Without it, opening a
+    // chapter the reader has not worked in declares all their other work
+    // unknown and pays a write-back for it -- against a 20-writes-per-minute
+    // quota, on rows the server has held for weeks.
+    //
+    // The case that separates the two: local work in chapter-13 ONLY, then open
+    // chapter-7. The request asks about chapter-7 and is answered about
+    // chapter-7, so it says nothing at all about chapter-13. Scoped, there is
+    // nothing to write back; unscoped, the chapter-13 row counts as unknown.
+    const settings = {items: []};
+    const h = boot({fetch: syncFetch(settings)});
+    // boot() already pulled for chapter-7, and pullProgress() is re-entrant
+    // guarded, so that one has to land before this test can ask for its own.
+    await flush();
+    h.store().write('chapter-13', 'ch13-ex01', {passed: true, score: 1});
+
+    const result = await h.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.ok(result, 'the pull returned nothing at all');
+    assert.equal(result.changed, 0,
+      `a pull about chapter-7 reported ${result.changed} row(s) to write back`);
+    assert.equal(posts(h).length, 0,
+      'a pull that changed nothing spent a write request');
+
+    // The same store DOES write back its own chapter's row: this is a scoping
+    // rule, not the write-back being disabled.
+    h.store().write('chapter-7', 'ch07-ex01', {passed: true, score: 1});
+    const second = await h.window.ExerciseUI.pullProgress();
+    await flush();
+    assert.equal(second.changed, 1,
+      "this chapter's own unknown row was not reported for write-back");
+    const shipped = (settings.posts || []).flatMap(payload => payload.items.map(row => `${row.chapter}/${row.exercise}`));
+    assert.ok(shipped.includes('chapter-7/ch07-ex01'),
+      `the current chapter's row was never written back: ${shipped.join(', ') || '(nothing shipped)'}`);
+  });
+
+  await check('拉取在途时判分：同一条结果不会被写回两次', async () => {
+    // Entering a chapter pulls, and the reader can open a card and press Run
+    // before that answer lands. The answer then describes a moment before
+    // their own result existed, so a merge that reads "absent" as "the server
+    // has never seen this" ships the row again -- one exercise against a
+    // 20-writes-per-minute quota, spent twice.
+    const h = boot({fetch: syncFetch({items: []})});
+    const body = await expand(h, 'ch07-ex01');
+    // No flush between boot and the click: the chapter-entry pull is still in
+    // flight, which is the whole point of the case.
+    await buttonsIn(body, 'run')[0].fire('click');
+    await flush();
+    await flush();
+    assert.equal(posts(h).length, 1,
+      `one graded run cost ${posts(h).length} write requests`);
+    assert.equal(posts(h)[0].init.body && JSON.parse(posts(h)[0].init.body).items.length, 1);
+  });
+
+  await check('拉取在途时判分，但推送失败：结果仍由后续拉取补上', async () => {
+    // The other half of the same race. Excluding the row from the sweep is
+    // only safe while its push is actually under way; a push that failed must
+    // go back to being the sweep's business, or the recovery path this whole
+    // change exists to build silently stops recovering.
+    const h = boot({sandbox: passingSandbox(), fetch: syncFetch({items: [], postThrows: true})});
+    const body = await expand(h, 'ch07-ex01');
+    await buttonsIn(body, 'run')[0].fire('click');
+    await flush();
+    await flush();
+    const failed = h.store().read('chapter-7', 'ch07-ex01');
+    assert.equal(failed.passed, true, 'local progress was lost when the push failed');
+
+    // The next chapter entry pulls again, and this time the server answers
+    // without the row -- which is exactly what a failed push looks like.
+    h.window.location.hash = '#chapter-13';
+    for (const handler of h.listeners.get('hashchange') || []) handler();
+    await flush();
+    h.window.location.hash = '#chapter-7';
+    for (const handler of h.listeners.get('hashchange') || []) handler();
+    await flush();
+    await flush();
+    assert.ok(posts(h).length > 0, 'the failed push was never retried by any pull');
+  });
+
   await check('触发时机一：进入章节时拉取一次（首页进入章节也算）', async () => {
     const h = boot({hash: '#home', fetch: syncFetch({})});
     await flush();

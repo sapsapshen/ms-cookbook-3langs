@@ -293,9 +293,9 @@ test('反向验证：把用例数下限调到不可能达到，本文件必须�
   assert.equal(clean.status, 0, `未改动时本文件必须是绿的：\n${clean.stdout}${clean.stderr}`);
 });
 
-/* The mutation harness used to be EXCLUDED for being slow (~6 min for all 45),
+/* The mutation harness used to be EXCLUDED for being slow (~6 min for all 47),
  * which is not the same as unrunnable: a harness nobody runs is not evidence
- * that the UI suite can fail, and the 45 mutations are independent, so a
+ * that the UI suite can fail, and the 47 mutations are independent, so a
  * deterministic stride carries the same proof for a fraction of the cost. These
  * two tests pin the part that is easy to fake -- a stride that reports a smaller
  * number while still running everything would make the CI step 6 minutes long
@@ -310,20 +310,20 @@ function listSelected(stride) {
 
 test('变异套件的抽样档真的只挑出子集，不是跑完再改日志', () => {
   const picked = str => [...listSelected(str).matchAll(/^ {2}\[(\d+)\]/gm)].map(m => Number(m[1]));
-  assert.equal(picked(1).length, 45, 'stride 1 必须选中全部 45 个变异');
-  assert.equal(picked(5).length, 9, 'stride 5 必须正好选中 9 个变异');
-  assert.equal(picked(15).length, 3, 'stride 15 必须正好选中 3 个变异');
+  assert.equal(picked(1).length, 47, 'stride 1 必须选中全部 47 个变异');
+  assert.equal(picked(5).length, 10, 'stride 5 必须正好选中 10 个变异');
+  assert.equal(picked(15).length, 4, 'stride 15 必须正好选中 4 个变异');
   // The selected indices must be a genuine stride through the list -- the
-  // cheapest way for a harness to appear sampled is to run all 45 and print 9.
-  assert.deepEqual(picked(5), [0, 5, 10, 15, 20, 25, 30, 35, 40],
+  // cheapest way for a harness to appear sampled is to run all 47 and print 10.
+  assert.deepEqual(picked(5), [0, 5, 10, 15, 20, 25, 30, 35, 40, 45],
     'stride 5 选中的不是每第 5 个，抽样是假的');
-  assert.ok(picked(5).every(index => index < 45), 'stride 5 选中了越界的变异下标');
+  assert.ok(picked(5).every(index => index < 47), 'stride 5 选中了越界的变异下标');
   // And a stride must actually shrink the set, or it is a relabelled full run.
   assert.ok(picked(5).length < picked(1).length && picked(15).length < picked(5).length,
     'stride 没有缩小规模，抽样是假的');
   // Stride 1 is what a developer gets locally, and it must stay the full set.
-  assert.match(listSelected(1), /would run 45 of 45 mutations/);
-  assert.match(listSelected(5), /would run 9 of 45 mutations/);
+  assert.match(listSelected(1), /would run 47 of 47 mutations/);
+  assert.match(listSelected(5), /would run 10 of 47 mutations/);
 });
 
 test('workflow 用的是抽样档，而且它独占一个 step', () => {
@@ -332,10 +332,10 @@ test('workflow 用的是抽样档，而且它独占一个 step', () => {
   assert.equal(steps.length, 1, '变异套件必须出现在恰好一个 run: 块里');
   const step = steps[0];
   assert.match(step, /SILS_MUTATION_STRIDE=\d+/,
-    'CI 里的变异套件没有设置抽样步长 —— 要么是全量 45 个（~6 分钟），要么是没跑');
+    'CI 里的变异套件没有设置抽样步长 —— 要么是全量 47 个（~6 分钟），要么是没跑');
   const stride = Number(/SILS_MUTATION_STRIDE=(\d+)/.exec(step)[1]);
   const selected = [...listSelected(stride).matchAll(/^ {2}\[(\d+)\]/gm)].length;
-  assert.ok(selected > 0 && selected < 45,
+  assert.ok(selected > 0 && selected < 47,
     `CI 的步长 ${stride} 选出 ${selected} 个变异，既不是子集也不是空集`);
   /* The harness rewrites assets/exercise-ui.js in place, so a step that shares a
    * run block with another script that reads that file would observe a mutated

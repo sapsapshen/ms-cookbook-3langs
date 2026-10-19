@@ -244,6 +244,27 @@
   let session = null;
   let sessionProbe = null;
 
+  /* Rows this page view has PUSHED, or is pushing right now, and not yet seen
+     come back from the server.
+
+     A pull is a request in flight while the reader keeps working: entering a
+     chapter pulls, and the reader can open a card and press Run before the
+     answer lands. The answer then describes a moment before their own result
+     existed, so a merge that reads "absent from the answer" as "the server has
+     never seen this" ships the row a second time. That is one exercise costing
+     two of the twenty writes a minute the server allows, on the one path that
+     is supposed to recover work rather than spend quota on it.
+
+     The row is added when it is WRITTEN, not when its POST comes back, because
+     the gap in between is exactly where the reader is: record() writes,
+     syncProgress() starts, and a pull already on the wire lands in the middle.
+     Only a push that actually FAILS takes the row back out -- it still needs
+     the sweep to pick it up, because one duplicate write is recoverable and a
+     result that never leaves the device is not. Every completed pull clears the
+     set, since after that the server's own answer is the authority again. */
+  const pushedSincePull = new Set();
+  const pushKey = row => `${row.chapter}\u0000${row.exercise}`;
+
   /* Concurrent triggers (a chapter entry and a session change in the same
      tick) share one probe instead of racing two, and a failed probe leaves the
      session unknown so the next trigger tries again rather than caching an
@@ -296,20 +317,37 @@
   }
 
   /* Fire and forget by design. A reader who is signed out, offline, or rate
-     limited simply keeps their local progress; the next attempt syncs it. */
+     limited simply keeps their local progress; the next attempt syncs it.
+
+     `record()` has already added this row to pushedSincePull by the time this
+     runs, so a pull landing mid-flight does not ship it a second time. Every
+     exit that does NOT reach the server takes it back out again, which is what
+     hands the row to the next pull's sweep instead of silently dropping it. */
   async function syncProgress(record) {
     const row = progressRow(record);
     if (!row) return;
+    const key = pushKey(row);
     try {
       const current = await readSession();
-      if (!current || !current.user) return;
-      await fetch(PROGRESS_PATH, {
+      if (!current || !current.user) {
+        // Nobody to push to. A guest's progress is local by design and a
+        // signed-out reader keeps theirs, so the row was never going up.
+        pushedSincePull.delete(key);
+        return;
+      }
+      const response = await fetch(PROGRESS_PATH, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': current.csrf },
         body: JSON.stringify({ items: [row] }),
       });
-    } catch { /* reading must never depend on sync */ }
+      // Only a 2xx counts. A refused or failed request left the row on this
+      // device alone, so the next pull's sweep must still find it there.
+      if (!response || !response.ok) pushedSincePull.delete(key);
+    } catch {
+      // Offline. Same reasoning as the refusal above.
+      pushedSincePull.delete(key);
+    }
   }
 
   /* A pass that arrived from another device has to become VISIBLE, or the
@@ -369,6 +407,7 @@
           body: JSON.stringify({ items: batch }),
         });
         if (!response || !response.ok) return;
+        for (const row of batch) pushedSincePull.add(pushKey(row));
       } catch { return; }
     }
   }
@@ -394,6 +433,17 @@
       // than spent on a round trip that cannot carry anything.
       if (!current || !current.user || current.loginEnabled === false) return null;
       let rows = [];
+      // What has already gone up since this request opened. The pull is a
+      // round trip the reader spends working: entering a chapter pulls, and a
+      // Run can land before the answer does. Without this the merge below reads
+      // "not in the answer" as "never seen by the server" and writes the same
+      // row a second time -- one exercise against a twenty-writes-a-minute
+      // quota, spent twice. See pushedSincePull for why a FAILED push is not
+      // listed here and still gets swept.
+      const inFlight = Array.from(pushedSincePull, key => {
+        const cut = key.indexOf('\u0000');
+        return { chapter: key.slice(0, cut), exercise: key.slice(cut + 1) };
+      });
       try {
         // Scoped to the chapter being read. The endpoint has no pagination and
         // a row carries up to 20000 characters of the learner's own code, so
@@ -413,12 +463,23 @@
       // -- arbitrates code and selfAssessed. This function never compares
       // anything itself, so it cannot introduce a merge rule the store and the
       // server's own MAX() upsert would disagree with.
-      const result = store.merge(rows);
+      //
+      // chapterId is the sweep scope and inFlight is its floor: the request
+      // above asked about THIS chapter only, and only about the rows that had
+      // not already been pushed while it was open. merge() would otherwise
+      // declare every chapter's local work unknown and charge a write-back on
+      // every chapter entry.
+      const result = store.merge(rows, chapterId, inFlight);
       repaintFromMerge(result.records);
       // `changed` is a COUNT, not a list: merge() already wrote the merged
       // values into the buckets it touched, so the payload is the whole
       // snapshot rather than a hand-picked subset.
       if (result.changed > 0) await pushBack(current);
+      // The server's answer is the authority again, and it accounts for
+      // everything pushed so far -- including the rows in `inFlight`. Keeping
+      // them would exempt rows the server genuinely does not hold from the
+      // NEXT sweep, which is how one recovered row becomes a permanent no-op.
+      pushedSincePull.clear();
       return result;
     } catch { return null; }
     finally { pulling = false; }
@@ -467,6 +528,11 @@
   function record(exercise, patch) {
     if (!store) return null;
     const saved = store.write(chapterId, exercise.id, patch);
+    // Claimed for this page view BEFORE the POST starts, not after it lands.
+    // syncProgress() releases the claim on every path that does not reach the
+    // server, so this is a promise that a push is under way rather than a claim
+    // that it worked -- which is exactly what a pull landing in between needs.
+    pushedSincePull.add(pushKey({ chapter: chapterId, exercise: exercise.id }));
     syncProgress(Object.assign({ exercise: exercise.id }, saved));
     updateCardState(exercise.id);
     refreshHeader();

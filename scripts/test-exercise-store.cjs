@@ -418,6 +418,172 @@ check('chunks falls back to one batch for a size it cannot use', () => {
   }
 });
 
+/* --- Review round 4: the two rows merge() used to forget ------------------ */
+
+check('a row the server has never seen still schedules a write-back', () => {
+  /* merge() used to walk `rows` only, so a row the server never returned could
+     never reach `changed`: the reader did the exercise on this device, the
+     count stayed 0, pushBack() never fired, and the work was reachable from no
+     other device for the life of the account. syncProgress() is a one-shot push
+     after each verdict with no retry and no offline queue, so one refused batch
+     or one dropped connection made it permanent. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  const result = store.merge([]);
+  assert.equal(result.changed, 1);
+  /* changed is a COUNT, which is what pullProgress() consumes
+     (`if (result.changed > 0)`), and the payload it ships is snapshot() — so
+     "is the row in the write-back" is answered by the snapshot, not by changed. */
+  assert.equal(typeof result.changed, 'number');
+  const rows = store.snapshot();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].chapter, 'chapter-1');
+  assert.equal(rows[0].exercise, 'ch01-ex01');
+  assert.equal(rows[0].passed, 1);
+  assert.equal(rows[0].score, 1);
+});
+
+check('only the rows the server is missing are written back, not the one it has', () => {
+  /* Three local rows, the server answers for one of them — with exactly the
+     values this device holds. Counting every local row would ship work the
+     server already has; counting only the answered one is the bug itself. The
+     two the server never mentioned are the payload. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  store.write('chapter-1', 'ch01-ex02', { passed: true, score: 1 });
+  store.write('chapter-1', 'ch01-ex03', { passed: false, score: 0.2 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 1, updated: 500 }]);
+  assert.equal(result.changed, 2);
+  /* The answered row agreed with the server and was left alone; the two unknown
+     ones kept the values this device earned. */
+  assert.equal(result.records.length, 0);
+  const byId = Object.fromEntries(store.snapshot().map(row => [row.exercise, row]));
+  assert.equal(byId['ch01-ex02'].passed, 1);
+  assert.equal(byId['ch01-ex03'].score, 0.2);
+});
+
+check('a write-back the server already agrees with is not scheduled', () => {
+  /* The quota is 20 writes per 60 seconds and it counts REQUESTS, so a pull
+     that changes nothing must schedule nothing: otherwise every chapter entry
+     spends a write on a no-op and the reader can be refused for work they are
+     actually doing. Identical passed, identical score, identical stamp. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  const row = { chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 1, updated: 500 };
+  assert.equal(store.merge([row]).changed, 0);
+  /* And again, so a steady state really is a steady state. */
+  assert.equal(store.merge([row]).changed, 0);
+});
+
+check('a local pass the server has not accepted is written back', () => {
+  /* merge() latches `passed` — merged.passed = incoming.passed || local.passed
+     — and then put the row in `records` as a server row, so changed stayed 0.
+     The badge said "passed" on this device and the server said 0, permanently:
+     a pass the client knows about and never sends. The server's MAX(passed)
+     cannot help, because it only ever sees what the client ships. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 0.6, code: 'print(1)' });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0, updated: 900 }]);
+  assert.equal(result.changed, 1);
+  /* The row that ships is the MERGED one: latched pass, ratcheted score. The
+     snapshot is the payload, so this is what the server would receive. */
+  const row = store.snapshot()[0];
+  assert.equal(row.passed, 1);
+  assert.equal(row.score, 0.6);
+  /* And once the server holds it, the next pull is a no-op — the monotonicity
+     promise is closed in both directions. */
+  assert.equal(store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 0.6, updated: 900 }]).changed, 0);
+});
+
+check('a local score the server has not caught up with is written back', () => {
+  /* The same hole on the score axis: the server row is newer, so it wins the
+     timestamp and is adopted, but the ratchet leaves the higher local score on
+     the row and nothing reported it. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: false, score: 0.9 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 0, score: 0.3, updated: 900 }]);
+  assert.equal(result.changed, 1);
+  assert.equal(store.snapshot()[0].score, 0.9);
+});
+
+check('a row the pull did not ask about is not declared unknown', () => {
+  /* pullProgress() requests one chapter at a time, so an absent row only means
+     "unknown" INSIDE that chapter. Sweeping every chapter would declare the
+     reader's other work unknown on every chapter entry and spend a write each
+     time — the duplicate write-back this scoping exists to prevent. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true });
+  store.write('chapter-2', 'ch02-ex01', { passed: true });
+  assert.equal(store.merge([], 'chapter-1').changed, 1);
+  assert.equal(store.merge([], 'chapter-2').changed, 1);
+  /* Unscoped, the same answer is exact: the pull saw everything. */
+  assert.equal(store.merge([]).changed, 2);
+});
+
+check('a chapter pull does not count the row it adopted as missing', () => {
+  /* The sweep runs after the loop, over the buckets the loop just wrote — so a
+     row adopted from the server has to be excluded or every pull would report
+     the very rows it just imported. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  const result = store.merge([{ chapter: 'chapter-1', exercise: 'ch01-ex01', passed: 1, score: 1, updated: 400 }], 'chapter-1');
+  assert.equal(result.records.length, 1);
+  assert.equal(result.changed, 0);
+});
+
+check('a row pushed while the pull was open is not written back twice', () => {
+  /* A pull is a round trip the reader spends working: entering a chapter pulls,
+     and a Run can land before the answer does. The answer then describes a
+     moment before the row existed, so reading "absent" as "never seen" would
+     ship it again -- one exercise against a 20-writes-per-minute quota, spent
+     twice. `inFlight` is what the caller already sent during this request. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  assert.equal(store.merge([], 'chapter-1', [{ chapter: 'chapter-1', exercise: 'ch01-ex01' }]).changed, 0);
+  /* A row whose push did NOT land is not listed, so it still counts: one
+     duplicate write is recoverable, a result that never leaves the device is
+     not. */
+  store.write('chapter-1', 'ch01-ex02', { passed: true, score: 1 });
+  assert.equal(store.merge([], 'chapter-1', [{ chapter: 'chapter-1', exercise: 'ch01-ex01' }]).changed, 1);
+});
+
+check('the in-flight list does not excuse the NEXT pull', () => {
+  /* A pull that completed makes the server's own answer the authority again.
+     Carrying the exclusion forward would exempt rows the server genuinely
+     does not hold from every later sweep -- how one recovered row becomes a
+     permanent no-op. The caller clears its list; this asserts merge() holds no
+     memory of its own between calls. */
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 1 });
+  assert.equal(store.merge([], 'chapter-1', [{ chapter: 'chapter-1', exercise: 'ch01-ex01' }]).changed, 0);
+  assert.equal(store.merge([], 'chapter-1').changed, 1);
+});
+
+check('a malformed in-flight entry is ignored rather than fatal', () => {
+  const store = create({ storage: memoryStorage(), now: () => 500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true });
+  const result = store.merge([], 'chapter-1', [null, 42, { chapter: 1 }, { exercise: 'x' }, {}]);
+  assert.equal(result.changed, 1);
+});
+
+check('the write-back row shape is the wire shape pushBack() sends', () => {
+  /* snapshot() IS the push-back payload, so its keys have to be exactly what
+     ExerciseItem validates on the server side — a missing or misnamed key is a
+     row the sync endpoint skips, which is the same silent loss this round is
+     about. */
+  const store = create({ storage: memoryStorage(), now: () => 1750000500 });
+  store.write('chapter-1', 'ch01-ex01', { passed: true, score: 0.75, code: 'print(1)', selfAssessed: 'partial' });
+  store.merge([]);
+  const row = store.snapshot()[0];
+  assert.deepEqual(
+    Object.keys(row).sort(),
+    ['attempts', 'chapter', 'code', 'exercise', 'passed', 'score', 'selfAssessed', 'updated'],
+  );
+  assert.equal(typeof row.passed, 'number');
+  assert.equal(typeof row.score, 'number');
+  assert.equal(typeof row.updated, 'number');
+  assert.equal(row.updated, 1750000500);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

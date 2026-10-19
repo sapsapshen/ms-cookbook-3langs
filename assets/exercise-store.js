@@ -234,19 +234,66 @@
        Nothing user-visible depends on it; `passed` and `score` are what the map
        renders.
 
-       Returns {changed, records}: `changed` counts the rows the local side owns
-       and the caller must push back to the server; `records` lists the server
-       rows adopted locally as {chapterId, exerciseId, record}. The push-back
-       payload itself is snapshot(), so it stays a single code path.
-       `rows` is never mutated — callers reuse the array they hand in. */
-    function merge(rows) {
+       Returns {changed, records}: `changed` is a COUNT of the rows the local
+       side owns and the caller must push back to the server; `records` lists the
+       server rows adopted locally as {chapterId, exerciseId, record}. The
+       push-back payload itself is snapshot(), so it stays a single code path and
+       the count is the only thing the caller has to act on -- it is never a list
+       and nothing iterates it. `rows` is never mutated — callers reuse the array
+       they hand in.
+
+       `changed` answers "does the server hold everything this device knows?",
+       and there are exactly two ways it can fail to. The first is a row the
+       server has NEVER seen: it does not appear in `rows`, so the loop above
+       never reaches it and a naive merge reports nothing for it -- the reader
+       does the exercise on this device, the row never goes up, and the only
+       other upload path (a one-shot push after each verdict, no retry, no
+       offline queue) loses it for good on one quota refusal or one dropped
+       connection. `answered` records which ids actually arrived so the local
+       rows can be swept afterwards. The second is a row the server has but with
+       LESS progress than the reader has earned here -- handled inline, below.
+
+       Two arguments narrow what the sweep is allowed to conclude, and both
+       exist because a pull is a request in flight while the reader keeps
+       working:
+
+       * `scopeChapterId` -- the pull only asked about this chapter, so an
+         absent row says nothing about any other one. Without it every chapter
+         is swept, which is exact for an unscoped pull and wrong for a scoped
+         one: the reader would pay a write-back on every chapter entry.
+       * `inFlight` -- [{chapter, exercise}] the caller has ALREADY pushed
+         successfully while this request was open. The answer describes a
+         moment before those rows landed, so counting them would ship every row
+         the reader did during the pull a second time: two writes for one
+         exercise, against a quota of twenty writes a minute. A row whose push
+         is still outstanding, or that failed, is deliberately NOT listed and
+         so still counts -- one duplicate is recoverable, a lost result is not.
+
+       Omitting `inFlight` is honest when nothing has been pushed during the
+       pull, which is the common case for a chapter entry. */
+    function merge(rows, scopeChapterId, inFlight) {
       let changed = 0;
       const records = [];
+      /* Ids the server actually answered with. The separator is a character no
+         id can contain, so 'a' + 'b c' cannot collide with 'a b' + 'c'. A
+         null-prototype object keeps a chapter literally called 'toString' or
+         '__proto__' from reading as answered. */
+      const answered = Object.create(null);
+      const scope = typeof scopeChapterId === 'string' && scopeChapterId ? scopeChapterId : null;
+      /* Null-prototype SET of ids the caller has already pushed during this
+         request. Same separator for the same reason. */
+      const pushed = Object.create(null);
+      for (const entry of Array.isArray(inFlight) ? inFlight : []) {
+        if (!entry || typeof entry !== 'object') continue;
+        if (typeof entry.chapter !== 'string' || typeof entry.exercise !== 'string') continue;
+        pushed[entry.chapter + '\u0000' + entry.exercise] = true;
+      }
       for (const row of Array.isArray(rows) ? rows : []) {
         if (!row || typeof row !== 'object') continue;
         const chapterId = typeof row.chapter === 'string' ? row.chapter : '';
         const exerciseId = typeof row.exercise === 'string' ? row.exercise : '';
         if (!chapterId || !exerciseId) continue;
+        answered[chapterId + '\u0000' + exerciseId] = true;
         const incoming = normalize({ ...row, passed: row.passed === 1 || row.passed === true });
         const local = read(chapterId, exerciseId);
         if (!local) {
@@ -274,10 +321,39 @@
         }));
         bucket(chapterId)[exerciseId] = merged;
         if (serverWins) records.push({ chapterId, exerciseId, record: merged });
-        else if (local.updated > incoming.updated) {
-          /* Push-back rides on snapshot(), which reads the bucket we just wrote,
-             so the row sent up carries the merged latch/max score rather than
-             the local value that would have regressed the server. */
+        /* One row, one vote: `changed` is a COUNT of rows to write back, so the
+           two reasons a row qualifies are OR'd into a single increment rather
+           than counted twice. */
+        const newerLocal = !serverWins && local.updated > incoming.updated;
+        /* The server has this row and it holds LESS than the reader has earned
+           here. `merged` latched the local pass and ratcheted the local score,
+           so the row above reads as passed locally while the server still says
+           0 -- and a latched value nobody sends is a pass that lives on exactly
+           one device forever. The server's own upsert is passed=MAX(...),
+           score=MAX(...), and that MAX assumes the client ships what it knows:
+           a row is adopted into `records` (and repainted) as a server row, so
+           nothing else would ever carry it back up. Counting it here is the
+           other end of the same monotonicity promise, not a second rule.
+
+           This fires only when the MERGED value differs from what the server
+           sent. A row the server already agrees with contributes nothing, so a
+           pull that changes nothing schedules no write-back and cannot spend the
+           reader's 20-writes-per-minute quota on a no-op. */
+        const aheadOfServer = merged.passed !== incoming.passed || merged.score !== incoming.score;
+        if (newerLocal || aheadOfServer) changed += 1;
+      }
+      /* The rows the server never mentioned at all. This is the one that needs
+         no arbitration: there is nothing to arbitrate against, and the local
+         values ARE the merged ones, so this sweep can only ever ship a row the
+         reader genuinely did on this device. */
+      for (const chapterId of Object.keys(data)) {
+        if (scope && chapterId !== scope) continue;
+        const chapter = data[chapterId];
+        if (!chapter || typeof chapter !== 'object' || Array.isArray(chapter)) continue;
+        for (const exerciseId of Object.keys(chapter)) {
+          const key = chapterId + '\u0000' + exerciseId;
+          if (key in answered) continue;
+          if (key in pushed) continue;
           changed += 1;
         }
       }

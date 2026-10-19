@@ -1,1 +1,91 @@
-[]
+[
+  {
+    "id": "ch23-ex01",
+    "chapter": "chapter-23",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Elegir proporciones por plataforma y decidir la ampliación",
+    "prompt": "La misma imagen de marketing de un producto tiene que publicarse en varias plataformas. Escribe dos funciones:\n\n`pick_ratios(platform)` devuelve la lista de proporciones habituales de esa plataforma: `\"social\"` devuelve `[(1, 1), (4, 5)]`, `\"short_video\"` devuelve `[(9, 16)]`, `\"banner\"` devuelve `[(16, 9)]`, y cualquier otro valor devuelve `[]`.\n\n`needs_outpaint(src, dst)` decide si hay que ampliar la imagen: `src` y `dst` son ambos `(ancho, alto)`. Cuando las proporciones son iguales devuelve `\"resize-only\"` (basta con escalar); cuando `dst` es más ancha o más alta respecto a la proporción, devuelve `\"outpaint\"` (hay que generar contenido en la zona nueva); en caso contrario devuelve `\"crop\"` (el objetivo es más estrecho o más bajo, así que solo cabe recortar). Las proporciones se comparan como `ancho / alto`.",
+    "starter": "def pick_ratios(platform):\n    # 返回比例列表\n    return []\n\n\ndef needs_outpaint(src, dst):\n    # 返回 \"resize-only\" / \"outpaint\" / \"crop\"\n    return \"resize-only\"\n\nprint(pick_ratios('banner'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('social') == [(1, 1), (4, 5)], pick_ratios('social')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('short_video') == [(9, 16)], pick_ratios('short_video')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('banner') == [(16, 9)], pick_ratios('banner')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('unknown') == [] and pick_ratios('') == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 100), (200, 200)) == 'resize-only', '等比例直接缩放'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_outpaint((100, 100), (400, 100)) == 'outpaint', '变宽要扩图'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 400), (100, 100)) == 'outpaint', '从竖版变正方形是变宽，需要向左右补内容'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_outpaint((100, 100), (9, 16)) == 'crop' and needs_outpaint((100, 100), (4, 5)) == 'crop'\nassert needs_outpaint((100, 100), (16, 9)) == 'outpaint'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 100), (200, 200)) == 'resize-only', '尺寸放大但 1:1 比例没变'\nassert needs_outpaint((100, 200), (50, 100)) == 'resize-only', '尺寸缩小但 1:2 比例没变'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _k in (1, 3, 7, 11):\n    for _sw in (1, 3, 16):\n        for _sh in (1, 9, 50):\n            _src = (_sw * _k, _sh * _k)\n            for _dw, _dh in ((1, 1), (4, 5), (9, 16), (16, 9)):\n                _sr = _src[0] / _src[1]\n                _dr = _dw / _dh\n                _want = 'resize-only' if _sr == _dr else ('outpaint' if _dr > _sr else 'crop')\n                assert needs_outpaint(_src, (_dw, _dh)) == _want, (_src, (_dw, _dh), needs_outpaint(_src, (_dw, _dh)), _want)\nassert pick_ratios('social') == [(1, 1), (4, 5)]\nassert pick_ratios('short_video') == [(9, 16)]\nassert pick_ratios('banner') == [(16, 9)]\nassert pick_ratios('unknown') == []\nassert pick_ratios('') == []\nassert pick_ratios('Social') == [], '平台名精确匹配'\n_all = set()\nfor _p in ('social', 'short_video', 'banner'):\n    for _r in pick_ratios(_p):\n        _all.add(_r)\nassert len(_all) == 4, '四个平台一共四个不同比例'",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que la diferencia entre ampliar y escalar está en la proporción y no en el tamaño absoluto?"
+    },
+    "reference": "RATIOS = {\n    'social': [(1, 1), (4, 5)],\n    'short_video': [(9, 16)],\n    'banner': [(16, 9)],\n}\n\n\ndef pick_ratios(platform):\n    return list(RATIOS.get(platform, []))\n\n\ndef needs_outpaint(src, dst):\n    sr = src[0] / src[1]\n    dr = dst[0] / dst[1]\n    if sr == dr:\n        return 'resize-only'\n    if dr > sr:\n        return 'outpaint'\n    return 'crop'\n\nprint(pick_ratios('banner'))",
+    "explanation": "Este capítulo dice que «si se escala la imagen original directamente, el sujeto del producto puede estirarse o deformarse», y por eso se amplían las imágenes para ajustarlas a una proporción. Esta función convierte eso en una regla decidible.\n\n**Lo que se comprueba es la proporción, no el tamaño absoluto.** `needs_outpaint((100, 100), (200, 200))` devuelve `\"resize-only\"`: la imagen se duplicó de tamaño pero la relación de aspecto no cambió, así que el producto no se deforma. Las comprobaciones incluyen a propósito dos entradas con la misma proporción y tamaños distintos, `(100,100) -> (200,200)` (al doble) y `(100,200) -> (50,100)` (a la mitad), y las dos son `\"resize-only\"`.\n\n**La frontera entre `outpaint` y `crop` es si la proporción objetivo es mayor o menor.** Un objetivo más ancho y plano (16:9 frente a un original vertical) necesita fondo, salpicadura o hielo generado a los lados: eso es la ampliación que describe este capítulo. En el sentido contrario, convertir un original vertical en 1:1 o 4:5 hace que la proporción objetivo sea *mayor* (más ancha), así que también es `\"outpaint\"`: se añade fondo a los lados en lugar de recortar arriba y abajo. Solo cuando la proporción objetivo es **menor** (un original vertical que pasa a 9:16) se recorta. La comprobación principal cubre las tres direcciones, y por eso este capítulo dice que hay que generar 1:1, 4:5, 9:16 y 16:9 por separado en vez de escalar una sola imagen.\n\n**La correspondencia entre plataforma y proporción** es: `social` es 1:1 o 4:5, `short_video` es 9:16 y `banner` es 16:9. Una plataforma desconocida devuelve `[]` en lugar de lanzar excepción, que es justo lo que pide el enunciado.\n\n**La rama de igualdad tiene que existir.** Comprobar `dr > sr` antes o después de `sr == dr` da lo mismo: medido, ambos órdenes dan resultados idénticos en todas las entradas que cubren las comprobaciones, porque con proporciones iguales `dr > sr` es falso igualmente. Pero si esa rama se omite, una imagen de igual proporción cae en el recorte y `needs_outpaint((100,100), (200,200))` queda mal.\n\nLa comprobación principal toma tamaños de origen en 4 factores de escala x 3 x 3 proporciones de origen, 9 grupos, contra 4 proporciones objetivo, 144 entradas en total, recalculando el valor esperado grupo por grupo con el orden «primero igual, luego mayor, si no menor»: está ahí para impedir que te aprenses la respuesta, porque una tabla de búsqueda no cubre esas 144 entradas distintas. El factor de escala está para que el punto de «lo que se comprueba es la proporción, no el tamaño absoluto» quede anclado también en la comprobación principal: la misma proporción escalada por 1, 3, 7 y 11 tiene que dar la misma respuesta. Límite honesto: esas 144 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch23-ex02",
+    "chapter": "chapter-23",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Escribir restricciones de prompt para editar marketing",
+    "prompt": "Tienes que cambiar el limón de una imagen de marketing de una bebida por una lima, asegurándote de que la información del producto no se equivoque. Escribe cómo expresarías las restricciones en el prompt: qué contenido debe permanecer igual, qué contenido se puede modificar y cómo comprobarías que después de la edición el producto no se ha cambiado por error.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Separa con claridad las categorías «se mantiene igual» y «se puede modificar», trata el logo de la marca y la estructura del envase como información visual esencial que no se toca, y explica cómo se verifica el resultado (comparar antes y después, revisar el logo y los detalles del envase)?"
+    },
+    "reference": "El prompt tiene dos partes, y el enfoque de este capítulo es:\n\nLa parte que no cambia: el propio envase, el logo de la marca, el hielo, la salpicadura y la composición general. El ejemplo de este capítulo dice «mantener el cuerpo del envase, el logo de la marca, el hielo, la salpicadura y la composición general básicamente sin cambios». Fíjate en la fórmula «básicamente sin cambios»: un modelo generativo no puede garantizar consistencia a nivel de píxel, así que la restricción hay que escribirla como tendencia y no como exigencia absoluta.\n\nLa parte que sí puede cambiar: nombrar solo el punto que quieres cambiar. Este capítulo escribe «cambia el limón amarillo de la esquina inferior derecha del encuadre por una lima verde», indicando posición y color para que el modelo no cambie nada más por su cuenta.\n\nPor qué se escribe así: este capítulo dice que hay que «distinguir con claridad el contenido que debe conservarse del contenido que puede modificarse», lo que «reduce la cantidad de producto que el modelo tiene que regenerar». Si solo dices «cámbialo por lima», el modelo probablemente repintará también el envase, y la apariencia de la botella, la estructura del envase y el logo de la marca son información visual esencial del producto, así que cambiarlas hace que la imagen «pueda no coincidir con el producto real».\n\nCómo verificar: poner la imagen anterior y la posterior una al lado de la otra y mirar tres cosas: (1) si han cambiado las letras o la posición del logo de la marca; (2) si se ha repintado la estructura o los colores del envase; (3) si se ha alterado algo más aparte del limón, por ejemplo un elemento del fondo que se haya cambiado. Las tres tienen que pasar para dar la edición por buena, y si no, se ajusta la parte de restricciones del prompt.",
+    "explanation": "Este ejercicio va de la frase clave del capítulo: al editar con un modelo generativo de imágenes hay que «distinguir con claridad el contenido que debe conservarse del contenido que puede modificarse». Eso no es un truco de prompting, es una **exigencia propia de las imágenes de marketing de producto**.\n\nUna retoque normal solo tiene que quedar bonito; una imagen de marketing no: si cambian la apariencia de la botella, la estructura del envase o el logo de la marca, la imagen deja de corresponderse con el producto real y no sirve para Promotion. Eso es lo que quiere decir este capítulo con que la imagen generada «pueda no coincidir con el producto real».\n\nPor eso la primera parte del prompt de dos bloques, lo que se mantiene, es una **restricción de negocio** y no una descripción: recoge una exigencia que está en el plano de la responsabilidad legal. Y elegir «básicamente sin cambios» en vez de «completamente sin cambios» también es deliberado: un modelo generativo no puede lograr consistencia a nivel de píxel, así que una exigencia absoluta solo lo dejaría eligiendo entre dos metas.\n\nEl paso de verificación de la tercera pregunta se pasa por alto con facilidad. El flujo de edición de este capítulo es «generar, comprobar», pero comprobar solo sirve si sabes qué mirar: la marca registrada, la estructura del envase y si se movió algo que no debía moverse. Esos tres puntos corresponden exactamente a los tres tipos de contenido que nombra el prompt, así que las dos mitades encajan.\n\nEste ejercicio no puede ejecutar una edición real de imágenes; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una forma de escribirlo con la que comparar."
+  }
+]

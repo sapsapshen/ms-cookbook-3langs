@@ -1,1 +1,91 @@
-[]
+[
+  {
+    "id": "ch23-ex01",
+    "chapter": "chapter-23",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Pick ratios per platform and decide on outpainting",
+    "prompt": "The same product marketing image has to go out to several platforms. Write two functions:\n\n`pick_ratios(platform)` returns the list of ratios common on that platform: `\"social\"` returns `[(1, 1), (4, 5)]`, `\"short_video\"` returns `[(9, 16)]`, `\"banner\"` returns `[(16, 9)]`, and anything else returns `[]`.\n\n`needs_outpaint(src, dst)` decides whether the image has to be extended: `src` and `dst` are both `(width, height)`. When the ratios are equal return `\"resize-only\"` (a straight scale is enough); when `dst` is wider or taller relative to the ratio, return `\"outpaint\"` (content has to be generated into the new area); otherwise return `\"crop\"` (the target is narrower or shorter, so cropping is all that is left). Ratios are compared as `width / height`.",
+    "starter": "def pick_ratios(platform):\n    # 返回比例列表\n    return []\n\n\ndef needs_outpaint(src, dst):\n    # 返回 \"resize-only\" / \"outpaint\" / \"crop\"\n    return \"resize-only\"\n\nprint(pick_ratios('banner'))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('social') == [(1, 1), (4, 5)], pick_ratios('social')",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('short_video') == [(9, 16)], pick_ratios('short_video')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('banner') == [(16, 9)], pick_ratios('banner')",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_ratios('unknown') == [] and pick_ratios('') == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 100), (200, 200)) == 'resize-only', '等比例直接缩放'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_outpaint((100, 100), (400, 100)) == 'outpaint', '变宽要扩图'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 400), (100, 100)) == 'outpaint', '从竖版变正方形是变宽，需要向左右补内容'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert needs_outpaint((100, 100), (9, 16)) == 'crop' and needs_outpaint((100, 100), (4, 5)) == 'crop'\nassert needs_outpaint((100, 100), (16, 9)) == 'outpaint'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "assert needs_outpaint((100, 100), (200, 200)) == 'resize-only', '尺寸放大但 1:1 比例没变'\nassert needs_outpaint((100, 200), (50, 100)) == 'resize-only', '尺寸缩小但 1:2 比例没变'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _k in (1, 3, 7, 11):\n    for _sw in (1, 3, 16):\n        for _sh in (1, 9, 50):\n            _src = (_sw * _k, _sh * _k)\n            for _dw, _dh in ((1, 1), (4, 5), (9, 16), (16, 9)):\n                _sr = _src[0] / _src[1]\n                _dr = _dw / _dh\n                _want = 'resize-only' if _sr == _dr else ('outpaint' if _dr > _sr else 'crop')\n                assert needs_outpaint(_src, (_dw, _dh)) == _want, (_src, (_dw, _dh), needs_outpaint(_src, (_dw, _dh)), _want)\nassert pick_ratios('social') == [(1, 1), (4, 5)]\nassert pick_ratios('short_video') == [(9, 16)]\nassert pick_ratios('banner') == [(16, 9)]\nassert pick_ratios('unknown') == []\nassert pick_ratios('') == []\nassert pick_ratios('Social') == [], '平台名精确匹配'\n_all = set()\nfor _p in ('social', 'short_video', 'banner'):\n    for _r in pick_ratios(_p):\n        _all.add(_r)\nassert len(_all) == 4, '四个平台一共四个不同比例'",
+        "weight": 30
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the difference between outpainting and scaling is the ratio, not the absolute size?"
+    },
+    "reference": "RATIOS = {\n    'social': [(1, 1), (4, 5)],\n    'short_video': [(9, 16)],\n    'banner': [(16, 9)],\n}\n\n\ndef pick_ratios(platform):\n    return list(RATIOS.get(platform, []))\n\n\ndef needs_outpaint(src, dst):\n    sr = src[0] / src[1]\n    dr = dst[0] / dst[1]\n    if sr == dr:\n        return 'resize-only'\n    if dr > sr:\n        return 'outpaint'\n    return 'crop'\n\nprint(pick_ratios('banner'))",
+    "explanation": "This chapter says that \"scaling the original image directly may stretch or squash the product itself\", which is why outpainting is used to match a ratio. This function turns that into a rule you can decide with.\n\n**The test is the ratio, not the absolute size.** `needs_outpaint((100, 100), (200, 200))` returns `\"resize-only\"`: the image doubled in size but the aspect ratio is unchanged, so the product is not distorted. The checks deliberately include two same-ratio, different-size inputs, `(100,100) -> (200,200)` (doubled) and `(100,200) -> (50,100)` (halved), and both are `\"resize-only\"`.\n\n**The line between `outpaint` and `crop` is whether the target ratio is larger or smaller.** A wider, flatter target (16:9 against a portrait original) needs background, splash or ice generated at the sides -- that is the outpainting this chapter describes. In the other direction, turning a portrait original into 1:1 or 4:5 makes the target ratio *larger* (wider), so it is `\"outpaint\"` too: background is added at the sides rather than the top and bottom being cut off. Only when the target ratio is **smaller** (a portrait original becoming 9:16) is it a crop. The main check covers all three directions, which is why this chapter says to generate 1:1, 4:5, 9:16 and 16:9 separately instead of scaling one image.\n\n**The platform to ratio mapping** is: `social` is 1:1 or 4:5, `short_video` is 9:16, `banner` is 16:9. An unknown platform returns `[]` rather than raising -- that is what the prompt asks for.\n\n**The equality branch has to exist.** Testing `dr > sr` before or after `sr == dr` makes no difference -- measured, both orders give identical results on every input the checks cover, because with equal ratios `dr > sr` is false anyway. But leave the equality branch out altogether and an equal-ratio image falls through to crop, which makes `needs_outpaint((100,100), (200,200))` wrong.\n\nThe main check takes source sizes across 4 overall scale factors x 3 x 3 source ratios, 9 groups, against 4 target ratios, 144 inputs in total, recomputing the expected value group by group under the order \"equal first, then larger, otherwise smaller\" -- it is there to stop answer-lookup: a lookup table cannot cover those 144 distinct inputs. The scale factor is there so that the \"the test is the ratio, not the absolute size\" point is pinned in the main check too: the same ratio scaled by 1, 3, 7 and 11 has to give the same answer. Honest boundary: those 144 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch23-ex02",
+    "chapter": "chapter-23",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Write prompt constraints for a marketing image edit",
+    "prompt": "You have to change the lemon in a beverage marketing image into a lime, while making sure the product information stays correct. Write down how you would express the constraints in the prompt: what has to stay unchanged, what is allowed to change, and how you would verify that the product itself was not altered after the edit.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it clearly separate \"keep unchanged\" from \"allowed to change\", does it treat the brand logo and the packaging structure as core visual information that must not move, and does it say how the result is verified (comparing before and after, checking the logo and the packaging details)?"
+    },
+    "reference": "The prompt has two parts, and this chapter's approach is:\n\nThe part that stays unchanged: the bottle itself, the brand logo, the ice, the splash and the overall composition. This chapter's example says to \"keep the bottle body, brand logo, ice, splash and overall composition basically unchanged\". Note the wording \"basically unchanged\" -- a generative model cannot guarantee pixel-level consistency, so the constraint has to be written as a tendency rather than an absolute demand.\n\nThe part allowed to change: name only the one thing you want changed. This chapter writes \"change the yellow lemon in the lower right of the frame into a green lime\", giving both the position and the colour so the model does not swap something else on its own.\n\nWhy it is written this way: this chapter says you have to \"clearly distinguish the content to keep from the content you may change\", which \"reduces how much the model has to regenerate of the product body\". If you only say \"change it to lime\", the model will likely repaint the bottle too -- and the bottle's appearance, the packaging structure and the brand logo are core visual information about the product, so changing them means the image \"may not match the actual product\".\n\nHow to verify: put the before and after images side by side and look at three things: (1) whether the brand logo's lettering and position changed; (2) whether the packaging structure and colours were repainted; (3) whether anything besides the lemon was altered, such as something in the background getting swapped. All three have to pass for the edit to be acceptable, and if not you adjust the constraint part of the prompt.",
+    "explanation": "This exercise is about the chapter's key sentence: when editing with a generative image model you have to \"clearly distinguish the content to keep from the content you may change\". That is not a prompting trick, it is a **special requirement of product marketing images**.\n\nOrdinary retouching only has to look good; a marketing image does not -- if the bottle's appearance, the packaging structure or the brand logo change, the image no longer matches the real product and cannot be used for promotion. That is what this chapter means by the generated image possibly not matching the actual product.\n\nSo the first part of the two-part prompt, what stays the same, is a **business constraint** rather than descriptive text: it carries a requirement at the level of legal responsibility. And choosing \"basically unchanged\" over \"completely unchanged\" is deliberate too -- a generative model cannot do pixel-level consistency, so an absolute demand just leaves it guessing between two goals.\n\nThe verification step in the third question is easy to treat as extra. This chapter's editing flow is \"generate, then check\", but checking only helps if you know what to look at: the trademark, the packaging structure, and whether anything moved that should not have. Those three line up exactly with the three kinds of content named in the prompt, so the two halves match up.\n\nThis exercise cannot run real image editing; grading rests on self-assessment plus an optional AI score, and the reference answer gives a way of writing it you can compare against."
+  }
+]

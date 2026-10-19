@@ -3,15 +3,15 @@
 .language-switcher { display: inline-flex; align-items: center; }
 .language-picker {
   display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 4px 10px;
-  border: 1px solid #e5dff0; border-radius: 999px; background: #fff; color: #584b6e; cursor: pointer;
+  border: 1px solid var(--surface); border-radius: 999px; background: var(--paper); color: var(--text); cursor: pointer;
 }
-.language-picker:hover { border-color: #a58adf; background: #f8f6fc; }
+.language-picker:hover { border-color: var(--brand-ink); background: var(--surface); }
 .language-select {
   appearance: none; -webkit-appearance: none; border: 0; margin: 0; padding: 2px 20px 2px 0;
   background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a7c9b' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 3px center / 9px 6px;
   color: inherit; font: inherit; font-size: 13px; line-height: 1.5; white-space: nowrap; cursor: pointer;
 }
-.language-select:focus-visible { outline: 2px solid #7048e8; outline-offset: 3px; border-radius: 4px; }
+.language-select:focus-visible { outline: 2px solid var(--brand-ink); outline-offset: 3px; border-radius: 4px; }
 .header-account-area .language-switcher { margin-right: 4px; }
 
 #siteMenu .language-switcher { margin: 14px 0 4px; }
@@ -19,8 +19,8 @@
 .dashboard-actions { display: inline-flex; align-items: center; gap: 14px; }
 
 .translation-notice {
-  margin: 0 0 30px; padding: 12px 16px; border: 1px solid #e6ddf7; border-left: 3px solid #a58adf;
-  border-radius: 10px; background: #f8f5fd; color: #5b4a75; font-size: 13px; line-height: 1.7;
+  margin: 0 0 30px; padding: 12px 16px; border: 1px solid var(--surface); border-left: 3px solid var(--muted);
+  border-radius: 10px; background: var(--paper); color: var(--text); font-size: 13px; line-height: 1.7;
 }
 
 /* --- Latin editions only -------------------------------------------------------

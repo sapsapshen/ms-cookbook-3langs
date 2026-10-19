@@ -56,6 +56,10 @@
   --brand-ink-hover: #6f4708;
   --selected: #fbf0cd;      /* selected / hover wash, one step off white   */
   --paper-veil: rgba(255, 255, 255, .96);  /* the floating mobile reader bar */
+  /* Veils and lifts -- warm-tinted, never neutral grey */
+  --scrim: rgba(34, 30, 22, .33);   /* dialog backdrop                    */
+  --lightbox: rgba(34, 30, 22, .91); /* the image viewer's full-screen     */
+  --lift-dialog: 0 20px 100px rgba(34, 30, 22, .19);
 
   /* Semantic colours stay semantic — pass and fail only, never decoration */
   --up: #0f6e56;

@@ -1,55 +1,54 @@
-:root { --home-purple: #5b2dff; --home-ink: #100d2c; --home-muted: #62677d; --home-rule: #e5e7f1; }
 [hidden] { display: none !important; }
-body.is-home { background: #fff; color: var(--home-ink); }
+body.is-home { background: var(--paper); color: var(--home-ink); }
 .is-home > .site-shell, .is-home > .mobile-header, .is-home > .reading-progress { display: none; }
 body:not(.is-home) > .skip-link { display: none; }
-.skip-link { position: fixed; top: -70px; left: 24px; z-index: 200; padding: 14px 20px; color: #fff; background: var(--home-purple); }
+.skip-link { position: fixed; top: -70px; left: 24px; z-index: 200; padding: 14px 20px; color: var(--paper); background: var(--home-purple); }
 .skip-link:focus { top: 10px; }
 .home-container { width: min(1280px, calc(100% - 112px)); margin-inline: auto; }
 #homePage a { text-decoration: none; }
 #homePage a, #homePage button, #homePage summary { touch-action: manipulation; }
-a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid #8a6aff; outline-offset: 5px; }
-.home-header { height: 82px; background: #fff; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--muted); outline-offset: 5px; }
+.home-header { height: 82px; background: var(--paper); }
 .header-inner { height: 100%; display: flex; align-items: center; justify-content: space-between; }
 .home-wordmark { font: 800 32px/1.3 "Noto Serif SC", "Songti SC", "STSong", serif; letter-spacing: .02em; }
-.home-header nav { display: flex; align-items: center; gap: 44px; font-size: 16px; color: #45485f; }
+.home-header nav { display: flex; align-items: center; gap: 44px; font-size: 16px; color: var(--text); }
 .home-header nav > a:not(.home-button):hover { color: var(--home-purple); }
-.home-button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 70px; padding: 16px 48px; color: #fff; background: var(--home-purple); border-radius: 12px; font-size: 25px; font-weight: 600; transition: background .2s, transform .2s, box-shadow .2s; }
-.home-button:hover { background: #4420d6; transform: translateY(-2px); box-shadow: 0 8px 20px #5b2dff24; }
+.home-button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 70px; padding: 16px 48px; color: var(--paper); background: var(--home-purple); border-radius: 12px; font-size: 25px; font-weight: 600; transition: background .2s, transform .2s, box-shadow .2s; }
+.home-button:hover { background: var(--heading); transform: translateY(-2px); box-shadow: 0 8px 20px var(--text); }
 .home-button.header-start { min-height: 48px; padding: 10px 26px; border-radius: 7px; font-size: 16px; }
 .ui-icon { display: inline-block; width: 21px; height: 21px; flex: 0 0 auto; vertical-align: middle; }
 .home-button .ui-icon, .home-footer .ui-icon { width: 30px; height: 30px; filter: brightness(0) invert(1); }
 .text-link { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; color: var(--home-purple); font-size: 18px; font-weight: 600; text-decoration: none; }
-.text-link:hover { color: #341397; }
+.text-link:hover { color: var(--heading); }
 .text-link:hover .ui-icon { transform: translateX(3px); }
 .text-link .ui-icon { transition: transform .2s; }
-.home-hero { background: #f8faff; overflow: hidden; }
+.home-hero { background: var(--paper); overflow: hidden; }
 .hero-inner { position: relative; min-height: 660px; display: flex; align-items: center; }
 .hero-copy { position: relative; z-index: 1; width: 57%; padding: 62px 0 55px; }
-.hero-eyebrow { margin: 0 0 23px; color: #7651ff; font: 500 16px/1.5 ui-monospace, "PingFang SC", monospace; letter-spacing: .32em; }
+.hero-eyebrow { margin: 0 0 23px; color: var(--muted); font: 500 16px/1.5 ui-monospace, "PingFang SC", monospace; letter-spacing: .32em; }
 .hero-copy h1 { margin: 0; font: 800 clamp(64px, 7.8vw, 112px)/1.2 "Noto Serif SC", "Songti SC", "STSong", serif; letter-spacing: -.035em; white-space: nowrap; }
 .hero-copy h2 { margin: 8px 0 23px; font: 700 clamp(29px, 3.8vw, 54px)/1.4 "Noto Serif SC", "Songti SC", "STSong", serif; letter-spacing: -.035em; white-space: nowrap; }
-.hero-description { margin: 0; color: #555c72; font-size: 22px; line-height: 1.8; }
+.hero-description { margin: 0; color: var(--text); font-size: 22px; line-height: 1.8; }
 .hero-actions { display: flex; align-items: center; gap: 36px; margin-top: 28px; }
-.hero-stats { display: flex; gap: 20px; align-items: center; margin: 30px 0 0; color: #575d74; font-size: 19px; letter-spacing: .02em; }
-.hero-stats span + span { border-left: 1px solid #cdd0e2; padding-left: 20px; }
-.hero-stats b { margin-right: 4px; color: #3f4561; font-size: 22px; }
+.hero-stats { display: flex; gap: 20px; align-items: center; margin: 30px 0 0; color: var(--text); font-size: 19px; letter-spacing: .02em; }
+.hero-stats span + span { border-left: 1px solid var(--surface); padding-left: 20px; }
+.hero-stats b { margin-right: 4px; color: var(--text); font-size: 22px; }
 .hero-art { position: absolute; top: 0; bottom: 0; left: 39%; right: -20px; margin: 0; }
 .hero-art > img { display: block; height: 100%; width: 100%; object-fit: cover; object-position: center; }
-.hero-art figcaption { position: absolute; right: 16%; bottom: 16px; color: #78728c; font-size: 10px; letter-spacing: .08em; }
+.hero-art figcaption { position: absolute; right: 16%; bottom: 16px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
 .tools-strip { display: grid; grid-template-columns: .95fr 1.25fr 1.1fr 1fr 1fr; align-items: center; min-height: 103px; border-bottom: 1px solid var(--home-rule); }
-.tools-strip p { margin: 0; color: #42465f; font-size: 18px; font-weight: 600; }
-.tools-strip a { padding: 0 24px; border-left: 1px solid #d8daea; color: #1b124d; text-align: center; font-size: 24px; font-weight: 750; letter-spacing: -.035em; }
+.tools-strip p { margin: 0; color: var(--text); font-size: 18px; font-weight: 600; }
+.tools-strip a { padding: 0 24px; border-left: 1px solid var(--surface); color: var(--heading); text-align: center; font-size: 24px; font-weight: 750; letter-spacing: -.035em; }
 .tools-strip a:first-of-type { font-family: ui-monospace, monospace; font-size: 23px; letter-spacing: -.055em; }
 .tools-strip a:hover { color: var(--home-purple); }
 .home-paths { padding: 44px 0 46px; border-bottom: 1px solid var(--home-rule); scroll-margin-top: 28px; }
 .home-paths h2, .home-contents h2 { margin: 0; font: 700 48px/1.4 "Noto Serif SC", "Songti SC", "STSong", serif; letter-spacing: -.035em; }
 .section-description { margin: 10px 0 34px; color: var(--home-muted); font-size: 18px; line-height: 1.7; }
 .path-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; }
-.path-item { display: flex; gap: 24px; min-width: 0; padding: 0 30px; border-left: 1px solid #d8daea; }
+.path-item { display: flex; gap: 24px; min-width: 0; padding: 0 30px; border-left: 1px solid var(--surface); }
 .path-item:first-child { border: 0; padding-left: 0; }
 .path-item:last-child { padding-right: 0; }
-.path-icon { display: grid; place-items: center; flex: 0 0 86px; width: 86px; height: 86px; border: 1px solid #e9e5ff; border-radius: 50%; background: #f5f4ff; }
+.path-icon { display: grid; place-items: center; flex: 0 0 86px; width: 86px; height: 86px; border: 1px solid var(--surface); border-radius: 50%; background: var(--paper); }
 .path-item h3 { margin: 7px 0 12px; color: var(--home-purple); font-size: 27px; font-weight: 650; }
 .path-item p { margin: 0 0 17px; color: var(--home-muted); font-size: 15px; line-height: 1.6; white-space: nowrap; }
 .path-item .text-link { font-size: 16px; }
@@ -64,20 +63,20 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px soli
 .contents-part summary { display: grid; grid-template-columns: 68px 1fr 22px; gap: 22px; align-items: center; min-height: 113px; padding: 18px 0; list-style: none; cursor: pointer; }
 .contents-part summary::-webkit-details-marker { display: none; }
 .contents-part summary:hover h3 { color: var(--home-purple); }
-.contents-number { align-self: start; padding-top: 3px; color: #6940ff; font: 750 42px/1.25 Arial, "SF Pro Display", sans-serif; letter-spacing: -.04em; }
+.contents-number { align-self: start; padding-top: 3px; color: var(--text); font: 750 42px/1.25 Arial, "SF Pro Display", sans-serif; letter-spacing: -.04em; }
 .contents-part h3 { margin: 0 0 5px; font-size: 22px; font-weight: 650; line-height: 1.45; }
 .contents-part summary p { margin: 0; color: var(--home-muted); font-size: 16px; line-height: 1.7; }
 .contents-part summary > img { width: 22px; height: 22px; transition: transform .2s; }
 .contents-part[open] summary > img { transform: rotate(90deg); }
 .home-chapters { padding: 0 24px 22px 90px; }
-.home-chapters a { display: flex; align-items: baseline; gap: 14px; padding: 10px 0; color: #56536c; font-size: 15px; line-height: 1.6; }
+.home-chapters a { display: flex; align-items: baseline; gap: 14px; padding: 10px 0; color: var(--text); font-size: 15px; line-height: 1.6; }
 .home-chapters a:hover { color: var(--home-purple); }
-.home-chapters a span { font: 600 12px/1.6 ui-monospace, monospace; color: #8069c3; }
-.home-footer { min-height: 126px; background: #4724c4 url("home/footer-art.webp") center/cover; color: #fff; }
+.home-chapters a span { font: 600 12px/1.6 ui-monospace, monospace; color: var(--muted); }
+.home-footer { min-height: 126px; background: var(--heading) url("home/footer-art.webp") center/cover; color: var(--paper); }
 .home-footer .home-container { display: flex; min-height: inherit; align-items: center; justify-content: space-between; gap: 28px; }
 .home-footer a { display: flex; align-items: center; gap: 20px; font-size: 27px; font-weight: 500; letter-spacing: .08em; }
-.home-footer p { color: #d1c5ff; font: 12px/1.7 ui-monospace, monospace; letter-spacing: .16em; }
-.reader-home-link { display: block; width: fit-content; margin: 22px 0 18px; color: #b8a4ff; font-size: 12px; text-underline-offset: 4px; }
+.home-footer p { color: var(--surface); font: 12px/1.7 ui-monospace, monospace; letter-spacing: .16em; }
+.reader-home-link { display: block; width: fit-content; margin: 22px 0 18px; color: var(--surface); font-size: 12px; text-underline-offset: 4px; }
 @media (min-width: 1600px) { .hero-art { right: -150px; } }
 @media (max-width: 1250px) {
   .home-container { width: calc(100% - 80px); }

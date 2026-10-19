@@ -9,8 +9,8 @@
    assets/reading.css -- so every one of them fell through to its hard-coded
    fallback. The panel therefore could not follow the site: a change to the
    reading surface would have moved the article under it and left the panel
-   painted in the old palette, and any dark surface would have put #111 on
-   #fff inside a box that was never meant to be either.
+   painted in the old palette, and any dark surface would have put var(--heading) on
+   var(--paper) inside a box that was never meant to be either.
 
    The monospace stack is written out rather than named: no `--font-mono`
    property exists in this repository either, and the site's own way of asking
@@ -60,13 +60,13 @@
 .exercise-toggle-title { font-size: .95rem; }
 .exercise-toggle-meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .exercise-state { font-size: .78rem; padding: .1rem .5rem; border-radius: 999px; border: 1px solid currentColor; }
-.exercise-state[data-state="passed"] { color: #0f6e56; }
-.exercise-state[data-state="self"] { color: #854f0b; }
-/* The not-yet-done badge. This was `#999`, which is 2.85:1 against the white
+.exercise-state[data-state="passed"] { color: var(--up); }
+.exercise-state[data-state="self"] { color: var(--brand-ink); }
+/* The not-yet-done badge. This was `var(--muted)`, which is 2.85:1 against the white
    the panel actually sits on -- below AA's 4.5:1 for text of this size, and the
    state a reader sees most often, so it was the worst possible place to be
    short. `var(--muted)` is the repository's own secondary-text colour and
-   measures 4.66:1 against #fff (5.17:1 against the #6f6b7b that
+   measures 4.66:1 against var(--paper) (5.17:1 against the var(--muted) that
    assets/styles.css defines for the same property). */
 .exercise-state[data-state="todo"] { color: var(--muted); }
 .exercise-body { padding: 0 1rem 1rem; }
@@ -98,19 +98,19 @@
 .exercise-actions button[data-role="run"] {
   background: var(--brand);
   border-color: var(--brand);
-  /* #fff on --brand is 5.33:1. The old #534ab7 was darker and scored higher,
+  /* var(--paper) on --brand is 5.33:1. The old var(--text) was darker and scored higher,
      but it was a fourth purple the site has no token for; the site's own
      primary is what the rest of the reading view uses for the same gesture. */
-  color: #fff;
+  color: var(--on-brand);
 }
 .exercise-actions button[disabled] { opacity: .55; cursor: default; }
 .exercise-status { font-size: .84rem; margin: .6rem 0 0; min-height: 1.2em; color: var(--muted); }
-.exercise-status[data-tone="error"] { color: #a32d2d; }
-.exercise-status[data-tone="pass"] { color: #0f6e56; }
+.exercise-status[data-tone="error"] { color: var(--down); }
+.exercise-status[data-tone="pass"] { color: var(--up); }
 .exercise-checks { list-style: none; margin: .6rem 0 0; padding: 0; font-size: .84rem; }
 .exercise-checks li { padding: .25rem 0; border-top: 1px solid var(--border); }
-.exercise-checks li[data-ok="false"] { color: #a32d2d; }
-.exercise-checks li[data-ok="true"] { color: #0f6e56; }
+.exercise-checks li[data-ok="false"] { color: var(--down); }
+.exercise-checks li[data-ok="true"] { color: var(--up); }
 .exercise-solution {
   margin-top: .6rem;
   font-size: .85rem;

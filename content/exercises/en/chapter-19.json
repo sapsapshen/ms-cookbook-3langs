@@ -1,1 +1,87 @@
-[]
+[
+  {
+    "id": "ch19-ex01",
+    "chapter": "chapter-19",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Split a long document into chunks",
+    "prompt": "A RAG system works in chunks as the unit of vectorisation and retrieval. First split the text into paragraphs on blank lines (two newlines), strip each paragraph, and skip the empty ones. Then merge adjacent paragraphs in order: a paragraph is merged into the current chunk when the total length stays within `chunk_size` (when the current chunk is empty put it straight in, otherwise join with a blank line); when it does not fit, close the current chunk into the result first and start a new one. Return the list of chunks.",
+    "starter": "def split_chunks(text, chunk_size=500, chunk_overlap=0):\n    # 返回片段列表\n    return []\n\nprint(split_chunks('第一段。\\n\\n第二段。\\n\\n第三段。', chunk_size=100))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('第一段。\\n\\n第二段。', chunk_size=100)\nassert out == ['第一段。\\n\\n第二段。'], out",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('abc\\n\\n\\n\\n   \\n\\ndef', chunk_size=100)\nassert out == ['abc\\n\\ndef'], '空段和纯空白段都要跳过'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('aaaa\\n\\nbbbb\\n\\ncccc', chunk_size=5)\nassert out == ['aaaa', 'bbbb', 'cccc'], out",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('aaaa\\n\\nbbbb\\n\\ncccc', chunk_size=8)\nassert out == ['aaaa\\n\\nbbbb', 'cccc'], '放得下就合并，放不下才开新片段'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = split_chunks('   padded   ', chunk_size=100)\nassert out == ['padded'], '每段要先 strip 再合并'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert split_chunks('', chunk_size=100) == []\nassert split_chunks('\\n\\n\\n', chunk_size=100) == []",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = split_chunks('x' * 20, chunk_size=5)\nassert out == ['x' * 20], '超长单段不会被切成 4 段，整段原样保留'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _size in (1, 3, 5, 8, 13, 40, 200):\n    for _n in (0, 1, 2, 5, 9):\n        for _pad in ('', '  '):\n            _paras = [_pad + chr(97 + _i) * (2 + _i) + _pad for _i in range(_n)]\n            _text = '\\n\\n'.join(_paras)\n            _out = split_chunks(_text, chunk_size=_size)\n            _expect = []\n            _cur = ''\n            for _p in _paras:\n                _p = _p.strip()\n                if not _p:\n                    continue\n                if len(_cur) + len(_p) <= _size:\n                    _cur = _p if not _cur else _cur + '\\n\\n' + _p\n                else:\n                    if _cur:\n                        _expect.append(_cur)\n                    _cur = _p\n            if _cur:\n                _expect.append(_cur)\n            assert _out == _expect, (_size, _n, _out, _expect)\n            assert ''.join(_out) != '' or _n == 0, (_size, _n, _out)",
+        "weight": 34
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that the split works on whole paragraphs rather than cutting by character?"
+    },
+    "reference": "def split_chunks(text, chunk_size=500, chunk_overlap=0):\n    chunks = []\n    current = ''\n    for raw in text.split('\\n\\n'):\n        para = raw.strip()\n        if not para:\n            continue\n        if len(current) + len(para) <= chunk_size:\n            current = para if not current else current + '\\n\\n' + para\n        else:\n            if current:\n                chunks.append(current)\n            current = para\n    if current:\n        chunks.append(current)\n    return chunks\n\nprint(split_chunks('\\u7b2c\\u4e00\\u6bb5\\u3002\\n\\n\\u7b2c\\u4e8c\\u6bb5\\u3002\\n\\n\\u7b2c\\u4e09\\u6bb5\\u3002', chunk_size=100))",
+    "explanation": "This chapter's splitting is \"split into paragraphs on blank lines first, then merge adjacent paragraphs up to `chunk_size`\", not a hard cut by character. That decides everything below.\n\n**A paragraph is the smallest unit.** `split_chunks('x' * 20, chunk_size=5)` still returns **one whole** 20 character segment, not four of five characters. The reason is that the logic is \"if it does not fit, close the current chunk and start a new one with this paragraph\"; there is no step that cuts a paragraph apart. One check measures exactly this.\n\n**Merging joins with two newlines.** Paragraphs are separated by blank lines to begin with, and merging keeps that separator, so `'aaaa\\n\\nbbbb\\n\\ncccc'` with `chunk_size=8` gives `['aaaa\\n\\nbbbb', 'cccc']`: 4 + blank line 2 + 4 = 10 > 8, so the second paragraph starts a new chunk. The checks measure sizes 5 and 8 separately because they fall on either side of that boundary.\n\n**Strip before testing for emptiness.** `split_chunks('   padded   ', ...)` has to return `['padded']` without the surrounding spaces, and `split_chunks('\\n\\n\\n')` has to return an empty list, since consecutive blank lines produce several empty paragraphs.\n\n**Empty input returns `[]`.** That is not a detail: without a guard, the final `chunks.append(current)` pushes an empty string into the result.\n\nThe prompt includes a `chunk_overlap` parameter, but this chapter's example code describes the idea of \"adjacent chunks keeping about 50 characters of overlap\"; as the prompt requires, this exercise implements merging and splitting only, not overlap. So `chunk_overlap` stays in the signature without taking part in the computation -- which is stated here so a reader does not think it was forgotten.\n\nThe main check lays out `chunk_size` over 7 values x paragraph count over 5 values x whitespace padding over 2 values into a batch of texts and recomputes the expected result paragraph by paragraph -- it is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch19-ex02",
+    "chapter": "chapter-19",
+    "type": "predict",
+    "difficulty": 3,
+    "minutes": 6,
+    "objective": "Locate why a RAG system answers badly",
+    "prompt": "A RAG question answering system is live but the answers are poor. Which of these troubleshooting lines of thought match this chapter? (multi-select)\n\nA. Evaluate retrieval and generation separately first, because the result is affected by both stages\nB. On the retrieval side, use Recall@K to measure how many relevant documents the top K results cover\nC. When retrieval is already accurate but generation still falls short, consider switching to a generation model with more parameters\nD. As long as the overall answers look acceptable, retrieval must be fine and there is no need to evaluate the two separately\nE. Scenes where knowledge changes often suit RAG better than baking the knowledge into the model weights",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "C",
+          "E"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "D is wrong because it skips the step of evaluating the two separately. This chapter says \"the RAG result is affected by both the knowledge retrieval and the answer generation stages\", so the evaluation has to be done on both sides too.",
+    "explanation": "The title of this chapter's last section is \"it answered badly -- is the problem retrieval or generation?\", which is a question you have to answer, and answering it requires evaluating the two separately.\n\nA, B and C all come from that section: retrieval is measured with Recall@K, and generation is judged on answer correctness, completeness, relevance, citation accuracy and hallucination. The chapter's line that \"retrieving the relevant knowledge does not mean the final answer is necessarily correct\" is precisely the reason for evaluating separately -- a retrieval hit does not mean the model used it.\n\nC also names a specific remedy: retrieval is right but generation is not, so switch to a stronger generation model. That matches the thinking behind the comparison table in chapter 5: locate the quality problem in a specific stage first, then decide what to replace.\n\nE comes from an earlier section. This chapter covers when RAG is the right choice: when knowledge changes often, RAG suits it, because the knowledge lives in the retrieval store and changing it does not mean retraining. Whether to add knowledge or fine-tune the model is a separate question, and the answer depends on how fast the requirement changes and whether you need a long-term stable style.\n\nD is exactly what that section tells you to avoid. Replacing the model without evaluating the two sides separately often changes nothing, because the bottleneck is on the retrieval side.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  }
+]

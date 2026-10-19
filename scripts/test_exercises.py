@@ -21,6 +21,14 @@ CHECK_SPEC = {
     'self_assessed': (),
 }
 CJK = re.compile(r'[一-鿿　-〿＀-￯]')
+# A `\uXXXX` escape left in the raw file text. The corpus stores these escaped
+# on purpose inside code and quoted samples -- Python re-reads them at runtime,
+# so they must survive. Latin-1 letters are never intentional: they are
+# readable Spanish prose that a translator tool escaped by accident.
+LITERAL_ESCAPE = re.compile(r'\\u([0-9a-fA-F]{4})')
+# Latin-1 Supplement, minus the multiplication/division signs.
+LATIN1 = {c for c in range(0xA0, 0x100)} - {0xD7, 0xF7}
+REPLACEMENT_CHAR = '\ufffd'
 
 
 def book_chapters():
@@ -154,7 +162,30 @@ def run_checks():
     # against one chapter: base_ids only holds the first zh chapter.
     total = sum(len(v) for (_, lang), v in corpus.items() if lang == 'zh')
     assert len(seen) == total, 'exercise ids repeat across chapters'
+    check_raw_text()
     return manifest, corpus
+
+
+def check_raw_text():
+    """Guard the bytes on disk, not just the parsed values.
+
+    Two defects only show up here. A mojibake U+FFFD survives a JSON parse
+    untouched, and an escaped Latin-1 letter parses back to a perfectly good
+    `n` -- so the parsed view looks clean while the file on disk still reads
+    `rese\\u00f1a` to anyone who opens it.
+    """
+    for lang in LANGUAGES:
+        for path in sorted((EX / lang).glob('chapter-*.json')):
+            raw = path.read_text(encoding='utf-8')
+            where = f'{lang}/{path.name}'
+            assert REPLACEMENT_CHAR not in raw, \
+                f'{where} contains U+FFFD, so some character was already lost'
+            for match in LITERAL_ESCAPE.finditer(raw):
+                code = int(match.group(1), 16)
+                assert code not in LATIN1, (
+                    f'{where} escapes Latin-1 U+{code:04X} as \\u{match.group(1)}; '
+                    'write the character directly so the file stays readable'
+                )
 
 
 def test_corpus_valid():

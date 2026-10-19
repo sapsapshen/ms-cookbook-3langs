@@ -98,7 +98,7 @@ CAMEL_OK = {
     'elScope', 'alScope', 'inHash', 'imHash', 'vaScript', 'enAI',
     'roDivisionError', 'bfCu', 'ebRTC', 'ebSocket', 'ebSocketIO', 'niMax', 'niCoder', 'niMoonshot',
     'ffSynth', 'ffUsers', 'meError', 'meError.', 'utSchema', 'meDict',
-    'acOS', 'peScript', 'acOSX', 'ypeScript', 'erShell', 'enShell', 'penShell', 'epSeek', 'ueError', 'peError',
+    'acOS', 'peScript', 'acOSX', 'ypeScript', 'erShell', 'enShell', 'penShell', 'epSeek', 'ueError', 'peError', 'cePiece', 'rdPiece',
     'meError', 'alueError',
 }
 

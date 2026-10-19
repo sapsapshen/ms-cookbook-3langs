@@ -1,1 +1,118 @@
-[]
+[
+  {
+    "id": "ch34-ex01",
+    "chapter": "chapter-34",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Calcular una salida de atención con escalado",
+    "prompt": "Implementa la atención de producto escalar escalado de este capítulo. Escribe una función `attention(q, k, v)` donde los tres argumentos son listas de listas: `q` es `[longitud][dimensión]`, `k` y `v` son `[longitud][dimensión]`, y `k` y `v` tienen la misma longitud.\n\nLos pasos:\n\n1. Cada puntuación es el producto escalar de `q[i]` con todos los `k[j]`, dividido por `sqrt(d)`, donde `d` es la dimensión de `k` (usa `len(k[0])`).\n2. Haz un softmax sobre cada fila de puntuaciones (resta el máximo antes de elevar a exponente, para evitar desbordamiento).\n3. La fila de salida `i` es la media ponderada de `v` con esos pesos (suma sobre `j`: `peso[j] * v[j][c]`).\n\nDevuelve una lista bidimensional. Lanza `ValueError` cuando las dimensiones no coincidan, o cuando la dimensión de `q` no case con la de `k`.",
+    "explanation": "La fórmula que da este capítulo es `softmax(QKᵀ / √d_k)·V`, en tres pasos: calcular las puntuaciones, pasarlas por softmax para obtener pesos y ponderar V con esos pesos. Esta función son esos tres pasos.\n\n**Dividir por `sqrt(d_k)` no es opcional.** El capítulo dice que este paso «sirve para ajustar la escala de las puntuaciones y hacer el cálculo más estable»: el producto escalar crece con la dimensión, y con dimensión 64 puede llegar a decenas, lo que metido directo en un softmax satura casi todo en un 1 y el resto en 0.\n\nDicho eso, hay que dejar claro una cosa: **con ciertas entradas ese término no se puede observar**. La sonda de las comprobaciones solo afirma una diferencia cuando las puntuaciones brutas no son todas iguales y la dimensión es mayor que 1, porque si las puntuaciones son todas iguales los pesos son los mismos con y sin escalado (ambos uniformes), y con dimensión 1 dividir por √1 = 1 es lo mismo que no dividir. Con una sola clave el softmax siempre vale 1. Esos tres casos no son un fallo de la implementación, son matemáticamente idénticos, así que las comprobaciones solo exigen una diferencia en las entradas donde sí es observable.\n\n**Cada fila hace softmax por separado.** Con dos filas en `q` cada una se normaliza por su cuenta y los dos conjuntos de pesos suman 1 cada uno; las comprobaciones usan dos queries ortogonales para verificar que cada fila es diagonalmente dominante por separado y que no se interfieren.\n\n**Resta el máximo antes del softmax.** Este paso es matemáticamente equivalente, pero evita que `exp` desborde. Una comprobación usa a propósito la entrada `[100.0, 100.0]`: sin este paso, `exp(100 × 2 / √2)` desborda y lanza una excepción.\n\n**La dimensión de salida es `d_k`.** El vector que sale en cada posición tiene longitud `d_k`, porque lo que se pondera son las columnas de `v`.\n\nLa comprobación principal compara 3 estratos de dimensión x 3 números de claves x 2 números de queries, 18 grupos de entradas en total, elemento a elemento contra valores recalculados con la fórmula, y comprueba de paso que los pesos suman 1: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas 18 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide.",
+    "reference": "import math\n\n\ndef attention(q, k, v):\n    if not q or not k or not v:\n        raise ValueError('q, k and v must be non-empty')\n    dk = len(k[0])\n    if any(len(row) != dk for row in k) or any(len(row) != dk for row in v):\n        raise ValueError('k and v must share one dimension')\n    if any(len(row) != dk for row in q):\n        raise ValueError('q must match the key dimension')\n    if len(k) != len(v):\n        raise ValueError('k and v must have the same length')\n    scale = math.sqrt(dk)\n    out = []\n    for qi in q:\n        scores = [sum(qi[c] * kj[c] for c in range(dk)) / scale for kj in k]\n        top = max(scores)\n        exps = [math.exp(s - top) for s in scores]\n        total = sum(exps)\n        weights = [e / total for e in exps]\n        out.append([sum(weights[j] * v[j][c] for j in range(len(k))) for c in range(dk)])\n    return out\n\nprint(attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]))",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que el escalado y el softmax resuelven problemas distintos?"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]])\nassert len(out) == 1 and len(out[0]) == 2, out"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "import math\n_k = [[1.0, 0.0], [0.0, 1.0]]\n_v = [[1.0, 0.0], [0.0, 1.0]]\n_scores = [1.0 / math.sqrt(2.0), 0.0]\n_mx = max(_scores)\n_ex = [math.exp(_s - _mx) for _s in _scores]\n_w = [_e / sum(_ex) for _e in _ex]\n_want = [_w[0] * _v[0][_c] + _w[1] * _v[1][_c] for _c in (0, 1)]\n_out = attention([[1.0, 0.0]], _k, _v)\nfor _c in (0, 1):\n    assert abs(_out[0][_c] - _want[_c]) < 1e-9, (_c, _out[0][_c], _want[_c])\nassert abs(_want[0] - 0.6697615493266569) < 1e-9 and abs(_want[1] - 0.3302384506733431) < 1e-9, _want"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[5.0, 5.0]], [[1.0, 1.0], [2.0, 2.0]], [[1.0, 0.0], [0.0, 1.0]])\nassert abs(sum(out[0]) - 1.0) < 1e-9, '权重归一化后两个分量之和是 1'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_o = attention([[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]])\n_a, _b = 0.6697615493266569, 0.3302384506733431\nassert abs(_o[0][0] - _a) < 1e-9 and abs(_o[0][1] - _b) < 1e-9, _o\nassert abs(_o[1][0] - _b) < 1e-9 and abs(_o[1][1] - _a) < 1e-9, '两行各自 softmax，互不影响'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_k = [[4.0, 0.0], [0.0, 1.0]]\n_v = [[1.0, 0.0], [0.0, 1.0]]\n_scaled = attention([[1.0, 0.0]], _k, _v)\n_plain = attention([[2.0, 0.0]], _k, _v)\nassert abs(_scaled[0][0] - 0.9441927807928303) < 1e-9, '分数 2/sqrt(2)'\nassert abs(_plain[0][0] - 0.9965186727029345) < 1e-9, '不除以 sqrt(d_k) 时分数是 2'\nassert abs(_scaled[0][0] - _plain[0][0]) > 1e-3, '缩放与否给出明显不同的权重'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[100.0, 100.0]], [[100.0, 100.0], [0.0, 0.0]], [[1.0, 2.0], [3.0, 4.0]])\nassert all(abs(x) < 1e6 for x in out[0]), '减去最大值后 exp 不该溢出'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([[1.0, 0.0]], [[1.0, 0.0, 0.0]], [[1.0, 0.0]])\n    assert False, 'q 与 k 维度不一致要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([[1.0, 0.0]], [[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]])\n    assert False, 'k 与 v 长度不一致要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([], [[1.0, 0.0]], [[1.0, 0.0]])\n    assert False, '空输入要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 30,
+        "code": "import math\nfor _d in (1, 2, 4):\n    for _nk in (1, 2, 3):\n        for _nq in (1, 2):\n            _k = [[float((i * 3 + j) % 5) - 2.0 for j in range(_d)] for i in range(_nk)]\n            _v = [[float((i * 11 + j * 5) % 9) - 4.0 for j in range(_d)] for i in range(_nk)]\n            _q = [[float((i * 5 + j) % 4) - 1.5 for j in range(_d)] for i in range(_nq)]\n            _out = attention(_q, _k, _v)\n            _scale = math.sqrt(_d)\n            assert len(_out) == _nq, (_d, _nk, _nq, _out)\n            for _i in range(_nq):\n                _scores = [sum(_q[_i][_c] * _k[_j][_c] for _c in range(_d)) / _scale\n                           for _j in range(_nk)]\n                _mx = max(_scores)\n                _ex = [math.exp(_s - _mx) for _s in _scores]\n                _tot = sum(_ex)\n                _w = [_e / _tot for _e in _ex]\n                assert abs(sum(_w) - 1.0) < 1e-12, (_d, _nk, _nq, _w)\n                for _c in range(_d):\n                    _want = sum(_w[_j] * _v[_j][_c] for _j in range(_nk))\n                    assert abs(_out[_i][_c] - _want) < 1e-9, (_d, _nk, _nq, _i, _c, _out[_i][_c], _want)\n                _raw = [sum(_q[_i][_c] * _k[_j][_c] for _c in range(_d)) for _j in range(_nk)]\n                _mx2 = max(_raw)\n                _ex2 = [math.exp(_s - _mx2) for _s in _raw]\n                _w2 = [_e / sum(_ex2) for _e in _ex2]\n                _spread = max(_raw) - min(_raw)\n                if _spread > 1e-9 and _d > 1:\n                    _diff = [abs(_out[_i][_c] - sum(_w2[_j] * _v[_j][_c] for _j in range(_nk)))\n                             for _c in range(_d)]\n                    assert max(_diff) > 1e-9, 'no-scale %s' % ((_d, _nk, _nq, _i, _diff),)\n                else:\n                    assert _spread <= 1e-9 or _d == 1, 'trivial %s' % ((_d, _nk, _nq, _raw),)"
+      }
+    ],
+    "starter": "import math\n\n\ndef attention(q, k, v):\n    # 返回注意力输出 [[...], ...]\n    return []\n\nprint(attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]))\n"
+  },
+  {
+    "id": "ch34-ex02",
+    "chapter": "chapter-34",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Valorar lo que implican la atención y los tokens",
+    "prompt": "¿Cuáles de estas afirmaciones coinciden con este capítulo? (selección múltiple)\n\nA. La misma frase puede dar un número distinto de tokens en tokenizadores distintos\nB. Q indica qué información está buscando la posición actual, K con qué característica se compara cada posición y V qué contenido se recupera tras la comparación\nC. Cuanto menor sea el vocabulario mejor, así que debería dividirse estrictamente por caracteres\nD. Dividir por `sqrt(d_k)` en la fórmula de atención sirve para hacer el cálculo más estable\nE. En la autoatención Q, K y V vienen de la misma secuencia, mientras que en la atención cruzada Q viene de una secuencia y K y V de otra",
+    "explanation": "A sale de la sección de tokens. El ejemplo que da este capítulo es muy visual: la misma frase da 8 tokens con el tokenizador A y 10 con el B. Así que «número de tokens» y «número de caracteres» no son lo mismo.\n\nA además trae una consecuencia práctica que el capítulo señala de forma explícita: el resumen, las conclusiones y los puntos de acción que genera el modelo también ocupan tokens, así que «cuanto más detallado se pida el resultado, menos espacio puede quedarle al registro original». Eso no es un problema teórico; aparece constantemente con documentos largos.\n\nB y D salen de la sección de atención. B es la definición que el propio capítulo hace de Q, K y V; D es el capítulo diciendo que la división por `sqrt(d_k)` «sirve para ajustar la escala de las puntuaciones y hacer el cálculo más estable».\n\nE también está citado literalmente: «si Q, K y V provienen de la misma secuencia, se denomina autoatención... si Q proviene de una secuencia y K y V de otra, se denomina atención cruzada».\n\nC invierte el compromiso. El capítulo plantea el dilema de forma clara: dividir estrictamente por caracteres mantiene pequeño el vocabulario pero alarga la secuencia, mientras que dividir estrictamente por palabras completas hace el vocabulario enorme y te topas constantemente con palabras nuevas, abreviaturas y variaciones ortográficas. Por eso la respuesta mayoritaria es la tokenización por subpalabras (BPE, WordPiece, Unigram, SentencePiece), buscando un punto medio entre el carácter y la palabra completa.\n\nEl capítulo también menciona la máscara causal de los modelos generativos: como la posición actual solo puede referirse a lo que ya ha aparecido, hay que enmascarar las posiciones posteriores; y aunque se enmascaren los tokens futuros, el número de relaciones de la atención causal completa sigue creciendo de forma aproximadamente cuadrática con la longitud de la secuencia, que es justo el problema que abordan las distintas variantes de atención.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen.",
+    "reference": "C es lo contrario de lo que dice este capítulo: «si se divide estrictamente por caracteres el vocabulario puede quedar pequeño pero la secuencia se alarga; si se divide estrictamente por palabras completas el vocabulario se vuelve enorme». Los modelos grandes suelen usar tokenización por subpalabras para equilibrar ambas cosas.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "id": "ch34-ex03",
+    "chapter": "chapter-34",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Elegir un plan de tokens y contexto",
+    "prompt": "Tienes que procesar «convertir un manual de producto entero en una base de preguntas y respuestas». Escribe: ① cuántos tokens ocupan la entrada y la salida, y qué hay que controlar; ② cómo elegirías la segmentación del vocabulario y por qué; ③ qué costes te encontrarás cuando el contexto crezca y qué harías al respecto.",
+    "explanation": "Este ejercicio ata en un escenario concreto las tres secciones de este capítulo: la de tokens resuelve «¿cabe?», la de segmentación resuelve «¿cómo lo corto?» y la de atención resuelve «¿cuánto cuesta que crezca?».\n\nLa primera pregunta se contesta con facilidad con una sola frase sobre el límite de la ventana de contexto. El capítulo va más allá: hay tokens en el lado de entrada y en el de salida, y ambos crecen conforme se pide más detalle, un matiz especialmente dañino al montar una base de preguntas y respuestas, porque cuantos más pares generes menos manual cabe en la entrada. Contar los tokens toca la fase de diseño, no el momento en que deja de funcionar.\n\nLa segunda pregunta evalúa el compromiso y no la conclusión. El capítulo escribe el coste de los dos extremos, y la razón de las subpalabras es que se «busca un equilibrio entre caracteres y palabras completas». Aplicado a un manual de producto se puede añadir el porqué: las abreviaturas de modelo y los nombres nuevos son justo donde peor sale la segmentación solo por palabras.\n\nLa tercera pregunta es donde está la conciencia de coste que este capítulo quiere transmitir. La frase de que «a medida que crece el contexto, el coste de cómputo y de caché de la atención se vuelve más prominente» viene seguida de toda una lista de variantes de atención (MQA, GQA, SWA, MLA y demás), que giran todas alrededor de ese problema. Así que saber cómo es el crecimiento cuadrático y qué es el KV Cache importa más que saber los nombres de las variantes: con el problema en mente, las soluciones apuntan solas a recuperación, troceado o cambiar de modelo.\n\nEste ejercicio no puede ejecutar inferencia real de modelos; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un plan con el que comparar.",
+    "reference": "① Consumo de tokens: la entrada es el manual entero más la petición (qué capítulos, en qué formato de salida), y la salida son los pares de pregunta y respuesta que se generan. El capítulo dice de forma explícita que el modelo no ve un documento completo sino una cadena de IDs de token, y que el resumen, las conclusiones y los puntos de acción generados también ocupan tokens. Así que lo que hay que controlar es el total de «manual entero al contexto + generación de uno en uno»: cuanto más detallado se pide la salida, menos espacio queda para el registro original. En el caso de un manual esto es especialmente visible, porque el manual ya es largo. Así que conviene contar los tokens en la fase de diseño; si se pasa del presupuesto, primero se filtran capítulos o se hace una recuperación y ya luego se envía.\n\n② Segmentación del vocabulario: elige tokenización por subpalabras, por el compromiso que plantea este capítulo: dividir estrictamente por caracteres mantiene pequeño el vocabulario pero alarga la secuencia, mientras que dividir estrictamente por palabras completas hace el vocabulario enorme y topa constantemente con palabras nuevas, abreviaturas y variaciones ortográficas. En un manual es especialmente probable que haya abreviaturas de modelo (Pro Max, v2.0) y sufijos de modelo, que la segmentación por palabras completas corta muy fino y la segmentación por caracteres hace explotar la secuencia.\n\n③ Coste del contexto largo: el capítulo dice que «aunque se enmascaren los tokens futuros, el número de relaciones de la atención causal completa sigue creciendo de forma aproximadamente cuadrática con la longitud de la secuencia», y que en la fase de generación además hay que conservar el K y el V de los tokens históricos, lo que forma el KV Cache. Así que cuanto más largo es el contexto, más destacan el coste de cómputo y de caché de la atención. En el caso de convertir un manual, un contexto muy largo hace caras dos cosas a la vez: cada generación atiende sobre todo el historial, y el KV Cache ocupa VRAM de forma permanente.\n\nVías de solución: (1) troceado más recuperación, eligiendo primero los capítulos pertinentes con búsqueda vectorial antes de meterlos en el contexto (RAG); (2) procesar por capítulos en tandas y agregar al final, para acortar la longitud del contexto de una sola vez; (3) cambiar la salida a algo estructurado y corto (el capítulo también señala que el cumplimiento del formato es en sí mismo una dimensión de evaluación de una tarea de generación); (4) si el modelo en sí tiene el contexto limitado, cambiar a uno con contexto más largo, o aceptar el coste de consistencia que trae el procesamiento por tandas.\n\nAdemás, el capítulo menciona que la misma palabra significa cosas distintas en contextos distintos («la reunión se aplaza» y «aplazar la reunión» contienen tokens parecidos pero significan cosas distintas), así que la terminología de un manual hay que aclararla con el contexto, que es justo por lo que resulta útil el enfoque de RAG del capítulo 19.",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Cuenta por separado los tokens de entrada y de salida, menciona el compromiso de la tokenización por subpalabras, explica el coste cuadrático de la atención y el problema del KV Cache con contexto largo, y menciona RAG o el troceado como vías de solución?"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

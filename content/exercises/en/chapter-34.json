@@ -1,1 +1,118 @@
-[]
+[
+  {
+    "id": "ch34-ex01",
+    "chapter": "chapter-34",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 15,
+    "objective": "Compute one attention output by scaled dot product",
+    "prompt": "Implement this chapter's scaled dot product attention. Write a function `attention(q, k, v)` where all three arguments are lists of lists: `q` is `[length][dimension]`, `k` and `v` are `[length][dimension]`, and `k` and `v` have the same length.\n\nThe steps:\n\n1. Each score is the dot product of `q[i]` with every `k[j]`, divided by `sqrt(d)`, where `d` is the dimension of `k` (use `len(k[0])`).\n2. Take a softmax over each row of scores (subtract the maximum before exponentiating, to avoid overflow).\n3. Output row `i` is the weighted average of `v` with those weights (sum over `j`: `weight[j] * v[j][c]`).\n\nReturn a two dimensional list. Raise `ValueError` when the dimensions disagree, or when the dimension of `q` does not match `k`.",
+    "explanation": "The formula this chapter gives is `softmax(QKᵀ / √d_k)·V`, in three steps: compute the scores, softmax them into weights, weight V. This function is those three steps.\n\n**Dividing by `sqrt(d_k)` is not optional.** The chapter says the step is \"used to adjust the scale of the scores and make the computation more stable\" -- the dot product grows with the dimension, and at dimension 64 it can reach the tens, which fed straight into softmax saturates almost everything into one 1 and the rest 0.\n\nOne thing has to be said clearly though: **on some inputs this term is not observable**. The probe in the checks only asserts a difference when the raw scores are not all equal and the dimension is greater than 1, because when the scores are all equal the weights are the same scaled or not (both uniform), and at dimension 1 dividing by √1 = 1 is the same as not dividing. With a single key the softmax is always 1. Those three cases are not holes in an implementation, they are mathematically identical, so the checks only require a difference on inputs where one is observable.\n\n**Each row softmaxes independently.** With two rows in `q` each normalises on its own and the two sets of weights each sum to 1 -- the checks use two orthogonal queries to verify that each row is diagonal-dominant on its own and that they do not interfere.\n\n**Subtract the maximum before the softmax.** This step is mathematically equivalent but avoids overflowing `exp`. One check uses the input `[100.0, 100.0]` on purpose: without this step `exp(100 × 2 / √2)` overflows and raises.\n\n**The output dimension equals `d_k`.** The vector emitted at each position has length `d_k`, because it is weighting the columns of `v`.\n\nThe main check compares 3 dimension tiers x 3 key counts x 2 query counts, 18 input groups in total, element by element against values recomputed with the formula, and checks the weights sum to 1 along the way -- it is there to stop answer-lookup. Honest boundary: those 18 inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it.",
+    "reference": "import math\n\n\ndef attention(q, k, v):\n    if not q or not k or not v:\n        raise ValueError('q, k and v must be non-empty')\n    dk = len(k[0])\n    if any(len(row) != dk for row in k) or any(len(row) != dk for row in v):\n        raise ValueError('k and v must share one dimension')\n    if any(len(row) != dk for row in q):\n        raise ValueError('q must match the key dimension')\n    if len(k) != len(v):\n        raise ValueError('k and v must have the same length')\n    scale = math.sqrt(dk)\n    out = []\n    for qi in q:\n        scores = [sum(qi[c] * kj[c] for c in range(dk)) / scale for kj in k]\n        top = max(scores)\n        exps = [math.exp(s - top) for s in scores]\n        total = sum(exps)\n        weights = [e / total for e in exps]\n        out.append([sum(weights[j] * v[j][c] for j in range(len(k))) for c in range(dk)])\n    return out\n\nprint(attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]))",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand that scaling and softmax solve different problems?"
+    },
+    "checks": [
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]])\nassert len(out) == 1 and len(out[0]) == 2, out"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 12,
+        "code": "import math\n_k = [[1.0, 0.0], [0.0, 1.0]]\n_v = [[1.0, 0.0], [0.0, 1.0]]\n_scores = [1.0 / math.sqrt(2.0), 0.0]\n_mx = max(_scores)\n_ex = [math.exp(_s - _mx) for _s in _scores]\n_w = [_e / sum(_ex) for _e in _ex]\n_want = [_w[0] * _v[0][_c] + _w[1] * _v[1][_c] for _c in (0, 1)]\n_out = attention([[1.0, 0.0]], _k, _v)\nfor _c in (0, 1):\n    assert abs(_out[0][_c] - _want[_c]) < 1e-9, (_c, _out[0][_c], _want[_c])\nassert abs(_want[0] - 0.6697615493266569) < 1e-9 and abs(_want[1] - 0.3302384506733431) < 1e-9, _want"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[5.0, 5.0]], [[1.0, 1.0], [2.0, 2.0]], [[1.0, 0.0], [0.0, 1.0]])\nassert abs(sum(out[0]) - 1.0) < 1e-9, '权重归一化后两个分量之和是 1'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_o = attention([[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]])\n_a, _b = 0.6697615493266569, 0.3302384506733431\nassert abs(_o[0][0] - _a) < 1e-9 and abs(_o[0][1] - _b) < 1e-9, _o\nassert abs(_o[1][0] - _b) < 1e-9 and abs(_o[1][1] - _a) < 1e-9, '两行各自 softmax，互不影响'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "_k = [[4.0, 0.0], [0.0, 1.0]]\n_v = [[1.0, 0.0], [0.0, 1.0]]\n_scaled = attention([[1.0, 0.0]], _k, _v)\n_plain = attention([[2.0, 0.0]], _k, _v)\nassert abs(_scaled[0][0] - 0.9441927807928303) < 1e-9, '分数 2/sqrt(2)'\nassert abs(_plain[0][0] - 0.9965186727029345) < 1e-9, '不除以 sqrt(d_k) 时分数是 2'\nassert abs(_scaled[0][0] - _plain[0][0]) > 1e-3, '缩放与否给出明显不同的权重'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = attention([[100.0, 100.0]], [[100.0, 100.0], [0.0, 0.0]], [[1.0, 2.0], [3.0, 4.0]])\nassert all(abs(x) < 1e6 for x in out[0]), '减去最大值后 exp 不该溢出'"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([[1.0, 0.0]], [[1.0, 0.0, 0.0]], [[1.0, 0.0]])\n    assert False, 'q 与 k 维度不一致要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([[1.0, 0.0]], [[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]])\n    assert False, 'k 与 v 长度不一致要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 10,
+        "code": "try:\n    attention([], [[1.0, 0.0]], [[1.0, 0.0]])\n    assert False, '空输入要抛 ValueError'\nexcept ValueError:\n    pass"
+      },
+      {
+        "kind": "assert_python",
+        "weight": 30,
+        "code": "import math\nfor _d in (1, 2, 4):\n    for _nk in (1, 2, 3):\n        for _nq in (1, 2):\n            _k = [[float((i * 3 + j) % 5) - 2.0 for j in range(_d)] for i in range(_nk)]\n            _v = [[float((i * 11 + j * 5) % 9) - 4.0 for j in range(_d)] for i in range(_nk)]\n            _q = [[float((i * 5 + j) % 4) - 1.5 for j in range(_d)] for i in range(_nq)]\n            _out = attention(_q, _k, _v)\n            _scale = math.sqrt(_d)\n            assert len(_out) == _nq, (_d, _nk, _nq, _out)\n            for _i in range(_nq):\n                _scores = [sum(_q[_i][_c] * _k[_j][_c] for _c in range(_d)) / _scale\n                           for _j in range(_nk)]\n                _mx = max(_scores)\n                _ex = [math.exp(_s - _mx) for _s in _scores]\n                _tot = sum(_ex)\n                _w = [_e / _tot for _e in _ex]\n                assert abs(sum(_w) - 1.0) < 1e-12, (_d, _nk, _nq, _w)\n                for _c in range(_d):\n                    _want = sum(_w[_j] * _v[_j][_c] for _j in range(_nk))\n                    assert abs(_out[_i][_c] - _want) < 1e-9, (_d, _nk, _nq, _i, _c, _out[_i][_c], _want)\n                _raw = [sum(_q[_i][_c] * _k[_j][_c] for _c in range(_d)) for _j in range(_nk)]\n                _mx2 = max(_raw)\n                _ex2 = [math.exp(_s - _mx2) for _s in _raw]\n                _w2 = [_e / sum(_ex2) for _e in _ex2]\n                _spread = max(_raw) - min(_raw)\n                if _spread > 1e-9 and _d > 1:\n                    _diff = [abs(_out[_i][_c] - sum(_w2[_j] * _v[_j][_c] for _j in range(_nk)))\n                             for _c in range(_d)]\n                    assert max(_diff) > 1e-9, 'no-scale %s' % ((_d, _nk, _nq, _i, _diff),)\n                else:\n                    assert _spread <= 1e-9 or _d == 1, 'trivial %s' % ((_d, _nk, _nq, _raw),)"
+      }
+    ],
+    "starter": "import math\n\n\ndef attention(q, k, v):\n    # 返回注意力输出 [[...], ...]\n    return []\n\nprint(attention([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]))\n"
+  },
+  {
+    "id": "ch34-ex02",
+    "chapter": "chapter-34",
+    "type": "predict",
+    "difficulty": 2,
+    "minutes": 5,
+    "objective": "Judge what attention and tokens imply",
+    "prompt": "Which of these statements match this chapter? (multi-select)\n\nA. The same sentence can yield a different number of tokens in different tokenizers\nB. Q says what the current position is looking for, K says what feature each position is matched by, and V says the content taken back once matched\nC. The smaller the vocabulary the better, so it should split strictly per character\nD. Dividing by `sqrt(d_k)` in the attention formula is there to make the computation more stable\nE. In self-attention Q, K and V come from the same sequence, while in cross-attention Q comes from one sequence and K and V from another",
+    "explanation": "A comes from the token section. The example this chapter gives is vivid: the same sentence gets 8 tokens from tokenizer A and 10 from tokenizer B. So \"token count\" and \"character count\" are not the same thing.\n\nA also carries a practical consequence the chapter calls out explicitly: the summary, conclusions and action items a model generates take tokens too, so \"the more detailed you ask for the output, the less room may be left for the original record\". That is not a theoretical problem; it comes up constantly with long documents.\n\nB and D come from the attention section. B is the chapter's own definition of Q, K and V; D is the chapter saying the division by `sqrt(d_k)` is \"used to adjust the scale of the scores and make the computation more stable\".\n\nE is also quoted directly: \"if Q, K and V come from the same sequence it is called self-attention... if Q comes from one sequence while K and V come from another, it is called cross-attention\".\n\nC reverses the trade-off. The chapter sets out the dilemma plainly: splitting strictly per character keeps the vocabulary small but makes the sequence long, while splitting strictly per whole word makes the vocabulary huge and keeps running into new words, abbreviations and spelling variation. So the mainstream answer is subword tokenisation (BPE, WordPiece, Unigram, SentencePiece), balancing between the character and the whole word.\n\nThe chapter also mentions the causal mask in generative models: because the current position may only refer to what has already appeared, later positions have to be masked; and even with future tokens masked, the number of relations in full causal attention still grows roughly with the square of the sequence length, which is exactly the problem the various attention variants set out to solve.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded.",
+    "reference": "C is the opposite of what this chapter says: \"if you split strictly per character the vocabulary can be small but the sequence gets long; if you split strictly per whole word the vocabulary becomes very large\". Large models usually use subword tokenisation to balance the two.",
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D",
+          "E"
+        ],
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "id": "ch34-ex03",
+    "chapter": "chapter-34",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Pick a token and context plan for a need",
+    "prompt": "You have to process \"turn a whole product manual into a question and answer library\". Write down: (1) how many tokens the input and the output each take, and what you have to control; (2) how you would choose the vocabulary segmentation and why; (3) what costs you run into as the context grows, and what you would do about them.",
+    "explanation": "This exercise strings three sections of this chapter onto one concrete scenario: the token section answers \"does it fit\", the segmentation section answers \"how do you cut it\", and the attention section answers \"what does length cost\".\n\nThe first question is most often answered with a single sentence about the context window being finite. The chapter goes finer than that: there are tokens on the input side and on the output side, and both grow as you ask for more detail -- a detail that is especially damaging when building a question and answer library, because the more pairs you output the less manual fits on the input side. Counting tokens belongs in the design phase, not to the moment it stops running.\n\nThe second question tests the trade-off rather than the conclusion. The chapter spells out the cost of both extremes, and the reason for subwords is that it \"looks for a balance between characters and whole words\". Applied to a product manual you can go further and say why: model abbreviations and new product names are precisely where pure whole-word segmentation does worst.\n\nThe third question is where the cost awareness this chapter is really after sits. The sentence that \"as the context grows, the compute and cache overhead of Attention become more and more prominent\" is followed by a whole list of attention variants (MQA, GQA, SWA, MLA and so on), all of them built around that problem. So knowing about the quadratic growth and the KV cache matters more than knowing the names of the variants -- once you have the problem in mind, the answers point on their own towards retrieval, chunking or a different model.\n\nThis exercise cannot run real model inference; grading rests on self-assessment plus an optional AI score, and the reference answer gives a plan you can compare against.",
+    "reference": "(1) Token usage: the input side is the whole manual plus the request (which chapters, what output format), and the output side is the question and answer pairs that get generated. The chapter is explicit that the model does not see a complete document but a string of token IDs, and that generated summaries, conclusions and action items take tokens too. So what you control is the total of \"the whole manual into the context plus generating one item at a time\" -- the more detailed you ask for, the less room is left for the original record. That is especially acute for a manual, because the manual is already long. So count the tokens at design time; if it is over budget, narrow down the chapters first or retrieve first and then feed them in.\n\n(2) Vocabulary segmentation: choose subword tokenisation, because of the trade-off this chapter sets out -- splitting strictly per character keeps the vocabulary small but makes the sequence long, while splitting strictly per whole word makes the vocabulary huge and keeps running into new words, abbreviations and spelling variation. A manual in particular is likely to contain model abbreviations (Pro Max, v2.0) and model suffixes, which whole-word splitting cuts very finely and character splitting makes the sequence explode.\n\n(3) Long context cost: the chapter says that \"even with future tokens masked, the number of relations in full causal attention still grows roughly with the square of the sequence length\", and that generation also has to keep the K and V of the historical tokens, forming a KV cache. So the longer the context, the more prominent the attention compute and cache cost. For turning a manual into a library, a very long context makes two things expensive at once: every generation attends over the whole history, and the KV cache keeps holding VRAM.\n\nWays forward: (1) chunk plus retrieval, picking the relevant chapters with vector search before they go into the context (RAG); (2) process chapter by chapter in batches and aggregate at the end, to shorten the single context; (3) make the output structured and short (the chapter also notes that format following is itself an evaluation dimension of a generation task); (4) if the model itself is limited in context length, switch to one with a longer context, or accept the consistency cost that batching brings.\n\nThe chapter also notes that the same word means different things in different contexts (\"the meeting is postponed\" and \"postponing the meeting\" contain similar tokens but say different things), so terminology in a manual has to be disambiguated by context -- which is exactly why the RAG approach from chapter 19 is useful.",
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it count input and output tokens separately, does it mention the subword trade-off, does it explain the quadratic attention cost and the KV cache problem of a long context, and does it point at RAG or chunking as a way forward?"
+    },
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
+  }
+]

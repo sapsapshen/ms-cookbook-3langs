@@ -38,6 +38,9 @@ CASES = [
     # A CJK character wedged between Latin letters.
     ('es', 'Si这一步 sale mal', True),
     ('es', 'usa int() y (entero) aquí', False),
+    # An English fragment spliced into a Spanish word.
+    ('es', 'el problema no seDWUnhandled', True),
+    ('es', 'una frase normal en español', False),
     # Mojibake.
     ('en', 'the answer is ' + chr(0xFFFD) + ' here', True),
     ('en', 'the answer is fine here', False),
@@ -53,7 +56,7 @@ def caught(lang, text):
         return True
     if L.FUSED_ASTERISK.search(body) or L.UNDERSCORE_GLUE.search(body):
         return True
-    if L.INTRUDER.search(text):
+    if L.INTRUDER.search(text) or L.CAPS_GLUE.search(body):
         return True
     if L.foreign_words(lang, text) or L.fused_words(lang, text):
         return True

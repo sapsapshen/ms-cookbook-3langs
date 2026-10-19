@@ -1,1 +1,86 @@
-[]
+[
+  {
+    "id": "ch17-ex01",
+    "chapter": "chapter-17",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Score a quality inspection against a rubric",
+    "prompt": "Customer service quality inspection has 8 items with maximum scores of 5, 20, 15, 15, 15, 10, 10 and 10, totalling 100. Write a function `summarize(scores)`: it takes a dict whose keys are the rubric item names and whose values are the actual score for that item (possibly a decimal). Return a dict containing:\n\n`total` is the sum of the scores. `missing` is `\"incomplete\"` when the scores passed in add up to less than 100 out of a full 100, and `\"complete\"` otherwise. `worst` is the maximum score of the item with the lowest score rate (score divided by maximum), or `\"none\"` when no item falls below 0.8. A score rate equal to or below 0.8 counts as \"below\".",
+    "starter": "RUBRIC = {\n    '开场与身份说明': 5,\n    '需求识别与回应完整性': 20,\n    '信息准确性与风险控制': 15,\n    '问题解决与承诺闭环': 15,\n    '服务态度与专业措辞': 15,\n    '打断与通话节奏': 10,\n    '客户情绪与服务修复': 10,\n    '结束语与待办确认': 10,\n}\n\n\ndef summarize(scores):\n    # 返回 {'total': ..., 'missing': ..., 'worst': ...}\n    return {}\n\nprint(summarize(RUBRIC))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = summarize(RUBRIC)\nassert out['total'] == 100 and out['missing'] == 'complete' and out['worst'] == 'none'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'开场与身份说明': 5, '需求识别与回应完整性': 12})\nassert out['total'] == 17 and out['missing'] == 'incomplete'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'开场与身份说明': 4})\nassert out['total'] == 4 and out['missing'] == 'incomplete'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'需求识别与回应完整性': 16})\nassert out['worst'] == 20, '16/20 = 0.8，正好低于线也要算'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'需求识别与回应完整性': 17})\nassert out['worst'] == 'none', '17/20 = 0.85 高于 0.8，不该算 worst'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = summarize({'开场与身份说明': 4, '需求识别与回应完整性': 10})\nassert out['worst'] == 20, '10/20 = 0.5 比 4/5 = 0.8 更低，所以取满分 20 那一项'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({})\nassert out['total'] == 0 and out['missing'] == 'incomplete'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 26,
+        "code": "for _cut in (0.4, 0.6, 0.79, 0.8, 0.81, 0.95):\n    _scores = {}\n    for _k, _max in RUBRIC.items():\n        _scores[_k] = round(_max * 0.95, 2)\n    _scores['打断与通话节奏'] = round(10 * _cut, 2)\n    _out = summarize(_scores)\n    _want = 10 if 10 * _cut <= 8 else 'none'\n    assert _out['worst'] == _want, ('被改动的这一项要么独苗不合格，要么完全不计入', _cut, _out)\n    assert abs(_out['total'] - sum(_scores.values())) < 1e-9, (_cut, _out)\n    assert _out['missing'] == 'incomplete', (_cut, _out)\nfor _cut in (0.79, 0.8, 0.81, 0.95):\n    _scores = {k: round(v * _cut, 2) for k, v in RUBRIC.items()}\n    _out = summarize(_scores)\n    if _cut > 0.8:\n        assert _out['worst'] == 'none', (_cut, _out)\n    else:\n        _lowest = None\n        _full = 'none'\n        for _k, _max in RUBRIC.items():\n            _r = _scores[_k] / _max\n            if _lowest is None or _r < _lowest:\n                _lowest = _r\n                _full = _max\n        assert _out['worst'] == _full, ('整体同率时报得分率最低那一项的满分', _cut, _out)\n    assert _out['missing'] == 'incomplete', ('打折就凑不满 100 分', _cut, _out)"
+      },
+      {
+        "kind": "assert_python",
+        "code": "_full = {k: v for k, v in RUBRIC.items()}\nassert summarize(_full)['total'] == 100\n_partial = dict(_full)\n_partial['服务态度与专业措辞'] = 0\n_out = summarize(_partial)\nassert _out['missing'] == 'incomplete' and _out['worst'] == 15, _out",
+        "weight": 16
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "Does it understand the score rate divides by that item's maximum, not by the total?"
+    },
+    "reference": "RUBRIC = {\n    '\\u5f00\\u573a\\u4e0e\\u8eab\\u4efd\\u8bf4\\u660e': 5,\n    '\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027': 20,\n    '\\u4fe1\\u606f\\u51c6\\u786e\\u6027\\u4e0e\\u98ce\\u9669\\u63a7\\u5236': 15,\n    '\\u95ee\\u9898\\u89e3\\u51b3\\u4e0e\\u627f\\u8bfa\\u95ed\\u73af': 15,\n    '\\u670d\\u52a1\\u6001\\u5ea6\\u4e0e\\u4e13\\u4e1a\\u63aa\\u8f9e': 15,\n    '\\u6253\\u65ad\\u4e0e\\u901a\\u8bdd\\u8282\\u594f': 10,\n    '\\u5ba2\\u6237\\u60c5\\u7eea\\u4e0e\\u670d\\u52a1\\u4fee\\u590d': 10,\n    '\\u7ed3\\u675f\\u8bed\\u4e0e\\u5f85\\u529e\\u786e\\u8ba4': 10,\n}\n\n\ndef summarize(scores):\n    total = sum(scores.values())\n    missing = 'complete' if total >= 100 else 'incomplete'\n    worst = 'none'\n    best_rate = None\n    for name, got in scores.items():\n        rate = got / RUBRIC[name]\n        if rate > 0.8:\n            continue\n        if best_rate is None or rate < best_rate:\n            best_rate = rate\n            worst = RUBRIC[name]\n    return {'total': total, 'missing': missing, 'worst': worst}\n\nprint(summarize(RUBRIC))",
+    "explanation": "The rubric in this chapter has 8 items totalling 100, so all three things in this exercise come straight from that table.\n\n**The denominator of the score rate is that item's maximum, not the total.** The item `\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027` has a maximum of 20 and scores 16, so its rate is 0.8; `\\u5f00\\u573a\\u4e0e\\u8eab\\u4efd\\u8bf4\\u660e` has a maximum of 5 and scores 4, so its rate is also 0.8. The two rates are equal, yet on a percentage scale the totals look completely different -- using the total as the denominator would misjudge those two items as being of different severity.\n\n**The boundary is \"less than or equal\".** The prompt says a rate equal to or below 0.8 counts as \"below\", so 16/20 = 0.8 has to be counted in `worst` while 17/20 = 0.85 is not. The checks measure those two cases separately, and an implementation using `<` fails on the 16 point group.\n\n**`worst` returns the maximum score, not the rate.** That is what the prompt specifies, because the report has to say \"\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027: X/20\" and needs the denominator.\n\n**The item with the lowest rate wins.** The checks include `{'\\u5f00\\u573a\\u4e0e\\u8eab\\u4efd\\u8bf4\\u660e': 4, '\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027': 10}`, whose rates are 0.8 and 0.5, so `worst` should be 20 -- the item with the worse rate, not the one with the larger maximum (here 10 is genuinely below 4 as well, so this example agrees on both counts). The main check also measures a case with a **uniform rate**: all 8 items scored at the same proportion, so every rate is equal and the check deliberately does not hard-code which item comes out, only requiring the reported maximum to belong to an item at the **lowest** rate. At a discount of 0.79 the rates are so close that floating point error makes different implementations pick different items (measured: `round(5 * 0.79, 2) / 5` comes out slightly below 0.79), so recomputing the expected value by \"lowest rate\" is the fair way to write it. An implementation that takes the largest denominator, or the last item, still fails.\n\n**`missing` is decided by the total.** If the scores passed in add up to less than 100 it is `'incomplete'` -- this chapter says \"every rubric item has to give not only a score but also the judgement and the main basis\", so a report missing one item is incomplete. An empty dict also counts as incomplete.\n\nThe main check runs six discount rates against a full set of scores, then four rates against a uniformly discounted set, recomputing `worst` from \"rate <= 0.8\" and `total` and `missing` from the sum for each group -- it is there to stop answer-lookup. Honest boundary: those inputs are in the public corpus too, so this raises the cost of copying the answer, it does not prevent it."
+  },
+  {
+    "id": "ch17-ex02",
+    "chapter": "chapter-17",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Specify what a quality inspection report must contain",
+    "prompt": "You want a model to produce a quality inspection report for one customer service call. Write down: (1) which fields every item in the report has to carry; (2) what to write when something cannot be verified; (3) what kind of conclusion you consider unacceptable, and why.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it require a score, a judgement, the main basis and the reason for any deduction on every rubric item, does it require citing the call turn or the agent's own words as evidence, does it require noting \"cannot be verified with the available information\" for business-rule items, and does it reject conclusions that come with no basis?"
+    },
+    "reference": "(1) Four fields per rubric item: the score (X/maximum), the judgement, the main basis, and the reason for the deduction. The basis has to be specific -- cite the corresponding call turn, the agent's own words or the result of the voice analysis, rather than empty phrases like \"poor service attitude\". The report also needs an overall score, an inspection conclusion, an overall assessment, the main problems and suggestions for improvement.\n\n(2) For information like course times or leave rules, which can only be verified against company business rules: if the corresponding business standard has not been provided, judge only whether the agent responded explicitly, do not judge whether the content itself is correct, and note in the report that it \"cannot be verified with the available information\". The key here is that both \"do not judge\" and \"note it\" have to happen -- you can neither invent an answer from the model's own knowledge nor skip it as if there were no issue.\n\n(3) The unacceptable conclusion is one that gives a score or an assessment with no source. This chapter says outright to \"avoid conclusions like 'poor service attitude' or 'the problem was not handled properly' that come with no basis\". The reason is that such a report cannot be reviewed: the inspected party cannot appeal a conclusion they have no way to check, and the agent being inspected does not know which sentence to change. A conclusion backed by a turn and a quote is the only kind that is both credible and actionable.",
+    "explanation": "This exercise lands on this chapter's key phrase: **\"score by the rules, and make every judgement come with its basis\"**. The \"with a basis\" half is the point; the \"score by the rules\" half is secondary.\n\nThe second question is the operational detail most easily missed in that section. The note \"cannot be verified with the available information\" looks like a formatting convention, but it carries the responsibility boundary this chapter keeps emphasising: when the model does not know the company's business rules, it does not guess. The information analysis stage in this chapter also separates items \"judged from the call content\" from items that \"need to be combined with audio analysis\" -- also scoring, but the evidence behind each item comes from a different place.\n\nThe third question is really asking what a quality inspection system is for. The report is read by other people: the business side reads the conclusion, the agent reads the improvement points, the inspected party reads the basis. A conclusion with no basis fails all three uses.\n\nThis exercise cannot run real voice analysis or model scoring; grading rests on self-assessment plus an optional AI score, and the reference answer gives a requirements checklist you can compare against."
+  }
+]

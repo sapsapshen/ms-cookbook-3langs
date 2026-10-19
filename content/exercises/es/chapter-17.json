@@ -1,1 +1,86 @@
-[]
+[
+  {
+    "id": "ch17-ex01",
+    "chapter": "chapter-17",
+    "type": "build",
+    "difficulty": 2,
+    "minutes": 12,
+    "objective": "Puntuar una revisión de calidad con una rúbrica",
+    "prompt": "La revisión de calidad de atención al cliente tiene 8 apartados con puntuaciones máximas de 5, 20, 15, 15, 15, 10, 10 y 10, que suman 100. Escribe una función `summarize(scores)`: recibe un diccionario cuyas claves son los nombres de los apartados y cuyos valores son la puntuación obtenida en cada uno (puede ser decimal). Devuelve un diccionario con:\n\n`total` es la suma de las puntuaciones. `missing` es `\"incomplete\"` cuando las puntuaciones recibidas suman menos de 100 sobre un total de 100, y `\"complete\"` en caso contrario. `worst` es la puntuación máxima del apartado con la tasa de acierto más baja (puntuación dividida entre el máximo), o `\"none\"` cuando ningún apartado baja de 0.8. Una tasa igual o inferior a 0.8 cuenta como «por debajo».",
+    "starter": "RUBRIC = {\n    '开场与身份说明': 5,\n    '需求识别与回应完整性': 20,\n    '信息准确性与风险控制': 15,\n    '问题解决与承诺闭环': 15,\n    '服务态度与专业措辞': 15,\n    '打断与通话节奏': 10,\n    '客户情绪与服务修复': 10,\n    '结束语与待办确认': 10,\n}\n\n\ndef summarize(scores):\n    # 返回 {'total': ..., 'missing': ..., 'worst': ...}\n    return {}\n\nprint(summarize(RUBRIC))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "out = summarize(RUBRIC)\nassert out['total'] == 100 and out['missing'] == 'complete' and out['worst'] == 'none'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'开场与身份说明': 5, '需求识别与回应完整性': 12})\nassert out['total'] == 17 and out['missing'] == 'incomplete'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'开场与身份说明': 4})\nassert out['total'] == 4 and out['missing'] == 'incomplete'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'需求识别与回应完整性': 16})\nassert out['worst'] == 20, '16/20 = 0.8，正好低于线也要算'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({'需求识别与回应完整性': 17})\nassert out['worst'] == 'none', '17/20 = 0.85 高于 0.8，不该算 worst'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "weight": 8,
+        "code": "out = summarize({'开场与身份说明': 4, '需求识别与回应完整性': 10})\nassert out['worst'] == 20, '10/20 = 0.5 比 4/5 = 0.8 更低，所以取满分 20 那一项'"
+      },
+      {
+        "kind": "assert_python",
+        "code": "out = summarize({})\nassert out['total'] == 0 and out['missing'] == 'incomplete'",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "weight": 26,
+        "code": "for _cut in (0.4, 0.6, 0.79, 0.8, 0.81, 0.95):\n    _scores = {}\n    for _k, _max in RUBRIC.items():\n        _scores[_k] = round(_max * 0.95, 2)\n    _scores['打断与通话节奏'] = round(10 * _cut, 2)\n    _out = summarize(_scores)\n    _want = 10 if 10 * _cut <= 8 else 'none'\n    assert _out['worst'] == _want, ('被改动的这一项要么独苗不合格，要么完全不计入', _cut, _out)\n    assert abs(_out['total'] - sum(_scores.values())) < 1e-9, (_cut, _out)\n    assert _out['missing'] == 'incomplete', (_cut, _out)\nfor _cut in (0.79, 0.8, 0.81, 0.95):\n    _scores = {k: round(v * _cut, 2) for k, v in RUBRIC.items()}\n    _out = summarize(_scores)\n    if _cut > 0.8:\n        assert _out['worst'] == 'none', (_cut, _out)\n    else:\n        _lowest = None\n        _full = 'none'\n        for _k, _max in RUBRIC.items():\n            _r = _scores[_k] / _max\n            if _lowest is None or _r < _lowest:\n                _lowest = _r\n                _full = _max\n        assert _out['worst'] == _full, ('整体同率时报得分率最低那一项的满分', _cut, _out)\n    assert _out['missing'] == 'incomplete', ('打折就凑不满 100 分', _cut, _out)"
+      },
+      {
+        "kind": "assert_python",
+        "code": "_full = {k: v for k, v in RUBRIC.items()}\nassert summarize(_full)['total'] == 100\n_partial = dict(_full)\n_partial['服务态度与专业措辞'] = 0\n_out = summarize(_partial)\nassert _out['missing'] == 'incomplete' and _out['worst'] == 15, _out",
+        "weight": 16
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que la tasa de acierto se divide entre el máximo de ese apartado y no entre el total?"
+    },
+    "reference": "RUBRIC = {\n    '\\u5f00\\u573a\\u4e0e\\u8eab\\u4efd\\u8bf4\\u660e': 5,\n    '\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027': 20,\n    '\\u4fe1\\u606f\\u51c6\\u786e\\u6027\\u4e0e\\u98ce\\u9669\\u63a7\\u5236': 15,\n    '\\u95ee\\u9898\\u89e3\\u51b3\\u4e0e\\u627f\\u8bfa\\u95ed\\u73af': 15,\n    '\\u670d\\u52a1\\u6001\\u5ea6\\u4e0e\\u4e13\\u4e1a\\u63aa\\u8f9e': 15,\n    '\\u6253\\u65ad\\u4e0e\\u901a\\u8bdd\\u8282\\u594f': 10,\n    '\\u5ba2\\u6237\\u60c5\\u7eea\\u4e0e\\u670d\\u52a1\\u4fee\\u590d': 10,\n    '\\u7ed3\\u675f\\u8bed\\u4e0e\\u5f85\\u529e\\u786e\\u8ba4': 10,\n}\n\n\ndef summarize(scores):\n    total = sum(scores.values())\n    missing = 'complete' if total >= 100 else 'incomplete'\n    worst = 'none'\n    best_rate = None\n    for name, got in scores.items():\n        rate = got / RUBRIC[name]\n        if rate > 0.8:\n            continue\n        if best_rate is None or rate < best_rate:\n            best_rate = rate\n            worst = RUBRIC[name]\n    return {'total': total, 'missing': missing, 'worst': worst}\n\nprint(summarize(RUBRIC))",
+    "explanation": "La rúbrica de este capítulo tiene 8 apartados que suman 100, así que las tres cosas de este ejercicio salen directamente de esa tabla.\n\n**El denominador de la tasa es el máximo de ese apartado, no el total.** El apartado `\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027` tiene máximo 20 y saca 16, así que su tasa es 0.8; `\\u5f00\\u573a\\u4e0e\\u8eab\\u4efd\\u8bf4\\u660e` tiene máximo 5 y saca 4, así que su tasa también es 0.8. Las dos tasas son iguales, y sin embargo sobre una escala de 100 los totales se ven muy distintos: usar el total como denominador haría que esos dos apartados parecieran de gravedad diferente.\n\n**El límite es «menor o igual».** El enunciado dice que una tasa igual o inferior a 0.8 cuenta como «por debajo», así que 16/20 = 0.8 tiene que entrar en `worst` mientras que 17/20 = 0.85 no. Las comprobaciones miden los dos casos por separado, y una implementación con `<` falla en el grupo de 16 puntos.\n\n**`worst` devuelve el máximo, no la tasa.** Es lo que pide el enunciado, porque el informe tiene que escribir «\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027: X/20» y hace falta el denominador.\n\n**Gana el apartado con la tasa más baja.** Las comprobaciones incluyen `{'\\u5f00\\u573a\\u4e0e\\u8eab\\u4efd\\u8bf4\\u660e': 4, '\\u9700\\u6c42\\u8bc6\\u522b\\u4e0e\\u56de\\u5e94\\u5b8c\\u6574\\u6027': 10}`, con tasas 0.8 y 0.5, así que `worst` debería ser 20: el apartado con peor tasa, no el de mayor máximo (aquí además 10 es de verdad menor que 4, así que este ejemplo coincide por los dos lados). La comprobación principal mide además un caso de **tasa uniforme**: los 8 apartados puntuados con la misma proporción, con lo que todas las tasas son iguales; ahí la comprobación no fija qué apartado sale, solo exige que el máximo informado pertenezca a un apartado con la tasa **más baja**. Con un descuento de 0.79 las tasas están tan cerca que el error de coma flotante hace que implementaciones distintas elijan apartados distintos (medido: `round(5 * 0.79, 2) / 5` queda ligeramente por debajo de 0.79), así que recalcular el valor esperado por «tasa más baja» es la forma justa de escribirlo. Una implementación que se quede con el mayor denominador, o con el último apartado, sigue suspendiendo.\n\n**`missing` se decide por el total.** Si las puntuaciones recibidas suman menos de 100 es `'incomplete'`: este capítulo dice que «cada apartado de la revisión debe indicar no solo la puntuación sino también el resultado del juicio y las principales bases», así que un informe al que le falta un apartado está incompleto. Un diccionario vacío también cuenta como incomplete.\n\nLa comprobación principal recorre seis tipos de descuento contra un conjunto de puntuaciones completo, y luego cuatro tipos contra un conjunto descontado de forma uniforme, recalculando `worst` con «tasa <= 0.8» y `total` y `missing` con la suma en cada grupo: está ahí para impedir que te aprenses la respuesta. Límite honesto: esas entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch17-ex02",
+    "chapter": "chapter-17",
+    "type": "reflect",
+    "difficulty": 3,
+    "minutes": 8,
+    "objective": "Definir qué debe llevar un informe de calidad",
+    "prompt": "Quieres que un modelo genere un informe de calidad de una llamada de atención al cliente. Escribe: (1) qué campos debe llevar cada apartado del informe; (2) cómo escribir cuando algo no se puede verificar; (3) qué tipo de conclusión consideras inaceptable y por qué.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Exige puntuación, resultado del juicio, principales \\uadfc\\uac70 y motivo del descuento en cada apartado, exige citar el turno de la conversación o las palabras del agente como evidencia, exige anotar «no se puede verificar con la información disponible» en los apartados que dependen de reglas de negocio, y rechaza las conclusiones sin fundamento?"
+    },
+    "reference": "(1) Cuatro campos por apartado: la puntuación (X/máximo), el resultado del juicio, las principales bases y el motivo del descuento. La base tiene que ser concreta: citar el turno correspondiente, las palabras del agente o el resultado del análisis de voz, en lugar de frases vacías como «mala \\u6001\\u5ea6 de servicio». El informe necesita además una puntuación global, una conclusión de la revisión, una valoración general, los problemas principales y propuestas de mejora.\n\n(2) Para información como el horario de los cursos o las normas de permisos, que solo se puede verificar contra las reglas de negocio de la empresa: si no se ha proporcionado el estándar correspondiente, juzga únicamente si el agente respondió de forma explícita, no juzgues si el contenido en sí es correcto, y anota en el informe que «no se puede verificar con la información disponible». Aquí lo clave es que hagan las dos cosas, «no juzgar» y «dejar constancia»: no puedes inventarte una respuesta con el conocimiento propio del modelo ni pasar por alto el caso como si no hubiera nada.\n\n(3) La conclusión inaceptable es la que da una puntuación o una valoración sin fuente. Este capítulo dice de forma explícita que hay que evitar conclusiones como «mala \\u6001\\u5ea6 de servicio» o «el problema no se resolvi\\u00f3\\u5904\\u7406\\u597d» que carecen de fundamento. La razón es que un informe así no se puede revisar: la parte inspeccionada no puede apelar una conclusión que no tiene forma de comprobar, y el agente inspeccionado tampoco sabe qué frase concreta debe cambiar. Solo una conclusión respaldada por un turno y una cita es a la vez creíble y accionable.",
+    "explanation": "Este ejercicio aterriza en la frase clave de ese apartado del capítulo: **«puntuar según las reglas y que cada juicio tenga su fundamento»**. La parte de «con fundamento» es la importante; la de «puntuar según las reglas» es secundaria.\n\nLa segunda pregunta es el detalle operativo que más se pasa por alto en ese apartado. La nota «no se puede verificar con la información disponible» parece solo un convenio de formato, pero carga con el límite de responsabilidad que este capítulo repite: cuando el modelo no conoce las reglas de negocio de la empresa, no las inventa. La etapa de análisis de información de este capítulo también distingue los apartados que «se juzgan según el contenido de la conversación» de los que «hay que combinar con el análisis de audio»: también son puntuaciones, pero la evidencia de cada apartado viene de un sitio distinto.\n\nLa tercera pregunta pregunta, en el fondo, para qué sirve un sistema de revisión de calidad. El informe lo leen otras personas: la parte de negocio lee la conclusión, el agente lee los puntos de mejora y la parte inspeccionada lee el fundamento. Una conclusión sin fundamento no cumple ninguno de los tres usos.\n\nEste ejercicio no puede ejecutar un análisis de voz ni una puntuación con modelo reales; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece una lista de requisitos con la que comparar."
+  }
+]

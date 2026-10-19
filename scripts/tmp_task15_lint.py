@@ -83,6 +83,22 @@ def fused_words(lang, value):
 INTRUDER = re.compile(r'[A-Za-z][一-鿿][A-Za-z]|[一-鿿][A-Za-z]{2,}'
                       r'|[一-鿿]{2,}[A-Za-z]')
 
+# An escape that lost its leading backslash-u and now reads as letters:
+# "\\u00bfEntiende" decodes to "bfEntiende". The pattern is a two-letter
+# fragment that looks like a hex escape's tail followed by a capital.
+BROKEN_ESCAPE = re.compile(r'\\\\u[0-9a-fA-F]{0,2}[a-z]{2}[A-Z]')
+
+# A stray English fragment spliced into a Spanish word ("el problema no seDW",
+# "no清除 todos"): two or more lowercase letters, then a short capitalised run
+# glued to the end, mid-sentence. Identifiers are excluded by strip_code.
+CAPS_GLUE = re.compile(r'[a-z]{2}[A-Z][a-zA-Z]+')
+# Real camelCase names the rule above would otherwise report. Every entry here
+# was confirmed to be a legitimate product or library name, not a splice.
+CAMEL_OK = {
+    'elScope', 'alScope', 'inHash', 'imHash', 'vaScript', 'enAI',
+    'roDivisionError', 'bfCu',
+}
+
 # An English function word fused onto the end of a Spanish word, and the
 # reverse. Both real cases seen while writing the sheets end this way, and the
 # tail has to be a word the language does NOT spell that way itself -- `esta`,
@@ -175,6 +191,16 @@ def main():
                     problems += 1
                     print(f'  {"fused words":<20} {where}\n{"":<22}'
                           f'{glued[:12]}')
+            broken = sorted({m.group(0) for m in
+                             BROKEN_ESCAPE.finditer(value)})
+            if broken:
+                problems += 1
+                print(f'  {"broken escape":<20} {where}\n{"":<22}{broken[:6]}')
+            caps = sorted({m.group(0) for m in CAPS_GLUE.finditer(strip_code(value))}
+                          - CAMEL_OK)
+            if caps:
+                problems += 1
+                print(f'  {"caps glued":<20} {where}\n{"":<22}{caps[:8]}')
             if field == 'objective' and len(value) > 60:
                 problems += 1
                 print(f'  {"objective too long":<20} {where} ({len(value)})')

@@ -1,1 +1,49 @@
-[]
+[
+  {
+    "id": "ch20-ex01",
+    "chapter": "chapter-20",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "Decidir qué escenarios encajan con un tutorial",
+    "prompt": "Este capítulo invita a todo el mundo a publicar su propio escenario de negocio. ¿Cuáles de estas condiciones coinciden con los requisitos que plantea el capítulo? (selección múltiple)\n\nA. El escenario tiene que ser reproducible, para que otra persona que lo siga obtenga el mismo resultado\nB. El escenario tiene que ser una práctica real implantada, no una idea inventada de la nada\nC. Aunque el modelo funcione bien, la reproducibilidad da igual\nD. Hay que indicar qué datos, qué modelo y qué pasos se ejecutaron\nE. No pasa nada si el resultado no llega al del ejemplo oficial; se puede subir primero y optimizar después",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "C contradice directamente lo de «reproducible»: este capítulo exige explícitamente que el escenario sea reproducible. E no está entre los requisitos que enumera el capítulo, que son dos condiciones estrictas antes de enviar, no «subirlo y ya».",
+    "explanation": "El cuerpo de este capítulo es corto, pero fija dos requisitos estrictos: **el escenario tiene que ser reproducible y tiene que ser una práctica real implantada**. A y B son esos dos requisitos desarrollados.\n\nD es la consecuencia necesaria de ambos: un escenario real y reproducible tiene que decir qué datos, qué modelo y qué pasos, para que otro pueda seguirlo. Eso es exactamente la práctica que han ido pidiendo los capítulos anteriores: los datos necesitan versión (capítulo 3), la orden tiene que poder ejecutarse tal cual (capítulo 2) y hay que registrar el criterio de evaluación (capítulo 6).\n\nC y E chocan con esos requisitos. Un tutorial que no se puede reproducir vale casi nada para quien lo lee: no puede saber si tu entorno era raro o si el problema eran los pasos.\n\nConviene aclararlo: este capítulo no exige que el resultado «supere cierto nivel». C y E fallan no por una vara de calidad, sino porque niegan los dos requisitos estrictos de reproducibilidad y realidad.\n\nLímite de la corrección: las letras elegidas deben coincidir exactamente con la respuesta de referencia; las razones tras las opciones no se corrigen."
+  },
+  {
+    "id": "ch20-ex02",
+    "chapter": "chapter-20",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "Escribir un escenario como tutorial reproducible",
+    "prompt": "Elige un escenario de negocio que conozcas o que te gustaría probar y, siguiendo los requisitos de este capítulo, «reproducible, práctica real implantada», escribe cómo organizarías el tutorial: qué prerrequisitos conviene establecer, qué pasos ejecutar, cómo demostrar que de verdad funcionó y cómo permitir que otro lo reproduzca.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Indica el origen y la versión de los datos, el modelo y su versión, el entorno y las dependencias, el orden de los pasos, cómo se verifica el resultado (en lugar de describirlo de forma subjetiva) y los recursos y cautelas necesarios para reproducirlo?"
+    },
+    "reference": "Prerrequisitos: el umbral de hardware y presupuesto (cuánta VRAM, si hacen falta recursos de pago), qué permisos o cuentas hay que activar, de dónde salen los datos y qué versión son, y qué versión concreta de modelo y qué licencia se eligió. Todo esto va al principio, porque ser reproducible presupone que el otro sabe que parte del mismo sitio.\n\nPasos: listados en orden, y en cada uno se dice qué hace, con qué herramienta y qué se espera ver. La preparación de datos, la carga del modelo, el entrenamiento o la inferencia y el guardado del resultado van cada uno en su sección, y las órdenes clave se dan en una forma que se pueda copiar tal cual, en lugar de descripciones del tipo «haz clic en un botón de la interfaz», que nadie puede reproducir.\n\nCómo demostrar que funcionó: tiene que haber una salida que se pueda comprobar, una métrica concreta, una muestra del contenido de un fichero, un trozo fijo de registro. «El resultado fue bueno» no basta, y una captura por sí sola tampoco. La parte de evaluación tiene que decir qué conjunto de evaluación es, de dónde salió y si se solapa con los datos de entrenamiento (eso ya era clave en los capítulos anteriores).\n\nPara que otro pueda reproducirlo: escribe los tropiezos, qué combinación de versiones no arranca, qué parámetro falla si no lo cambias, qué hacer cuando faltan recursos. Marca todos los puntos donde «esto es específico de mi montaje».\n\nPor último, vuelve a los dos requisitos estrictos: ¿ocurrió de verdad este escenario? Y si alguien lo sigue al pie de la letra, ¿obtiene el mismo resultado?",
+    "explanation": "Este capítulo pide dos frases, pero lo que evalúa el ejercicio es si sabes convertirlas en acciones concretas.\n\n«Reproducible» se traduce en tres cosas: **el punto de partida es el mismo** (versiones, datos y recursos por escrito), **el proceso se puede copiar** (órdenes completas, nunca «haz clic en algún sitio») y **el resultado se puede comprobar** (una métrica o una muestra de la salida, nunca «salió bien»). Falte la que falte, nadie reproduce nada.\n\n«Práctica real implantada» descarta los escenarios inventados. Un invento se escribe bonito con facilidad, porque nunca ha que ejecutarlo de verdad y nadie sabe dónde se atascaría. El valor de un escenario real está precisamente en esos puntos donde se atascó, así que «los tropiezos que me pasé» es justo lo más importante que escribir.\n\nEste conjunto de requisitos está conectado con los capítulos anteriores: el 3 pide registrar la versión de los datos, el 6 pide un criterio de evaluación unificado y el 13 pide que los parámetros de ajuste fino sean reproducibles. Escribir este tutorial es exactamente donde esos hábitos rinden.\n\nEste ejercicio no puede ejecutar una implantación real; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un guion con el que comparar."
+  }
+]

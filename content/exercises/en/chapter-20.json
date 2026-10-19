@@ -1,1 +1,49 @@
-[]
+[
+  {
+    "id": "ch20-ex01",
+    "chapter": "chapter-20",
+    "type": "predict",
+    "difficulty": 1,
+    "minutes": 4,
+    "objective": "Decide which scenarios suit a community tutorial",
+    "prompt": "This chapter invites everyone to write up their own business scenario. Which of these conditions match the requirements the chapter sets out? (multi-select)\n\nA. The scenario has to be reproducible, so that someone else following it gets the same result\nB. The scenario has to be real deployed practice, not an idea made up out of thin air\nC. As long as the model performs well, reproducibility does not matter\nD. You have to state what data, what model and which steps you ran\nE. It is fine to be worse than the official example; you can post it first and optimise later",
+    "checks": [
+      {
+        "kind": "output_choice",
+        "correct": [
+          "A",
+          "B",
+          "D"
+        ],
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": ""
+    },
+    "reference": "C contradicts \"reproducible\" directly -- this chapter explicitly requires the scenario to be reproducible. E is not among the requirements the chapter lists; what it gives are two hard requirements to meet before submitting, not \"post it and see\".",
+    "explanation": "The body of this chapter is short, but it sets two hard requirements: **the scenario has to be reproducible and has to be real deployed practice**. A and B are those two spelled out.\n\nD is the necessary consequence of the two: a reproducible, real scenario has to say what data, what model and which steps before anyone else can follow it. That is exactly the practice the earlier chapters kept asking for -- the data needs a version (chapter 3), the command has to be runnable as given (chapter 2), and the evaluation basis has to be recorded (chapter 6).\n\nC and E both run into those requirements. A tutorial that cannot be reproduced is worth close to nothing to a reader: they cannot tell whether your environment was unusual or the steps themselves are wrong.\n\nWorth being clear: this chapter does not specify that the result \"has to beat some level\". C and E are wrong not because of a quality bar but because they deny the two hard requirements of reproducibility and reality.\n\nGrading boundary: the selected letters must match the reference answer exactly; the reasons after the options are not graded."
+  },
+  {
+    "id": "ch20-ex02",
+    "chapter": "chapter-20",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 8,
+    "objective": "Write a business scenario up as a reproducible tutorial",
+    "prompt": "Pick a business scenario you know well or would like to try, and following this chapter's requirements of \"reproducible, real deployed practice\", write down how you would organise the tutorial: which prerequisites to state, which steps to run, how to prove it really works, and how you would let someone else reproduce it.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "Does it state the data source and version, the model and version, the environment and dependencies, the order of the steps, how the result is verified (rather than described subjectively), and the resource requirements and caveats needed to reproduce it?"
+    },
+    "reference": "Prerequisites: the hardware and budget threshold (how much VRAM, whether paid resources are needed), which permissions or accounts have to be enabled, where the data comes from and which version it is, and which specific model version and licence was chosen. All of this goes at the front, because reproducibility presupposes that someone else knows they start from the same place.\n\nSteps: list them in order, and for each one say what it does, what tool it uses and what you expect to see. Data preparation, model loading, training or inference, and saving the result each get their own section, and the key commands are given in a form that can be copied directly, rather than descriptions like \"click a button in the interface\" that nobody can reproduce.\n\nHow to prove it worked: there has to be output that can be checked -- a specific metric value, a sample of a file's contents, a fixed stretch of log. \"The results looked good\" is not enough, and a screenshot on its own is not enough either. The evaluation part has to say what the evaluation set is, where it came from, and whether it overlaps the training data (that one was a focus in the earlier chapters).\n\nLetting someone reproduce it: write down the traps you hit -- which combination of versions will not run, which parameter breaks things if you leave it alone, what to do when resources are short. Mark every place where \"this is specific to my setup\".\n\nFinally, check yourself against the two hard requirements: did this scenario really happen? And if a reader followed it strictly, would they get the same result?",
+    "explanation": "This chapter asks for two sentences, but what the exercise tests is whether you can turn them into concrete actions.\n\n\"Reproducible\" comes down to three things: **the starting point is the same** (versions, data and resources written down), **the process can be copied** (commands given in full, never \"click something in the interface\"), and **the result can be checked** (a metric or a sample of the output, never \"it worked well\"). Miss any one and nobody can reproduce it.\n\n\"Real deployed practice\" rules out invented scenarios. An invention is easy to write beautifully, because it never has to actually run and nobody knows where it would get stuck. The value of a real scenario lies precisely in those places where it got stuck, so \"the traps I hit\" is the part most worth writing.\n\nThis set of requirements connects to the earlier chapters: chapter 3 asks you to record the data version, chapter 6 asks for a consistent evaluation basis, chapter 13 asks for reproducible fine-tuning parameters. Writing this tutorial is exactly where those habits pay off.\n\nThis exercise cannot run a real business deployment; grading rests on self-assessment plus an optional AI score, and the reference answer gives an outline you can compare against."
+  }
+]

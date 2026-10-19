@@ -1,1 +1,129 @@
-[]
+[
+  {
+    "id": "ch11-ex01",
+    "chapter": "chapter-11",
+    "type": "code",
+    "difficulty": 2,
+    "minutes": 10,
+    "objective": "Estimar el peso a partir de los bits",
+    "prompt": "La cuantización no cambia el número de parámetros, solo el espacio que ocupa cada uno. Escribe una función `quant_size(params_b, bits)` que devuelva el tamaño de los pesos en GB (GB decimales): cada parámetro ocupa `bits` bits, así que calcula primero el total de bits y luego conviértelo a bytes y a GB, es decir `params_b x 10^9 x bits / 8 / 10^9` GB. Solo se admiten las anchuras de bits `8` y `4`; lanza `ValueError` con cualquier otra.",
+    "starter": "def quant_size(params_b, bits):\n    # 返回量化后的权重大小（GB）\n    pass\n\nprint(quant_size(7, 8))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert quant_size(7, 8) == 7.0",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert quant_size(7, 4) == 3.5",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert quant_size(70, 8) == 70.0 and quant_size(70, 4) == 35.0",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    quant_size(7, 16)\n    assert False, '16 位不属于本章支持的量化位数'\nexcept ValueError:\n    pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "try:\n    quant_size(7, 6)\n    assert False, '6 位不属于本章支持的量化位数'\nexcept ValueError:\n    pass",
+        "weight": 8
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _n in (0.5, 1, 7, 13, 70, 175):\n    for _b in (4, 8):\n        assert quant_size(_n, _b) == _n * _b / 8, (_n, _b, quant_size(_n, _b))",
+        "weight": 30
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bad in (0, 2, 3, 16, 32, -4, 4.0):\n    try:\n        quant_size(7, _bad)\n        assert False, '应该抛出 ValueError: %r' % (_bad,)\n    except ValueError:\n        pass",
+        "weight": 20
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que la cuantización no toca el número de parámetros y solo cambia los bits por parámetro?"
+    },
+    "reference": "def quant_size(params_b, bits):\n    if not isinstance(bits, int) or isinstance(bits, bool) or bits not in (8, 4):\n        raise ValueError('unsupported bit width: ' + str(bits))\n    return params_b * 1_000_000_000 * bits / 8 / 1_000_000_000\n\nprint(quant_size(7, 8))",
+    "explanation": "La frase central de este capítulo es «el número de parámetros no ha cambiado, lo que se ha reducido es el espacio que ocupa cada uno». Así que la fórmula es: bits totales = número de parámetros x bits por parámetro, y luego se divide entre 8 para obtener bytes.\n\n7 mil millones de parámetros a 8 bits son 7 x 10^9 x 8 / 8 = 7 GB, y a 4 bits son 3.5 GB, lo que coincide con la tabla del capítulo (16 bits 14 GB, 8 bits 7 GB, 4 bits 3.5 GB).\n\nHay un error fácil aquí: `1_000_000_000` aparece dos veces, una para convertir la «B» en el número real de parámetros y otra para convertir bytes en GB. Ambos son decimales. Si escribes cualquiera de ellos como `1024**3` (GiB), los 7B a 8 bits dan unos 6.52, que no cuadran con el 7 de la tabla.\n\n«Solo 8 y 4» es un límite que el enunciado expone explícitamente, así que `16`, `6`, `0`, `2` y `32` deben lanzar `ValueError`. Aquí hay una trampa real: en Python `4.0 == 4` es verdadero, así que escribir solo `if bits not in (8, 4)` **deja pasar `4.0` sin querer**. Para rechazarlo hay que comprobar antes `isinstance(bits, int)`; una de las comprobaciones incluye justo el grupo de entradas con `4.0` para vigilar esta trampa.\n\nTen en cuenta lo que advertía este capítulo: un archivo cuantizado real también guarda factores de escala y puede mezclar precisiones, así que el tamaño real difiere de esta estimación.\n\nLa comprobación principal recorre 6 recuentos de parámetros contra 2 anchuras de bits, 12 entradas en total, recalculando cada una con la fórmula: está ahí para impedir que te aprenses la respuesta, porque un valor de retorno fijo no cubre 12 entradas. Límite honesto: esas 12 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch11-ex02",
+    "chapter": "chapter-11",
+    "type": "code",
+    "difficulty": 3,
+    "minutes": 12,
+    "objective": "Elegir una versión que quepa en la VRAM",
+    "prompt": "El mismo modelo tiene varias versiones cuantizadas con nombres como `\"Q4_K_M\"`, `\"Q5_K_S\"`, `\"Q8_0\"`. Escribe una función `pick_version(label, device_gb)` que elija una que quepa: extrae la anchura de bits de la etiqueta -- `\"Q4_K_M\"` es de 4 bits, `\"Q5_K_S\"` de 5 y `\"Q8_0\"` de 8 (el número que va detrás de `Q` y antes de `_K_` o `_`). Calcula el tamaño de esa versión con la regla `quant_size(params_b, bits)` (aquí el modelo es fijo de 7B) y reserva 2 GB de margen: si `tamaño + 2` cabe en `device_gb`, devuelve la etiqueta; si no, devuelve `\"none\"`.",
+    "starter": "def parse_bits(label):\n    # 从 'Q4_K_M' 里取出 4\n    pass\n\n\ndef pick_version(label, device_gb):\n    # 返回 label 或 \"none\"\n    pass\n\nprint(pick_version('Q4_K_M', 8))\n",
+    "checks": [
+      {
+        "kind": "assert_python",
+        "code": "assert parse_bits('Q4_K_M') == 4 and parse_bits('Q5_K_S') == 5 and parse_bits('Q8_0') == 8",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q4_K_M', 8) == 'Q4_K_M', 'Q4 占 3.5GB，加 2GB 余量是 5.5GB，8GB 装得下'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q8_0', 8) == 'none', 'Q8 占 7GB，加余量 9GB 超了'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q5_K_S', 8) == 'Q5_K_S', 'Q5 占 4.375GB'",
+        "weight": 10
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q4_K_M', 5.5) == 'Q4_K_M', '正好卡在边界上算装得下'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "assert pick_version('Q4_K_M', 5.4) == 'none', '差一点点也不行'",
+        "weight": 12
+      },
+      {
+        "kind": "assert_python",
+        "code": "for _bits in (2, 3, 4, 5, 6, 7, 8, 9):\n    for _suffix in ('_K_M', '_K_S', '_0'):\n        _label = f'Q{_bits}{_suffix}'\n        _size = 7 * _bits / 8\n        for _dev in (3.5, 5.4, 5.5, 6, 8, 9, 16, 24):\n            _want = _label if _size + 2 <= _dev else 'none'\n            _got = pick_version(_label, _dev)\n            assert _got == _want, (_label, _dev, _got, _want)",
+        "weight": 32
+      }
+    ],
+    "llm_rubric": {
+      "enabled": false,
+      "criteria": "¿Entiende que las K/M/S de una etiqueta son códigos de configuración y no una anchura de bits?"
+    },
+    "reference": "def parse_bits(label):\n    rest = label.split('Q', 1)[1]\n    digits = ''\n    for ch in rest:\n        if ch.isdigit():\n            digits += ch\n        else:\n            break\n    return int(digits)\n\n\ndef pick_version(label, device_gb):\n    bits = parse_bits(label)\n    size = 7 * bits / 8\n    if size + 2 <= device_gb:\n        return label\n    return 'none'\n\n\nprint(pick_version('Q4_K_M', 8))",
+    "explanation": "Este capítulo va de cómo leer una etiqueta como `Q4_K_M`. Dice: la Q indica que está cuantizado, el número que va detrás es la anchura de bits principal, la K indica el esquema K-quant y la M es la configuración Medium de ese esquema.\n\nAsí que la anchura de bits viene solo del número inmediatamente posterior a la `Q`, y `_K_`, `_M`, `_S` y `_0` son códigos de configuración que no participan. `parse_bits` hace justo eso: toma la tanda de dígitos tras la Q y para en el primer carácter que no sea dígito. Si este paso se hace mal, `Q8_0` se lee como el entero 0, o el 0 de `_0` se cuela en la cuenta.\n\n`pick_version` convierte en una regla ejecutable la frase del capítulo «si una versión ya está cerca del límite de memoria o VRAM del dispositivo, conviene cambiar por una que ocupe menos y dejar margen para el contexto y la ejecución»: el tamaño más 2 GB de margen tiene que caber en el dispositivo.\n\nEl límite es «cabe». `pick_version('Q4_K_M', 5.5)` da exactamente 3.5 + 2 y tiene que contar como que cabe; `5.4` debe devolver `\"none\"`. Escribir `<`, o añadir una tolerancia propia, falla en esas dos entradas.\n\nLa comprobación principal recorre anchuras de 2 a 9 bits contra tres sufijos y 8 tamaños de dispositivo, 192 entradas en total, con etiquetas **generadas** y no listadas, recalculando el valor esperado en cada caso según `tamaño + 2 <= dispositivo`: está ahí para impedir que te aprenses la respuesta, porque una implementación que solo se ha memoricizado las tres etiquetas `Q4_K_M`, `Q5_K_S` y `Q8_0` se delata en cuanto ve `Q3_K_S` o `Q7_0` (192 entradas, 192 etiquetas distintas, cubriendo de Q2 a Q9). Límite honesto: esas 192 entradas también están en el corpus público, así que esto eleva el coste de copiar la respuesta, no lo impide."
+  },
+  {
+    "id": "ch11-ex03",
+    "chapter": "chapter-11",
+    "type": "reflect",
+    "difficulty": 2,
+    "minutes": 6,
+    "objective": "Decidir cómo elegir una versión cuantizada",
+    "prompt": "Has descargado un modelo cuantizado GGUF y tanto el disco como la VRAM están justos. Hay versiones Q4, Q5 y Q8 disponibles. Escribe tu proceso de elección: qué confirmas primero, qué comparas después, cómo juzgas por fin si «funciona de forma estable» y qué haces cuando baja la calidad de las respuestas.",
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ],
+    "llm_rubric": {
+      "enabled": true,
+      "criteria": "¿Sigue el orden de este capítulo: confirmar primero que la herramienta de inferencia lo admite, luego mirar los bits y el margen, conseguir que funcione de forma estable antes de comparar la calidad en las preguntas que te importan, y subir a más bits cuando la calidad baja?"
+    },
+    "reference": "(1) Primero confirma que la herramienta de inferencia admite el modelo: al elegir una versión cuantizada GGUF, el paso uno es confirmar que tu herramienta de inferencia (Ollama, llama.cpp y similares) la admite. Si la herramienta no la admite, da igual que la anchura de bits sea baja.\n\n(2) Después mira el consumo y el margen: un modelo de 7B ocupa unos 7 GB en Q8, 4.375 GB en Q5 y 3.5 GB en Q4. Si una versión ya está cerca del límite de memoria o VRAM del dispositivo, cambia por una que ocupe menos y deja margen para el contexto y la ejecución. Así que me inclino por Q4 o Q5 antes que por un Q8 que encaja justo.\n\n(3) Después juzga si funciona de forma estable: este paso no se decide solo con números. El aviso del capítulo es que un archivo que se reduce a la cuarta parte no significa que las respuestas sean cuatro veces más rápidas: hay que ejecutarlo de verdad y ver si da OOM y si la respuesta es aceptable.\n\n(4) Qué hacer si baja la calidad: si los recursos lo permiten, compara las respuestas de distintas versiones con las mismas preguntas, prestando especial atención a las tareas que necesitas, como extracción de información, generación de código o salida con un formato exigido. Si las respuestas de Q4 no son fiables, sube a Q5 o Q8.\n\nY conviene recordar con honestidad lo que la cuantización cuesta por sí sola: bajar la precisión puede afectar a la calidad de las respuestas, y cuánto depende del modelo, del método de cuantización y de la tarea. Así que el orden es «primero confirmar que funciona de forma estable, después comprobar la calidad».",
+    "explanation": "El orden de este capítulo no es arbitrario, es una cadena de dependencias: si la herramienta no lo admite, todo lo demás sobra; si el consumo se pasa de la capacidad, no cabe ni de lejos; si cabe pero no va estable, tampoco sirve; y solo entonces entra la calidad.\n\nEl segundo punto es el que más se pasa por alto, y este capítulo lo enfatiza: **un archivo cuatro veces más pequeño no es cuatro veces más rápido.** Mucha gente ve que Q4 ocupa la mitad que Q8 y lo toma como un truco de velocidad, pero lo que ahorra es espacio.\n\nEl tercer punto es la otra mitad del «recuerda que el modelo se pueda descargar no significa que se pueda usar como quieras» del capítulo: la cuantización es un intercambio, no un almuerzo gratis. Bajar la precisión puede afectar a la calidad, y cuánto depende del modelo, del método y de la tarea, así que tienes que probarlo tú mismo en las tareas que te importan.\n\nEste ejercicio no puede ejecutar una descarga ni una inferencia reales; la corrección se apoya en la autoevaluación y en una puntuación opcional por IA, y la respuesta de referencia ofrece un orden de juicio con el que comparar."
+  }
+]

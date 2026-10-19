@@ -86,6 +86,11 @@
       "enabled": true,
       "criteria": "¿Elige un modo y explica el motivo, menciona activar plugins según haga falta en lugar de todos a la vez, valida con una tarea pequeña y da señales concretas de «no encaja» en lugar de un vago «el resultado no fue bueno»?"
     },
-    "checks": []
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
   }
 ]

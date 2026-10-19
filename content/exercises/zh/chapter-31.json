@@ -86,6 +86,11 @@
       "enabled": true,
       "criteria": "是否选对模式并说明理由、是否提到插件按需开启、是否用小任务验证、以及是否说明了判断不适用的具体信号（而不是笼统说效果不好）"
     },
-    "checks": []
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
   }
 ]

@@ -86,6 +86,11 @@
       "enabled": true,
       "criteria": "Does it pick a mode and give the reason, does it mention enabling plugins on demand rather than all at once, does it validate with a small task, and does it give concrete signals for \"does not suit\" rather than a vague \"the results were not good\"?"
     },
-    "checks": []
+    "checks": [
+      {
+        "kind": "self_assessed",
+        "weight": 1
+      }
+    ]
   }
 ]

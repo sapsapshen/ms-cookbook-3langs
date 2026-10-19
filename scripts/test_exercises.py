@@ -130,6 +130,17 @@ def validate_item(item, lang):
         assert isinstance(item.get('reference'), str) and item['reference'].strip(), \
             f'{where} reflect needs a reference'
         assert not graded, f'{where} reflect must not carry graded checks'
+        # The self_assessed check is how a reflect exercise DECLARES that it has
+        # nothing to grade. `checks: []` happens to behave identically -- the
+        # grader reads graded.length === 0 and returns mode 'self-assessed' --
+        # so the behaviour is not the argument. The argument is that it is a
+        # shape no other exercise in the corpus uses, and it leaves a reader of
+        # the data unable to tell an exercise that was deliberately not gradable
+        # from one whose checks were lost in an edit: the empty array carries no
+        # claim either way. One spelling, one meaning.
+        assert checks, f'{where} reflect needs a self_assessed check'
+        assert all(check.get('kind') == 'self_assessed' for check in checks), \
+            f'{where} reflect checks must be self_assessed'
     else:
         assert graded, f'{where} needs at least one graded check'
         if item['type'] in SANDBOX_TYPES:

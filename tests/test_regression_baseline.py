@@ -38,6 +38,9 @@ def site(tmp_path, monkeypatch):
     monkeypatch.setenv('APP_BASE_URL', 'http://127.0.0.1:7860')
     monkeypatch.delenv('OAUTH_CLIENT_ID', raising=False)
     monkeypatch.delenv('OAUTH_CLIENT_SECRET', raising=False)
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.delenv('LOCAL_ADMIN_EMAIL', raising=False)
+    monkeypatch.delenv('LOCAL_ADMIN_PASSWORD', raising=False)
     from app import create_app
     return create_app(tmp_path), tmp_path
 

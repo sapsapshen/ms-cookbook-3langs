@@ -45,13 +45,16 @@ def site(tmp_path, monkeypatch):
     monkeypatch.delenv('OAUTH_CLIENT_SECRET', raising=False)
     monkeypatch.delenv('EXERCISE_LLM_KEY', raising=False)
     monkeypatch.delenv('EXERCISE_LLM_BASE_URL', raising=False)
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.delenv('LOCAL_ADMIN_EMAIL', raising=False)
+    monkeypatch.delenv('LOCAL_ADMIN_PASSWORD', raising=False)
     return create_app(tmp_path), tmp_path
 
 
 def reader(site, uid='alice'):
     app, path = site
     with app.state.db() as db:
-        db.execute('INSERT OR IGNORE INTO users VALUES (?,?,?)', (uid, 'sub-' + uid, uid))
+        db.execute('INSERT OR IGNORE INTO users(id,sub,name,role) VALUES (?,?,?,?)', (uid, 'sub-' + uid, uid, 'reader'))
         db.execute('INSERT OR REPLACE INTO sessions VALUES (?,?,?)', ('session-' + uid, uid, int(time.time()) + 1000))
     client = TestClient(app, base_url='http://127.0.0.1:7860')
     data = base64.b64encode(json.dumps({'sid': 'session-' + uid, 'csrf': 'test-csrf'}).encode())

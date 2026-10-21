@@ -18,8 +18,18 @@ APP_BASE_URL=http://127.0.0.1:7860 .venv/bin/uvicorn app:app --host 127.0.0.1 --
 
 访问 http://127.0.0.1:7860 。原来的静态 HTTP 服务不提供 `/api`，不能用于登录和评论。
 
-默认评论与账号数据保存在 `.data/reading.sqlite3`，访问统计保存在独立的 `.data/analytics.sqlite3`，密钥保存在 `.data/session.key`；这些文件均被 Git 忽略。
-没有 OAuth 配置时明确显示登录待开启，不提供伪造的演示登录。
+评论与练习进度保存在 `.data/reading.sqlite3`，访问统计保存在独立的 `.data/analytics.sqlite3`，密钥保存在 `.data/session.key`；这些文件均被 Git 忽略。
+账号由 PostgreSQL 管理，表 `accounts` 保存邮箱、scrypt 密码哈希、显示名、角色与启用状态。设置以下环境变量即可开启邮箱密码登录（服务器上的数据库由独立容器提供）：
+
+- `DATABASE_URL=postgresql://用户:密码@127.0.0.1:5434/ms_cookbook`
+- `LOCAL_ADMIN_EMAIL` / `LOCAL_ADMIN_PASSWORD`：启动时确保该账号存在并具有 admin 角色；已存在账号的密码不会被覆盖
+- `LOCAL_ADMIN_NAME`：显示名，默认“管理员”
+- `APP_BASE_URL`：服务自身地址，用于 OAuth 回调与 Secure Cookie
+- `ALLOWED_ORIGINS`：逗号分隔的额外同源地址；通过域名和 IP 访问时都要列入，否则写操作会被 CSRF 同源检查拒绝
+
+登录页为 `/auth/login`，登录接口为 `POST /api/auth/login`。测试或本地开发可以用 `DATABASE_URL=sqlite:///路径/accounts.sqlite3` 使用 SQLite 账号库；生产部署使用 PostgreSQL。
+账号库不可用时站点仍可阅读，登录接口返回 503，并在下一次登录时重试连接。
+
 本地真实 OAuth 需创建允许本地回调的互联应用，设置以下环境变量（不要把密钥写入 Git）：
 
 - `OAUTH_CLIENT_ID`
@@ -27,6 +37,8 @@ APP_BASE_URL=http://127.0.0.1:7860 .venv/bin/uvicorn app:app --host 127.0.0.1 --
 - `OPENID_PROVIDER_URL=https://www.modelscope.cn`
 - `APP_BASE_URL=http://127.0.0.1:7860`
 - 回调地址：`http://127.0.0.1:7860/auth/callback`
+
+配置 OAuth 后，登录页会额外显示“使用 ModelScope 社区账号登录”。
 
 ## 创空间部署
 
@@ -87,7 +99,8 @@ Docker 监听 7860，持久化数据目录固定为 `/mnt/workspace/purplebook`�
 ## 身份与安全
 
 使用 Authlib 完成 OIDC state、nonce、签名及身份校验。Cookie 中只保存随机服务端会话 ID、CSRF 与短期授权事务；不保存访问令牌。
-数据库保存随机用户 ID、OIDC sub、显示名称和评论；用户 ID 只取自验证后的服务端身份。退出时撤销服务端会话。
+本地账号密码使用带随机盐的 scrypt 哈希保存在 PostgreSQL，登录失败有按地址和账号的双重时间窗限流；登录成功后才写入 SQLite 影子用户和会话。
+数据库保存随机用户 ID、登录方式标识、显示名称、角色和评论；用户 ID 只取自验证后的服务端身份。退出时撤销服务端会话。管理员角色来自账号表的 `role`，原有的 `MODERATOR_SUBS` 仍可作为 OIDC 管理员配置。
 写操作要求有效登录、同源 Origin 和 CSRF token。写端点各自计配额，窗口都是 60 秒：划线与章节留言 `POST /api/chapters/{chapter}/entries` 与 `POST /api/wishes` 每位用户每分钟 10 次与 5 次，练习进度 `POST /api/exercises/progress` 每位用户每分钟 20 次；练习评分 `POST /api/exercises/grade` 是另一套额度，见上一节。空批次不算写入（读者从未做过练习时不会因此被拒）。静态文件仅通过显式允许的目录提供，源代码、数据库、密钥不会作为静态文件暴露。
 前端通过 textContent 渲染用户内容，拒绝将评论作为 HTML 执行。
 生产会话使用 HTTPS Secure、HttpOnly、SameSite=Lax Cookie。

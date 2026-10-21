@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7c13b">
+  <meta name="description" content="登录超智学习空间，参与讨论、保存划线与同步练习进度。">
+  <link rel="icon" href="/assets/brand/book-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css?v=b3d5d3762ddb">
+  <link rel="stylesheet" href="/assets/login.css?v=1">
+  <title>登录 · 超智学习空间</title>
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <a class="login-wordmark" href="/" aria-label="超智学习空间首页">
+      <img src="/assets/brand/book-mark.svg" alt="" width="34" height="34">
+      <span>SILS</span>
+    </a>
+    <section class="login-card" aria-labelledby="loginTitle">
+      <p class="login-eyebrow">SUPER INTELLIGENCE LEARNING SPACE</p>
+      <h1 id="loginTitle">登录学习空间</h1>
+      <p class="login-intro">登录后可以发表评论、保存划线与同步练习进度。</p>
+      <form id="loginForm" novalidate>
+        <label for="loginEmail">邮箱</label>
+        <input id="loginEmail" name="email" type="email" autocomplete="username" inputmode="email" maxlength="254" required placeholder="you@example.com">
+        <label for="loginPassword">密码</label>
+        <input id="loginPassword" name="password" type="password" autocomplete="current-password" maxlength="200" required>
+        <p id="loginStatus" class="login-status" role="status" aria-live="polite"></p>
+        <button id="loginSubmit" class="login-submit" type="submit">登录</button>
+      </form>
+      <p class="login-oauth" id="oauthLogin" hidden><a href="/auth/oauth/login">使用 ModelScope 社区账号登录</a></p>
+      <p class="login-note">账号由站点管理员创建。忘记密码请联系管理员重置。</p>
+    </section>
+    <a class="login-back" href="/">← 返回阅读空间</a>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const form = document.querySelector('#loginForm');
+    const email = document.querySelector('#loginEmail');
+    const password = document.querySelector('#loginPassword');
+    const submit = document.querySelector('#loginSubmit');
+    const status = document.querySelector('#loginStatus');
+    const returnTo = new URLSearchParams(location.search).get('return_to') || '#home';
+    function setStatus(text, state) {
+      status.textContent = text;
+      status.dataset.state = state || '';
+    }
+    fetch('/api/session', {credentials: 'same-origin'}).then(response => response.ok ? response.json() : null).then(data => {
+      if (!data || !data.oauthLoginEnabled) return;
+      const box = document.querySelector('#oauthLogin');
+      box.hidden = false;
+      box.querySelector('a').href = '/auth/oauth/login?return_to=' + encodeURIComponent(returnTo);
+    }).catch(() => {});
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const emailValue = email.value.trim();
+      const passwordValue = password.value;
+      if (!emailValue || !passwordValue) {
+        setStatus('请输入邮箱和密码。', 'error');
+        (!emailValue ? email : password).focus();
+        return;
+      }
+      submit.disabled = true;
+      setStatus('正在登录…', '');
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({email: emailValue, password: passwordValue, return_to: returnTo})
+        });
+        let data = {};
+        try { data = await response.json(); } catch {}
+        if (!response.ok) {
+          setStatus(typeof data.detail === 'string' ? data.detail : '登录未完成，请稍后重试。', 'error');
+          submit.disabled = false;
+          return;
+        }
+        setStatus('登录成功，正在返回…', 'success');
+        location.replace(data.return_to || '/');
+      } catch {
+        setStatus('网络连接失败，请稍后重试。', 'error');
+        submit.disabled = false;
+      }
+    });
+    email.focus();
+  })();
+  </script>
+</body>
+</html>

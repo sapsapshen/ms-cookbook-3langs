@@ -7,6 +7,7 @@ import httpx
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -24,6 +25,8 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
+
+from accounts import AccountsStore, LoginLimiter
 
 ROOT = Path(__file__).resolve().parent
 LOGGER = logging.getLogger(__name__)
@@ -167,6 +170,11 @@ class Entry(BaseModel):
 class Wish(BaseModel):
     text: str = Field(max_length=2000)
 
+class LocalLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=200)
+    return_to: str = Field(default='#home', max_length=200)
+
 class AnalyticsView(BaseModel):
     page: str = Field(min_length=1, max_length=64)
     visitor: str = Field(min_length=16, max_length=128, pattern=r'^[A-Za-z0-9_-]+$')
@@ -236,7 +244,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     with db() as conn:
         conn.executescript('''
         PRAGMA journal_mode=WAL;
-        CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, sub TEXT UNIQUE NOT NULL, name TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, sub TEXT UNIQUE NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'reader');
         CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS entries(id TEXT PRIMARY KEY, chapter TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL, text TEXT NOT NULL, quote TEXT NOT NULL, block INTEGER NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, created INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS entries_chapter ON entries(chapter, created);
@@ -253,6 +261,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         conn.execute(f'CREATE TABLE IF NOT EXISTS exercise_progress({EXERCISE_PROGRESS_COLUMNS})')
         conn.execute('CREATE INDEX IF NOT EXISTS exercise_progress_user ON exercise_progress(user_id, updated)')
         migrate_exercise_progress(conn)
+        if 'role' not in {row['name'] for row in conn.execute('PRAGMA table_info(users)')}:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'reader'")
 
     @contextmanager
     def analytics_db():
@@ -399,6 +409,25 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     if parsed.scheme != 'https' and parsed.hostname not in ('127.0.0.1', 'localhost'):
         raise RuntimeError('Public OAuth deployments require HTTPS')
     base = base.rstrip('/')
+    allowed_origins = {base}
+    for origin in os.getenv('ALLOWED_ORIGINS', '').split(','):
+        origin = origin.strip().rstrip('/')
+        if origin: allowed_origins.add(origin)
+    accounts_dsn = os.getenv('DATABASE_URL', '').strip()
+    accounts_store = AccountsStore(
+        accounts_dsn,
+        admin_email=os.getenv('LOCAL_ADMIN_EMAIL', ''),
+        admin_password=os.getenv('LOCAL_ADMIN_PASSWORD', ''),
+        admin_name=os.getenv('LOCAL_ADMIN_NAME', '管理员'),
+    ) if accounts_dsn else None
+    local_login_enabled = accounts_store is not None
+    login_limiter = LoginLimiter(limit=10)
+    login_ip_limiter = LoginLimiter(limit=30)
+    if accounts_store:
+        try:
+            accounts_store.ensure_ready()
+        except Exception:
+            LOGGER.exception('Could not initialize the account database; login will retry on demand')
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -412,8 +441,9 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     session_secret = os.getenv('SESSION_SECRET') or key_path.read_text()
     app.add_middleware(SessionMiddleware, secret_key=session_secret, session_cookie='purplebook_session', max_age=7*86400, same_site='lax', https_only=parsed.scheme=='https')
     oauth = OAuth()
-    enabled = bool(os.getenv('OAUTH_CLIENT_ID') and os.getenv('OAUTH_CLIENT_SECRET'))
-    if enabled:
+    oidc_enabled = bool(os.getenv('OAUTH_CLIENT_ID') and os.getenv('OAUTH_CLIENT_SECRET'))
+    login_enabled = oidc_enabled or local_login_enabled
+    if oidc_enabled:
         # Studio can inject an internal issuer alias. Use the verified public
         # ModelScope discovery endpoint so redirects remain browser-accessible.
         provider = 'https://www.modelscope.cn'
@@ -502,20 +532,30 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         with db() as conn:
             row = conn.execute('SELECT users.* FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.id=? AND expires>?', (sid,int(time.time()))).fetchone()
         return dict(row) if row else None
+    def origin_allowed(request):
+        origin = (request.headers.get('origin') or '').rstrip('/')
+        if not origin: return False
+        if origin in allowed_origins: return True
+        request_origin = f'{request.url.scheme}://{request.url.netloc}'.rstrip('/')
+        return secrets.compare_digest(origin, request_origin)
+    def is_moderator(u):
+        return bool(u and (u.get('role') == 'admin' or u['sub'] in admins))
     def public_user(u):
-        return {'id':u['id'],'name':u['name'],'moderator':u['sub'] in admins} if u else None
+        return {'id':u['id'],'name':u['name'],'moderator':is_moderator(u)} if u else None
+    def safe_return_to(value):
+        return value if re.fullmatch(r'#[a-zA-Z0-9_/?=&%-]{1,180}', value or '') else '#home'
     def require_user(request):
         u=user(request)
         if not u: raise HTTPException(401,'请先登录')
         csrf=request.headers.get('x-csrf-token','')
-        if request.headers.get('origin') != base or not csrf or not secrets.compare_digest(csrf, request.session.get('csrf','')):
+        if not origin_allowed(request) or not csrf or not secrets.compare_digest(csrf, request.session.get('csrf','')):
             raise HTTPException(403,'页面已过期，请刷新后重试')
         return u
     def check_chapter(chapter):
         if chapter not in chapters: raise HTTPException(404,'章节不存在或尚未开放')
         return chapters[chapter]
     def require_same_origin(request):
-        if request.headers.get('origin') != base:
+        if not origin_allowed(request):
             raise HTTPException(403,'请求来源无效')
     def analytics_range(days,start,end):
         today=datetime.now(analytics_timezone).date()
@@ -546,7 +586,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     @app.get('/api/session')
     def session(request: Request):
         request.session.setdefault('csrf',secrets.token_urlsafe(32))
-        return {'user':public_user(user(request)), 'csrf':request.session['csrf'], 'loginEnabled':enabled}
+        return {'user':public_user(user(request)), 'csrf':request.session['csrf'], 'loginEnabled':login_enabled,
+                'localLoginEnabled':local_login_enabled, 'oauthLoginEnabled':oidc_enabled}
 
     @app.post('/api/analytics/view',status_code=204)
     def record_analytics_view(view: AnalyticsView, request: Request):
@@ -651,15 +692,56 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
 
     @app.get('/auth/login')
     async def login(request: Request, return_to: str = '#home'):
-        if not enabled: raise HTTPException(503,'登录尚未配置')
-        # Only a local chapter/home hash can be used as the return destination.
-        import re
-        request.session['return_to'] = return_to if re.fullmatch(r'#[a-zA-Z0-9_/?=&%-]{1,180}', return_to) else '#home'
+        target=safe_return_to(return_to)
+        request.session['return_to']=target
+        if local_login_enabled:
+            if user(request): return RedirectResponse('/'+target,status_code=303)
+            return FileResponse(ROOT/'login.html',headers={'Cache-Control':'no-store'})
+        if not oidc_enabled: raise HTTPException(503,'登录尚未配置')
         return await oauth.modelscope.authorize_redirect(request, base+'/auth/callback')
+
+    @app.get('/auth/oauth/login')
+    async def oauth_login(request: Request, return_to: str = '#home'):
+        if not oidc_enabled: raise HTTPException(503,'登录尚未配置')
+        request.session['return_to']=safe_return_to(return_to)
+        return await oauth.modelscope.authorize_redirect(request, base+'/auth/callback')
+
+    @app.post('/api/auth/login')
+    def local_login(payload: LocalLogin, request: Request):
+        if not local_login_enabled: raise HTTPException(503,'登录尚未配置')
+        if not origin_allowed(request): raise HTTPException(403,'请求来源无效')
+        email=payload.email.strip().lower()
+        address=request.client.host if request.client else 'unknown'
+        ip_bucket='ip:'+address
+        account_bucket=ip_bucket+'|'+email
+        if login_ip_limiter.blocked(ip_bucket) or login_limiter.blocked(account_bucket):
+            raise HTTPException(429,'登录尝试太频繁，请稍后再试')
+        try:
+            account=accounts_store.authenticate(email,payload.password)
+        except Exception:
+            LOGGER.exception('Account database is unavailable')
+            raise HTTPException(503,'登录服务暂时不可用，请稍后重试')
+        if not account:
+            login_ip_limiter.fail(ip_bucket); login_limiter.fail(account_bucket)
+            raise HTTPException(401,'邮箱或密码不正确')
+        login_ip_limiter.clear(ip_bucket); login_limiter.clear(account_bucket)
+        now=int(time.time()); sid=secrets.token_urlsafe(32)
+        sub='local:'+email
+        name=str(account.get('display_name') or email)[:100]
+        role='admin' if account.get('role')=='admin' else 'reader'
+        with db() as conn:
+            conn.execute('INSERT INTO users(id,sub,name,role) VALUES(?,?,?,?) ON CONFLICT(sub) DO UPDATE SET name=excluded.name, role=excluded.role',(secrets.token_hex(16),sub,name,role))
+            uid=conn.execute('SELECT id FROM users WHERE sub=?',(sub,)).fetchone()['id']
+            conn.execute('DELETE FROM sessions WHERE expires<=? OR id=?',(now,request.session.get('sid','')))
+            conn.execute('INSERT INTO sessions VALUES (?,?,?)',(sid,uid,now+7*86400))
+        target=safe_return_to(payload.return_to)
+        request.session.clear()
+        request.session.update(sid=sid,csrf=secrets.token_urlsafe(32))
+        return {'ok':True,'return_to':'/'+target}
 
     @app.get('/auth/callback')
     async def callback(request: Request):
-        if not enabled: raise HTTPException(503,'登录尚未配置')
+        if not oidc_enabled: raise HTTPException(503,'登录尚未配置')
         try:
             token = await oauth.modelscope.authorize_access_token(request)
             info = token.get('userinfo')
@@ -669,8 +751,9 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         sub=str(info['sub'])
         name=str(info.get('name') or info.get('preferred_username') or '学习空间读者')[:100]
         now=int(time.time()); sid=secrets.token_urlsafe(32)
+        role='admin' if sub in admins else 'reader'
         with db() as conn:
-            conn.execute('INSERT INTO users VALUES (?,?,?) ON CONFLICT(sub) DO UPDATE SET name=excluded.name',(secrets.token_hex(16),sub,name))
+            conn.execute('INSERT INTO users(id,sub,name,role) VALUES(?,?,?,?) ON CONFLICT(sub) DO UPDATE SET name=excluded.name, role=excluded.role',(secrets.token_hex(16),sub,name,role))
             uid=conn.execute('SELECT id FROM users WHERE sub=?',(sub,)).fetchone()['id']
             conn.execute('DELETE FROM sessions WHERE expires<=? OR id=?',(now,request.session.get('sid','')))
             conn.execute('INSERT INTO sessions VALUES (?,?,?)',(sid,uid,now+7*86400))
@@ -695,7 +778,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         items=[]
         for row in rows[:100]:
             item=dict(row); item['chapter']=chapter; item['mine']=item['user_id']==uid
-            item['canDelete']=item['mine'] or bool(u and u['sub'] in admins)
+            item['canDelete']=item['mine'] or is_moderator(u)
             item.pop('user_id'); items.append(item)
         return {'items':items,'next':items[-1]['cursor'] if len(rows)>100 else None}
 
@@ -722,7 +805,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         with db() as conn:
             row=conn.execute('SELECT user_id FROM entries WHERE id=?',(entry_id,)).fetchone()
             if not row: raise HTTPException(404,'内容已删除')
-            if row['user_id']!=u['id'] and u['sub'] not in admins: raise HTTPException(403,'只能删除自己发表的内容')
+            if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的内容')
             conn.execute('DELETE FROM entries WHERE id=?',(entry_id,))
         return {'ok':True}
 
@@ -734,7 +817,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         items=[]
         for row in rows[:20]:
             item=dict(row)
-            item['canDelete']=bool(u and (item['user_id']==u['id'] or u['sub'] in admins))
+            item['canDelete']=bool(u and (item['user_id']==u['id'] or is_moderator(u)))
             item.pop('user_id'); items.append(item)
         return {'items':items,'next':items[-1]['cursor'] if len(rows)>20 else None}
 
@@ -757,7 +840,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         with db() as conn:
             row=conn.execute('SELECT user_id FROM wishes WHERE id=?',(wish_id,)).fetchone()
             if not row: raise HTTPException(404,'这条愿望已删除')
-            if row['user_id']!=u['id'] and u['sub'] not in admins: raise HTTPException(403,'只能删除自己发表的愿望')
+            if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的愿望')
             conn.execute('DELETE FROM wishes WHERE id=?',(wish_id,))
         return {'ok':True}
 
@@ -1100,6 +1183,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     app.state.persistent_analytics_path=persistent_analytics_path
     app.state.snapshot_analytics=snapshot_analytics_database
     app.state.oauth=oauth
+    app.state.accounts=accounts_store
+    app.state.login_limiter=login_limiter
     return app
 
 app=create_app()

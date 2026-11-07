@@ -1,5 +1,4 @@
 """传输层：压缩按路径选择、版本化资源长缓存、webp 的 MIME。"""
-import gzip
 from pathlib import Path
 
 import pytest
@@ -69,8 +68,20 @@ def test_versioned_asset_is_immutable(site):
 
 def test_unversioned_asset_is_not_immutable(site):
     response = client(site).get('/assets/paper.js')
-    # An unhashed asset gets no Cache-Control at all, so read it with a default:
-    # the contract under test is "never immutable", not "header must exist".
+    assert 'immutable' not in response.headers.get('cache-control', '')
+
+
+def test_unversioned_asset_must_revalidate(site):
+    # Without a content hash the URL is reused across deploys, so the answer has
+    # to be re-checked every time rather than guessed from Last-Modified.
+    response = client(site).get('/assets/paper.js')
+    assert response.headers['cache-control'] == 'public, max-age=0, must-revalidate'
+
+
+def test_error_response_is_not_immutable(site):
+    # The ?v= branch must not hand a year of freshness to a 404.
+    response = client(site).get('/assets/no-such-file.js?v=0123456789ab')
+    assert response.status_code == 404
     assert 'immutable' not in response.headers.get('cache-control', '')
 
 

@@ -613,12 +613,20 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
         if request.url.path.startswith(('/api/','/auth/')):
             response.headers['Cache-Control']='no-store'
-        elif request.query_params.get('v'):
-            # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
-            # a changed file is a different URL, so the old copy can never be served.
-            response.headers['Cache-Control']=IMMUTABLE
-        elif request.url.path in SHORT_CACHE_PATHS:
-            response.headers['Cache-Control']=SHORT_CACHE
+        elif 200 <= response.status_code < 300:
+            # Only a success is cacheable: a 404 or 500 must never inherit a
+            # year of freshness just because the URL happened to carry ?v=.
+            if request.query_params.get('v'):
+                # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
+                # a changed file is a different URL, so the old copy can never be served.
+                response.headers['Cache-Control']=IMMUTABLE
+            elif request.url.path in SHORT_CACHE_PATHS:
+                response.headers['Cache-Control']=SHORT_CACHE
+            elif request.url.path.startswith(('/assets/','/content/','/chapters/')):
+                # An asset URL without a content hash gets no long life: with no
+                # header at all, browsers apply heuristic freshness off
+                # Last-Modified and can serve a stale file for days after a deploy.
+                response.headers['Cache-Control']='public, max-age=0, must-revalidate'
         return response
 
     @app.get('/api/session')

@@ -309,6 +309,14 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         message = str(error).lower()
         return any(marker in message for marker in ('malformed', 'file is not a database', 'database disk image'))
 
+    def readonly_write_failure(error):
+        # The SQLITE_READONLY family (a saturated WAL, a full disk, a moved db file)
+        # all say some spelling of "readonly"; that is the write we can degrade to a
+        # retryable 503. SQLITE_BUSY -- "database is locked" -- carries no such word,
+        # so it deliberately falls through here and the caller re-raises into a 500.
+        message = str(error).lower()
+        return any(marker in message for marker in ('readonly', 'read-only'))
+
     def check_analytics_database(path):
         # `with sqlite3.connect(...)` only commits; it leaves the file handle open,
         # and Windows refuses to replace or delete a file that is still held open.
@@ -847,18 +855,22 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                     if existing: return {'id':existing['id']}
                 conn.execute('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?)',(eid,chapter,u['id'],entry.kind,entry.text.strip(),entry.quote,entry.block,entry.start,entry.end,now))
         except sqlite3.OperationalError as error:
-            if 'readonly' not in str(error).lower(): raise
-            return write_unavailable(error)
+            if not readonly_write_failure(error): raise
+            return write_unavailable()
         return {'id':eid}
 
     @app.delete('/api/entries/{entry_id}')
     def delete_entry(entry_id: str, request: Request):
         u=require_user(request)
-        with db() as conn:
-            row=conn.execute('SELECT user_id FROM entries WHERE id=?',(entry_id,)).fetchone()
-            if not row: raise HTTPException(404,'内容已删除')
-            if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的内容')
-            conn.execute('DELETE FROM entries WHERE id=?',(entry_id,))
+        try:
+            with db() as conn:
+                row=conn.execute('SELECT user_id FROM entries WHERE id=?',(entry_id,)).fetchone()
+                if not row: raise HTTPException(404,'内容已删除')
+                if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的内容')
+                conn.execute('DELETE FROM entries WHERE id=?',(entry_id,))
+        except sqlite3.OperationalError as error:
+            if not readonly_write_failure(error): raise
+            return write_unavailable()
         return {'ok':True}
 
     @app.get('/api/wishes')
@@ -886,23 +898,30 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                 if count>=5: raise HTTPException(429,'愿望发送太频繁，请稍后再试')
                 conn.execute('INSERT INTO wishes VALUES (?,?,?,?)',(wid,u['id'],text,now))
         except sqlite3.OperationalError as error:
-            if 'readonly' not in str(error).lower(): raise
-            return write_unavailable(error)
+            if not readonly_write_failure(error): raise
+            return write_unavailable()
         return {'id':wid}
 
     @app.delete('/api/wishes/{wish_id}')
     def delete_wish(wish_id: str, request: Request):
         u=require_user(request)
-        with db() as conn:
-            row=conn.execute('SELECT user_id FROM wishes WHERE id=?',(wish_id,)).fetchone()
-            if not row: raise HTTPException(404,'这条愿望已删除')
-            if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的愿望')
-            conn.execute('DELETE FROM wishes WHERE id=?',(wish_id,))
+        try:
+            with db() as conn:
+                row=conn.execute('SELECT user_id FROM wishes WHERE id=?',(wish_id,)).fetchone()
+                if not row: raise HTTPException(404,'这条愿望已删除')
+                if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的愿望')
+                conn.execute('DELETE FROM wishes WHERE id=?',(wish_id,))
+        except sqlite3.OperationalError as error:
+            if not readonly_write_failure(error): raise
+            return write_unavailable()
         return {'ok':True}
 
-    def write_unavailable(error):
+    def write_unavailable():
         # The reader's own text is never lost here: the frontend keeps the draft
         # and retries, and a 503 is the one status that says "same request, later".
+        # LOGGER.exception picks up the active exception implicitly -- this handler
+        # runs only inside `except sqlite3.OperationalError`, so there is no need to
+        # thread `error` through just to re-read it.
         LOGGER.exception('Site database is unavailable for a write')
         return JSONResponse(status_code=503, content={'detail': '服务暂时不可用，请稍后重试', 'fallback': True},
                             headers={'Retry-After': '2', 'x-sils-fallback': '1'})
@@ -1129,8 +1148,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
                                   self_assessment_state(item.selfAssessed),item.attempts,second_stamp(item.updated) or now))
                     saved+=1
         except sqlite3.OperationalError as error:
-            if 'readonly' not in str(error).lower(): raise
-            return write_unavailable(error)
+            if not readonly_write_failure(error): raise
+            return write_unavailable()
         return {'saved':saved,'skipped':skipped}
 
     @app.post('/api/exercises/grade')

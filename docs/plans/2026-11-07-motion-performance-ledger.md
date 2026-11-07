@@ -38,6 +38,12 @@
 - 服务器套件：pytest 164 passed；check-site PASS；test-motion 23、test-asset-loading 14、test-reader-copy 9、test-exercise-wiring 22 全通过。
 - `pm2 restart ms-cookbook --update-env` 后源码逐文件 SHA-256 与本地一致（912 个文件，仅 `index.html.bak` 为服务器独有）。
 
+## 部署后的补充修复与复验
+
+- 集成冒烟发现：快速连续导航时被 `skipTransition()` 正常打断的过渡被记为控制台错误（`paper.js` 的 `swap.ready` 拒绝分支不区分 AbortError）。已修（`42e6541`，只对非 AbortError 记错误）并单独部署 `assets/paper.js` + `index.html`。
+- 复验（强制完整加载，pin `3a75bf85b519`）：连续切换 5 个视图后控制台 0 条消息；进入 `#chapter-1` 后章内练习面板挂载并显示 3 张练习卡；进度条归零正确；语言包/练习包按需注入按设计工作。
+- 注意：浏览器对同 URL 的哈希导航不会重载文档，部署后验证需带查询参数强制完整加载。
+
 ## 复现命令
 
 ```sh

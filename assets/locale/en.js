@@ -3,6 +3,7 @@ MSI18N.register('en', {
   'common.siteName': 'SILS',
   'common.languageName': 'English',
   'common.language': 'Language',
+  'language.loadFailed': 'The language pack could not be loaded. Please try again.',
 
   'a11y.skipContents': 'Skip to the full table of contents',
   'a11y.mainNav': 'Main navigation',
@@ -225,6 +226,8 @@ MSI18N.register('en', {
 
   'practice.title': 'Start from a real task',
   'practice.subtitle': 'Put model ability into the application you care about.',
+  'practice.loading': 'Loading the learning map…',
+  'practice.loadFailed': 'The learning map failed to load. Tap to retry.',
   'practice.sceneMeta': 'Chapter {n} · {type}',
   'practice.readPractice': 'Read the practice',
   'practice.viewChapter': 'View the chapter',

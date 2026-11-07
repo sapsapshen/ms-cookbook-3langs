@@ -10,12 +10,15 @@
 
    So this suite treats index.html as the thing under test:
 
-     1. the six exercise modules are all listed, and all before paper.js
+     1. the six exercise modules are declared once, by paper.js, in load order,
+        and index.html no longer ships them
      2. Pyodide is nowhere in index.html (G9)
      3. every assets/ reference resolves to a file that exists
      4. assets/exercise.css is in check-site.mjs's url() validation list
      5. the scripts actually EXECUTE in index.html's order against a fake DOM,
-        and leave window.ExerciseGrader / Store / Sandbox / Map / UI in place
+        and leave window.ExerciseGrader / Store / Sandbox / Map / UI in place.
+        The six modules run last, because that is when a #practice visit injects
+        them -- the order that would expose a load-order regression today.
 
    Point 5 is the one that cannot be argued with: it runs the real files in the
    real order, so a reordering that breaks initialisation fails here rather than
@@ -71,37 +74,52 @@ const EXERCISE_MODULES = [
 /* ------------------------------------------------- 1. declared script order */
 
 const ORDER = scriptOrder(INDEX);
+/* The bundle is no longer in the page, but the wiring contract still is: the
+   six modules must execute, in declared order, before anything reads
+   window.ExerciseMap. A #practice visit is exactly what the old index.html
+   ordering simulated, so the suite keeps running them -- from paper.js's own
+   list, which is the new source of truth. */
+const bundleSource = read('assets/paper.js');
+const bundleList = /const EXERCISE_BUNDLE = \[([\s\S]*?)\]/.exec(bundleSource);
+assert.ok(bundleList, 'paper.js no longer declares EXERCISE_BUNDLE');
+const BUNDLE = [...bundleList[1].matchAll(/'assets\/([^'?]+)\.js/g)].map(m => m[1] + '.js');
 
 async function main() {
-await check('index.html lists every exercise module exactly once', () => {
+/* The order INSIDE the bundle is now the whole ordering contract, so this is
+   the check that used to read index.html: exercises.js first because
+   exercise-map.js reads window.EXERCISE_DATA at load, the grader before the
+   panel that grades against it, the store before both consumers. */
+await check('paper.js lists every exercise module exactly once, in order', () => {
+  assert.deepEqual(BUNDLE, EXERCISE_MODULES);
+});
+
+await check('index.html ships none of the exercise modules', () => {
   for (const module of EXERCISE_MODULES) {
-    const hits = ORDER.filter(name => name === module);
-    assert.equal(hits.length, 1, `${module} appears ${hits.length} times, expected once`);
+    assert.equal(ORDER.filter(name => name === module).length, 0, `${module} is still eager`);
   }
 });
 
-await check('every exercise module is loaded before paper.js', () => {
+await check('asset-loader.js is loaded before paper.js', () => {
   const paperAt = ORDER.indexOf('paper.js');
   assert.notEqual(paperAt, -1, 'index.html no longer loads assets/paper.js');
-  for (const module of EXERCISE_MODULES) {
-    const at = ORDER.indexOf(module);
-    assert.ok(at < paperAt, `${module} sits at ${at}, after paper.js at ${paperAt}`);
-  }
+  const at = ORDER.indexOf('asset-loader.js');
+  assert.notEqual(at, -1, 'asset-loader.js is not loaded by index.html');
+  assert.ok(at < paperAt, `asset-loader.js sits at ${at}, after paper.js at ${paperAt}`);
 });
 
 /* The circular dependency the brief warns about, checked and found NOT to
    exist -- so this ordering is a plain precedence rule, not a deadlock.
 
-   paper.js needs the map: it calls renderExerciseMap() during its own startup
-   (paper.js:121, :418, :435). The map needs nothing from paper.js at load.
+   paper.js needs the map: it calls renderExerciseMap() on startup and on every
+   route into #practice. The map needs nothing from paper.js at load.
 
    The panel's half is the one that looked circular. It does not listen for
-   `purplebook:route` (the event paper.js dispatches at paper.js:423) -- it
+   `purplebook:route` (the event paper.js dispatches from route()) -- it
    listens for `hashchange` and `purplebook:session`, both dispatched by the
    BROWSER and by assets/discussion.js respectively. Two modules listening on
-   the same event is not a cycle. So exercise-ui.js may load before paper.js:
-   it binds its listener during its own IIFE, and paper.js's route() runs later
-   in the same task. Asserted here so a future edit that DOES add a
+   the same event is not a cycle. That is also what makes the on-demand bundle
+   safe: exercise-ui.js binds its listener during its own IIFE, long after
+   paper.js has routed. Asserted here so a future edit that DOES add a
    `purplebook:route` listener trips this instead of a blank panel. */
 await check('the panel never waits on an event only paper.js can fire', () => {
   const ui = read('assets/exercise-ui.js');
@@ -112,29 +130,14 @@ await check('the panel never waits on an event only paper.js can fire', () => {
   assert.match(ui, /addEventListener\('hashchange'/);
 });
 
-/* Relative order INSIDE the exercise block. exercise-map.js reads
-   window.ExerciseStore at paint time and assets/exercise-ui.js resolves its
-   collaborators inside init(), so a swap between those two is survivable; a
-   swap that puts exercise-grader.js last is not, because the panel grades
-   against it. Asserting the documented order keeps the next edit honest. */
-await check('the exercise modules keep their documented relative order', () => {
-  const actual = ORDER.filter(name => EXERCISE_MODULES.includes(name));
-  assert.deepEqual(actual, EXERCISE_MODULES);
-});
-
-await check('exercise-ui.js precedes the reader scripts it attaches to', () => {
-  // The panel mounts after .chapter-pager and repaints on hashchange. It does
-  // not read paper.js at load time, so this is a readability contract rather
-  // than a hard one -- but keeping the exercise block together is what makes
-  // the order above reviewable at all.
-  const ui = ORDER.indexOf('exercise-ui.js');
-  for (const later of ['reading.js', 'discussion.js', 'wishes.js']) {
-    const at = ORDER.indexOf(later);
-    if (at === -1) continue;
-    assert.ok(ui < at, `exercise-ui.js at ${ui} is after ${later} at ${at}`);
-  }
-});
-
+/* Two checks that used to live here are gone, not weakened:
+   "the exercise modules keep their documented relative order" read the block
+   out of index.html's ORDER, and that block no longer exists -- its content is
+   now the BUNDLE assertion above. "exercise-ui.js precedes the reader scripts"
+   asserted a placement the page no longer controls: exercise-ui.js is injected
+   last, at runtime. The invariant behind it -- the panel still mounts when it
+   arrives after every reader script -- is the #chapter-7 boot below, which now
+   runs the modules in exactly that late order. */
 await check('assets/exercise.css is linked from index.html', () => {
   assert.match(INDEX, /<link[^>]*href="assets\/exercise\.css(?:\?[^"]*)?"/);
 });
@@ -179,13 +182,20 @@ await check('every cached ?v= fingerprint matches the file it points at', () => 
     assert.equal(version, actual, `${path} is pinned to ?v=${version} but hashes to ${actual}`);
   }
   assert.ok(seen > 0, 'no fingerprinted assets/ references found');
-  // Every exercise module and the stylesheet must be fingerprinted, or a browser
-  // that cached the page keeps serving the pre-Task-10 build.
-  for (const path of EXERCISE_MODULES.map(m => `assets/${m}`).concat('assets/exercise.css')) {
-    assert.ok(
-      INDEX.includes(`"${path}?v=`),
-      `${path} is loaded without a ?v= fingerprint; run node scripts/version-assets.mjs`,
-    );
+  // The stylesheet is still a page tag, so its pin lives in index.html. The six
+  // modules moved into paper.js's EXERCISE_BUNDLE, and version-assets.mjs stamps
+  // their pins the same way: a stale pin there serves an old module to a browser
+  // that already cached it, and the fix never reaches the reader.
+  assert.ok(
+    INDEX.includes('"assets/exercise.css?v='),
+    'assets/exercise.css is loaded without a ?v= fingerprint; run node scripts/version-assets.mjs',
+  );
+  const sha = path => createHash('sha256').update(readFileSync(resolve(ROOT, path))).digest('hex').slice(0, 12);
+  for (const module of EXERCISE_MODULES) {
+    const path = `assets/${module}`;
+    const pin = new RegExp(`'${path.replace(/\./g, '\\.')}\\?v=([0-9a-f]{12})'`).exec(bundleSource);
+    assert.ok(pin, `${path} is injected without a ?v= fingerprint; run node scripts/version-assets.mjs`);
+    assert.equal(pin[1], sha(path), `${path} is pinned to ?v=${pin[1]} but hashes to ${sha(path)}`);
   }
 });
 
@@ -201,7 +211,8 @@ await check("check-site.mjs validates assets/exercise.css's url() references", (
 
 await check('check-site.mjs asserts the exercise load order too', () => {
   const source = read('scripts/check-site.mjs');
-  assert.match(source, /must be loaded before paper\.js/, 'check-site.mjs lost its load-order assertion');
+  assert.match(source, /EXERCISE_BUNDLE/, 'check-site.mjs lost its EXERCISE_BUNDLE assertion');
+  assert.match(source, /asset-loader\.js must load before paper\.js/, 'check-site.mjs lost its loader-order assertion');
 });
 
 /* ------------------------------------------ 5. execute the real page order */
@@ -348,13 +359,16 @@ function parseSelector(selector) {
 
 function camel(name) { return name.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); }
 
-/* The scripts index.html loads, in its own order, minus the ones that cannot
-   execute outside a browser for reasons unrelated to load order (analytics is a
-   beacon stub; the two content-i18n bundles are 1.1 MB of dictionary literals
-   that only call MSI18N.register and touch nothing the exercise modules read).
-   Everything that DEFINES or CONSUMES a global the page needs is here. */
+/* The scripts index.html loads, in its own order, plus the six exercise modules
+   it no longer loads -- those arrive last because a #practice visit injects them
+   at runtime, and that is the order this suite now has to survive. Skipped are
+   the ones that cannot execute outside a browser for reasons unrelated to load
+   order: analytics is a beacon stub, and the two content-i18n bundles are 1.1 MB
+   of dictionary literals that only assign window.MS_ARTICLE and touch nothing
+   the exercise modules read. Everything that DEFINES or CONSUMES a global the
+   page needs is here. */
 const SKIPPED = new Set(['analytics.js', 'content-i18n/en.js', 'content-i18n/es.js']);
-const RUNNABLE = ORDER.filter(name => !SKIPPED.has(name));
+const RUNNABLE = [...ORDER.filter(name => !SKIPPED.has(name)), ...EXERCISE_MODULES];
 
 /* Boots the page the way a browser would: run each script in declaration order
    against one shared context, and report which file threw. `hash` picks the

@@ -75,9 +75,24 @@
       try { listener(current); } catch (error) { console.error(error); }
     });
   }
-  function set(code, options) {
+  /* en/es dictionaries and translated prose are 3.4 MB of literals that a Chinese
+     reader never needs. They are injected on demand, so `set` has to wait for
+     them: notifying first would paint half-translated chrome over Chinese prose. */
+  const extraPaths = {
+    en: ['assets/locale/en.js?v=ccee7cc12120', 'assets/content-i18n/en.js?v=8f8eddd20782'],
+    es: ['assets/locale/es.js?v=b822bfa258f1', 'assets/content-i18n/es.js?v=5b84a5c8eb29']
+  };
+  async function load(code) {
     const next = normalize(code);
-    if (!next || !dictionaries[next] || next === current) return;
+    if (!next || next === DEFAULT || dictionaries[next]) return next;
+    if (!window.AssetLoader) throw new Error('asset loader is unavailable');
+    await window.AssetLoader.loadSequence(extraPaths[next]);
+    if (!dictionaries[next]) throw new Error('language pack registered nothing');
+    return next;
+  }
+  async function set(code, options) {
+    const next = await load(code);
+    if (!next || next === current) return;
     current = next;
     if (!options || options.persist !== false) {
       try { localStorage.setItem(STORAGE_KEY, next); } catch { /* Storage can be disabled in embedded readers. */ }
@@ -86,13 +101,16 @@
   }
   function init() {
     const initial = stored();
-    if (initial && dictionaries[initial]) current = initial;
-    notify();
+    // A returning English reader gets Chinese chrome until the pack lands; that
+    // is the trade for not shipping 3.4 MB to everyone. notify() runs once, after.
+    if (initial && initial !== DEFAULT) { load(initial).then(code => { current = code; notify(); }, notify); }
+    else notify();
   }
 
   window.MSI18N = {
-    register, t, has, apply, set, init, codes: Object.freeze(['zh', 'en', 'es']),
+    register, t, has, apply, set, load, init, codes: Object.freeze(['zh', 'en', 'es']),
     get lang() { return current; },
+    get extraPaths() { return extraPaths; },
     locale() { return htmlLang[current] || current; },
     on(listener) { listeners.add(listener); return () => listeners.delete(listener); }
   };

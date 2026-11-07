@@ -83,20 +83,41 @@ for(const css of ['assets/styles.css','assets/paper.css','assets/review.css','as
     if(!/^(?:https?:|data:)/.test(m[1]))assert(existsSync(resolve(root,dirname(css),m[1].split('?')[0])),m[1]);
   }
 }
-/* Load order is load-bearing (Task 8's M-6): a script listed before something
-   it reads leaves the panel silently absent, with nothing in the console. Every
-   exercise module therefore has to precede paper.js, which calls
-   renderExerciseMap() during its own startup. Checked here rather than only in
-   scripts/test-exercise-wiring.cjs because this is the check CI already runs. */
+/* The exercise bundle left index.html, so the old "listed before paper.js"
+   rule is now the wrong contract. What still has to hold:
+     1. the bundle is declared once, in paper.js, in dependency order;
+     2. index.html does not ship it eagerly (a Chinese-only reader must not pay
+        1.2 MB for a view they never open).
+   Checked here because CI already runs this file. */
 const indexHtml=read('index.html');
-const scriptOrder=[...indexHtml.matchAll(/<script[^>]*\ssrc="assets\/([^"?]+\.js)/g)].map(m=>m[1]);
-const paperIndex=scriptOrder.indexOf('paper.js');
-assert(paperIndex!==-1,'index.html no longer loads paper.js');
-for(const module of ['exercises.js','exercise-grader.js','exercise-store.js','exercise-sandbox.js','exercise-map.js','exercise-ui.js']){
-  const at=scriptOrder.indexOf(module);
-  assert(at!==-1,module+' is not loaded by index.html');
-  assert(at<paperIndex,module+' must be loaded before paper.js');
+/* One parse, three uses: the eager/defer split below and the ordering rules
+   that follow it. Two regexes would eventually disagree about what index.html
+   declares, and the disagreement would be invisible -- both would still pass. */
+const eager=[],deferred=[];
+for(const [,attrs] of indexHtml.matchAll(/<script\b([^>]*)>/g)){
+  const src=/\ssrc="assets\/([^"?]+\.js)/.exec(attrs);
+  if(src)(/\sdefer\b/.test(attrs)?deferred:eager).push(src[1]);
 }
+const scriptOrder=[...eager,...deferred];
+/* Two load-order contracts nothing else pins, added with the edit that made
+   them matter. Exactly three scripts may block the parser -- the default
+   dictionary, its prose and the book data, whose absence paints an empty page
+   -- and they are named individually so a fourth eager tag cannot join them by
+   accident. Every other script defers, and asset-loader.js goes first: every
+   lazy bundle in the site is injected through it. */
+assert.deepEqual(eager,['i18n.js','locale/zh.js','content.js'],
+  'exactly assets/i18n.js, assets/locale/zh.js and assets/content.js may block the parser');
+assert.equal(deferred[0],'asset-loader.js','asset-loader.js must be the first deferred script');
+const EXERCISE_MODULES=['exercises.js','exercise-grader.js','exercise-store.js','exercise-sandbox.js','exercise-map.js','exercise-ui.js'];
+for(const module of EXERCISE_MODULES){
+  assert(!scriptOrder.includes(module),`index.html must not load ${module} eagerly`);
+}
+const bundleSource=read('assets/paper.js');
+const bundleList=/const EXERCISE_BUNDLE = \[([\s\S]*?)\]/.exec(bundleSource);
+assert(bundleList,'paper.js no longer declares EXERCISE_BUNDLE');
+const bundle=[...bundleList[1].matchAll(/'assets\/([^'?]+)\.js/g)].map(m=>m[1]+'.js');
+assert.deepEqual(bundle,EXERCISE_MODULES,'EXERCISE_BUNDLE order changed; exercises.js must stay first');
+assert(scriptOrder.indexOf('asset-loader.js')<scriptOrder.indexOf('paper.js'),'asset-loader.js must load before paper.js');
 const exerciseContext={window:{}};
 vm.runInNewContext(read('assets/exercises.js'),exerciseContext);
 const exercises=exerciseContext.window.EXERCISE_DATA;

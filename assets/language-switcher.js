@@ -19,7 +19,20 @@
       select.append(option);
     }
     select.value = window.MSI18N.lang;
-    select.addEventListener('change', () => window.MSI18N.set(select.value));
+    select.addEventListener('change', async () => {
+      const wanted = select.value;
+      select.disabled = true;
+      select.title = '';
+      try {
+        await window.MSI18N.set(wanted);
+      } catch {
+        // Revert rather than leave the picker claiming a language the page is not in.
+        select.value = window.MSI18N.lang;
+        select.title = window.MSI18N.t('language.loadFailed');
+      } finally {
+        select.disabled = false;
+      }
+    });
     wrapper.append(select);
     return wrapper;
   }

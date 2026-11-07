@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { createHash } = require('node:crypto');
 const vm = require('node:vm');
 
 const ROOT = resolve(__dirname, '..');
@@ -85,6 +86,47 @@ async function main() {
     assert.equal(dom.nodes.length, 1, 'a retry must be allowed after failure');
     dom.settle(0, true);
     assert.equal(await again, 'assets/a.js');
+  });
+
+  await check('i18n.js declares the lazy paths for en and es, each versioned', () => {
+    const source = readFileSync(resolve(ROOT, 'assets/i18n.js'), 'utf8');
+    /* The fingerprints are compared against the files they name rather than
+       written as literals here: this same change edits both locale files, so a
+       hard-coded hash would be stale by the time the commit lands -- and a stale
+       one is exactly the bug the assertion exists to catch, not an exception to
+       it. */
+    const sha = path => createHash('sha256').update(readFileSync(resolve(ROOT, path))).digest('hex').slice(0, 12);
+    for (const code of ['en', 'es']) {
+      const pattern = new RegExp(`\\b${code}:\\s*\\[\\s*'assets/locale/${code}\\.js\\?v=([0-9a-f]{12})',\\s*'assets/content-i18n/${code}\\.js\\?v=([0-9a-f]{12})'`);
+      const match = pattern.exec(source);
+      assert.ok(match, `${code} lazy paths missing or unversioned`);
+      assert.equal(match[1], sha(`assets/locale/${code}.js`), `assets/locale/${code}.js is pinned to a stale ?v=`);
+      assert.equal(match[2], sha(`assets/content-i18n/${code}.js`), `assets/content-i18n/${code}.js is pinned to a stale ?v=`);
+    }
+  });
+
+  await check('i18n.set waits for the pack before it notifies', () => {
+    const source = readFileSync(resolve(ROOT, 'assets/i18n.js'), 'utf8');
+    assert.match(source, /async function set\(code, options\)/, 'set must be async');
+    assert.match(source, /await load\(code\)/, 'set must await the pack');
+  });
+
+  await check('paper.js lists the exercise bundle in load order', () => {
+    const source = readFileSync(resolve(ROOT, 'assets/paper.js'), 'utf8');
+    const list = /const EXERCISE_BUNDLE = \[([\s\S]*?)\]/.exec(source);
+    assert.ok(list, 'EXERCISE_BUNDLE is not declared in paper.js');
+    const modules = [...list[1].matchAll(/'assets\/([^'?]+)\.js/g)].map(m => m[1] + '.js');
+    assert.deepEqual(modules, [
+      'exercises.js', 'exercise-grader.js', 'exercise-store.js',
+      'exercise-sandbox.js', 'exercise-map.js', 'exercise-ui.js',
+    ], 'exercises.js must stay first: exercise-map.js reads window.EXERCISE_DATA at load');
+  });
+
+  await check('index.html no longer ships the lazy bundles', () => {
+    const html = readFileSync(resolve(ROOT, 'index.html'), 'utf8');
+    for (const name of ['exercises.js', 'exercise-ui.js', 'locale/en.js', 'content-i18n/es.js']) {
+      assert.ok(!html.includes('assets/' + name), `index.html still loads ${name}`);
+    }
   });
 
   console.log(`\n${passed} passed, ${failures.length} failed`);

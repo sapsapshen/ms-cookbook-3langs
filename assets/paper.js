@@ -117,6 +117,12 @@
      had done nothing. Repainting is idempotent (the map replaces its own
      contents), and it is guarded by the router's own `view === 'practice'`, so
      a reader sitting in a chapter does not pay for a grid they cannot see. */
+  const EXERCISE_BUNDLE = ['assets/exercises.js?v=e08be2062f82', 'assets/exercise-grader.js?v=3c6548035306',
+    'assets/exercise-store.js?v=60f13f8a96a2', 'assets/exercise-sandbox.js?v=248ef0a7613b',
+    'assets/exercise-map.js?v=93478189a6bf', 'assets/exercise-ui.js?v=03b76ab6967b'];
+  function ensureExerciseBundle() { return window.AssetLoader.loadSequence(EXERCISE_BUNDLE); }
+  /* Startup keeps the original guard: a reader who never opens #practice must not
+     pay 1.2 MB for it, so the eager call sites stay a no-op until the bundle lands. */
   function renderExerciseMap() { if (window.ExerciseMap) window.ExerciseMap.render(); }
   renderProjectLinks(); renderHomePaths(); renderScenes(); renderExerciseMap();
 
@@ -415,7 +421,15 @@
     } else {
       if(headingObserver)headingObserver.disconnect();
       document.title=t('doc.'+view)+t('doc.suffix');
-      if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);if(view==='practice')renderExerciseMap();
+      if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);
+      if(view==='practice'){
+        if(window.ExerciseMap)renderExerciseMap();
+        else{
+          const practiceStatus=$('#exerciseMap');
+          practiceStatus.textContent=t('practice.loading');
+          ensureExerciseBundle().then(renderExerciseMap).catch(()=>{practiceStatus.textContent=t('practice.loadFailed');});
+        }
+      }
     }
     currentView=view;
     if(inPlace){updateProgress();return;}

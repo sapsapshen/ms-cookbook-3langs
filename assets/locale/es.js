@@ -3,6 +3,7 @@ MSI18N.register('es', {
   'common.siteName': 'SILS',
   'common.languageName': 'español',
   'common.language': 'Idioma',
+  'language.loadFailed': 'No se pudo cargar el paquete de idioma. Inténtalo de nuevo.',
 
   'a11y.skipContents': 'Ir al índice completo del libro',
   'a11y.mainNav': 'Navegación principal',
@@ -225,6 +226,8 @@ MSI18N.register('es', {
 
   'practice.title': 'Empieza por una tarea real',
   'practice.subtitle': 'Lleva la capacidad del modelo al escenario que te importa.',
+  'practice.loading': 'Cargando el mapa de aprendizaje…',
+  'practice.loadFailed': 'No se pudo cargar el mapa. Toca para reintentar.',
   'practice.sceneMeta': 'Capítulo {n} · {type}',
   'practice.readPractice': 'Leer la práctica',
   'practice.viewChapter': 'Ver el capítulo',

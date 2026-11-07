@@ -534,26 +534,38 @@ check('renderExerciseMap is defined after renderScenes and before it is called',
 check('the map is repainted when the reader arrives at the practice view', () => {
   // Paint-on-load alone would show the reader the progress they had when the
   // page loaded, not the progress they have now: doing the exercises and then
-  // opening this view has to repaint, or the map contradicts the panel.
-  assert.match(PAPER, /if\(view==='practice'\)renderExerciseMap\(\);/);
+  // opening this view has to repaint, or the map contradicts the panel. Since
+  // Task 5 the arrival is also the moment the bundle is injected, so both
+  // halves are pinned: repaint when the map is already there, and load-then-
+  // paint -- with a status line -- when it is not.
+  assert.match(PAPER, /if\(view==='practice'\)\{/);
+  assert.match(PAPER, /if\(window\.ExerciseMap\)renderExerciseMap\(\);/);
+  assert.match(PAPER, /ensureExerciseBundle\(\)\.then\(renderExerciseMap\)\.catch/);
+  assert.match(PAPER, /t\('practice\.loading'\)/);
+  assert.match(PAPER, /t\('practice\.loadFailed'\)/);
   assert.equal(PAPER.split('renderExerciseMap()').length - 1, 4);
 });
 
-check('the map is wired into the page after the corpus and store it reads', () => {
-  // Task 10 owns the <script> tags. It listed them, so this assertion is now
-  // the positive form of the placeholder it replaced: the map has to come
-  // after the corpus and the store it reads, and before paper.js, which paints
-  // the grid on startup. Listed too early, render() finds no data and no store
-  // and paints nothing -- the state the checks above were written against.
-  const order = [...INDEX.matchAll(/<script\b[^>]*\ssrc="assets\/([^"?]+\.js)/g)].map(m => m[1]);
+check('the map is injected after the corpus and store it reads', () => {
+  // Task 10 owned the <script> tags; Task 5 moved the six modules out of the
+  // page and into paper.js's EXERCISE_BUNDLE, so the ordering contract moved
+  // with them. The map still has to come after the corpus and the store it
+  // reads -- listed too early, render() finds no data and no store and paints
+  // nothing -- and the page must no longer ship any of it eagerly, or a reader
+  // who never opens #practice pays 1.2 MB for the privilege.
+  const list = /const EXERCISE_BUNDLE = \[([\s\S]*?)\]/.exec(PAPER);
+  assert.ok(list, 'paper.js no longer declares EXERCISE_BUNDLE');
+  const order = [...list[1].matchAll(/'assets\/([^'?]+)\.js/g)].map(m => m[1] + '.js');
   const at = name => {
     const index = order.indexOf(name);
-    assert.notEqual(index, -1, `${name} is not loaded by index.html`);
+    assert.notEqual(index, -1, `${name} is not in EXERCISE_BUNDLE`);
     return index;
   };
   assert.ok(at('exercises.js') < at('exercise-map.js'), 'the map loads before the corpus it reads');
   assert.ok(at('exercise-store.js') < at('exercise-map.js'), 'the map loads before the store it reads');
-  assert.ok(at('exercise-map.js') < at('paper.js'), 'the map must load before the router that paints it');
+  for (const name of ['exercises.js', 'exercise-map.js', 'exercise-store.js']) {
+    assert.ok(!INDEX.includes(`assets/${name}`), `index.html still ships ${name}`);
+  }
 });
 
 console.log('ExerciseMap · part names agree with paper.js');

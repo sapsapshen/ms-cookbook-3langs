@@ -51,7 +51,6 @@
 
 ```python
 """传输层：压缩按路径选择、版本化资源长缓存、webp 的 MIME。"""
-import gzip
 from pathlib import Path
 
 import pytest
@@ -121,7 +120,21 @@ def test_versioned_asset_is_immutable(site):
 
 def test_unversioned_asset_is_not_immutable(site):
     response = client(site).get('/assets/paper.js')
-    assert 'immutable' not in response.headers['cache-control']
+    assert 'immutable' not in response.headers.get('cache-control', '')
+
+
+def test_unversioned_asset_must_revalidate(site):
+    # Without a content hash the URL is reused across deploys, so the answer has
+    # to be re-checked every time rather than guessed from Last-Modified.
+    response = client(site).get('/assets/paper.js')
+    assert response.headers['cache-control'] == 'public, max-age=0, must-revalidate'
+
+
+def test_error_response_is_not_immutable(site):
+    # The ?v= branch must not hand a year of freshness to a 404.
+    response = client(site).get('/assets/no-such-file.js?v=0123456789ab')
+    assert response.status_code == 404
+    assert 'immutable' not in response.headers.get('cache-control', '')
 
 
 def test_short_cache_paths(site):
@@ -211,24 +224,32 @@ class SelectiveEncoding:
         response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
         if request.url.path.startswith(('/api/','/auth/')):
             response.headers['Cache-Control']='no-store'
-        elif request.query_params.get('v'):
-            # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
-            # a changed file is a different URL, so the old copy can never be served.
-            response.headers['Cache-Control']=IMMUTABLE
-        elif request.url.path in SHORT_CACHE_PATHS:
-            response.headers['Cache-Control']=SHORT_CACHE
+        elif 200 <= response.status_code < 300:
+            # Only a success is cacheable: a 404 or 500 must never inherit a
+            # year of freshness just because the URL happened to carry ?v=.
+            if request.query_params.get('v'):
+                # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
+                # a changed file is a different URL, so the old copy can never be served.
+                response.headers['Cache-Control']=IMMUTABLE
+            elif request.url.path in SHORT_CACHE_PATHS:
+                response.headers['Cache-Control']=SHORT_CACHE
+            elif request.url.path.startswith(('/assets/','/content/','/chapters/')):
+                # An asset URL without a content hash gets no long life: with no
+                # header at all, browsers apply heuristic freshness off
+                # Last-Modified and can serve a stale file for days after a deploy.
+                response.headers['Cache-Control']='public, max-age=0, must-revalidate'
         return response
 ```
 
 - [ ] **Step 6: 运行，确认通过**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests/test_static_delivery.py -q`
-Expected: PASS（11 项）
+Expected: PASS（12 项）
 
 - [ ] **Step 7: 跑全量回归**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests -q`
-Expected: `134 passed`（123 基线 + 11 新增），且 `tests/test_discussion.py` 的 `cache-control==no-store` 断言仍通过。
+Expected: `135 passed`（123 基线 + 12 新增），且 `tests/test_discussion.py` 的 `cache-control==no-store` 断言仍通过。
 
 - [ ] **Step 8: 提交**
 

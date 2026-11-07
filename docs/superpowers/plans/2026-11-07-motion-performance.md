@@ -529,6 +529,15 @@ git add app.py tests/test_write_fallback.py
 git commit -m "fix(api): degrade the three write endpoints to a retryable 503 on readonly WAL"
 ```
 
+### Task 2 实现后的更正（评审裁定，代码为准）
+
+本任务的实际落地与本节原文有四处差异，均已由任务评审与复审确认正确，后续任务按此理解：
+
+1. **测试替身必须在 `INSERT/UPDATE/DELETE` 抛错，不能拦 `BEGIN`。** 真实只读库在 `BEGIN IMMEDIATE` 是成功的。原文的 fake 让三个 503 测试认证了一个生产永不触发的失败点。
+2. **兜底范围扩到 `delete_entry` 与 `delete_wish`。** 理由：读者删除自己的笔记拿到硬 500，而发表拿到可重试的 503，是同一次会话里就能撞见的矛盾，且 Task 8 的重试文案会宣传 503 行为。`logout`、登录会话写入、统计写入仍明确不在范围内。
+3. **判定抽成 `readonly_write_failure(error)`**，与既有 `analytics_corruption` 同形，五个 catch 点共用；不引入装饰器或上下文包装器。`write_unavailable()` 不再接收未使用的 `error` 参数。
+4. **测试数为 8 项、全量 146 passed**（原文 5 项/139 为算错）。`assert_degraded` 对五个端点逐一钉住 `detail`、`Retry-After`、`x-sils-fallback` 与 `cache-control: no-store`。
+
 ---
 
 ### Task 3: 构建期图片尺寸与首图优先级

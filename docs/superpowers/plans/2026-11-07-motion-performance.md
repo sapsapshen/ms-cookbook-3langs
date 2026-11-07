@@ -118,16 +118,30 @@ def test_versioned_asset_is_immutable(site):
     assert response.headers['cache-control'] == 'public, max-age=31536000, immutable'
 
 
-def test_unversioned_asset_is_not_immutable(site):
-    response = client(site).get('/assets/paper.js')
-    assert 'immutable' not in response.headers.get('cache-control', '')
-
-
 def test_unversioned_asset_must_revalidate(site):
     # Without a content hash the URL is reused across deploys, so the answer has
     # to be re-checked every time rather than guessed from Last-Modified.
     response = client(site).get('/assets/paper.js')
     assert response.headers['cache-control'] == 'public, max-age=0, must-revalidate'
+
+
+def test_index_outranks_the_version_query(site):
+    # A stray ?v= in a shared link must not pin the HTML shell for a year.
+    response = client(site).get('/?v=0123456789ab')
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-cache'
+
+
+def test_analytics_page_outranks_the_version_query(site):
+    response = client(site).get('/analytics?v=0123456789ab')
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-store'
+
+
+def test_short_cache_path_outranks_the_version_query(site):
+    # spec 3.1 names these paths for the short policy; ?v= must not promote them.
+    response = client(site).get('/favicon.svg?v=0123456789ab')
+    assert response.headers['cache-control'] == 'public, max-age=300, must-revalidate'
 
 
 def test_error_response_is_not_immutable(site):
@@ -144,6 +158,14 @@ def test_short_cache_paths(site):
 
 def test_api_still_no_store(site):
     assert client(site).get('/api/session').headers['cache-control'] == 'no-store'
+
+
+def test_error_response_under_auth_still_no_store(site):
+    # The no-store branch sits outside the 2xx guard on purpose: a 503 from
+    # /auth/login must not become cacheable just because it failed.
+    response = client(site).get('/auth/login')
+    assert response.status_code == 503
+    assert response.headers['cache-control'] == 'no-store'
 
 
 def test_index_still_no_cache(site):
@@ -224,32 +246,39 @@ class SelectiveEncoding:
         response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
         if request.url.path.startswith(('/api/','/auth/')):
             response.headers['Cache-Control']='no-store'
-        elif 200 <= response.status_code < 300:
-            # Only a success is cacheable: a 404 or 500 must never inherit a
-            # year of freshness just because the URL happened to carry ?v=.
-            if request.query_params.get('v'):
+        elif 200 <= response.status_code < 300 and 'cache-control' not in response.headers:
+            # A route that already chose a policy outranks any query parameter:
+            # `/` is no-cache and `/analytics` is no-store, and a stray ?v= in a
+            # shared link must not pin a stale shell in a browser for a year.
+            if request.url.path in SHORT_CACHE_PATHS:
+                response.headers['Cache-Control']=SHORT_CACHE
+            elif request.query_params.get('v'):
                 # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
                 # a changed file is a different URL, so the old copy can never be served.
                 response.headers['Cache-Control']=IMMUTABLE
-            elif request.url.path in SHORT_CACHE_PATHS:
-                response.headers['Cache-Control']=SHORT_CACHE
             elif request.url.path.startswith(('/assets/','/content/','/chapters/')):
                 # An asset URL without a content hash gets no long life: with no
                 # header at all, browsers apply heuristic freshness off
                 # Last-Modified and can serve a stale file for days after a deploy.
-                response.headers['Cache-Control']='public, max-age=0, must-revalidate'
+                response.headers['Cache-Control']=REVALIDATE
         return response
+```
+
+模块级常量区补第四条（与 `IMMUTABLE`/`SHORT_CACHE` 并列，不要在函数体里写裸字符串）：
+
+```python
+REVALIDATE = 'public, max-age=0, must-revalidate'
 ```
 
 - [ ] **Step 6: 运行，确认通过**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests/test_static_delivery.py -q`
-Expected: PASS（12 项）
+Expected: PASS（14 项）
 
 - [ ] **Step 7: 跑全量回归**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests -q`
-Expected: `135 passed`（123 基线 + 12 新增），且 `tests/test_discussion.py` 的 `cache-control==no-store` 断言仍通过。
+Expected: `137 passed`（123 基线 + 14 新增），且 `tests/test_discussion.py` 的 `cache-control==no-store` 断言仍通过。
 
 - [ ] **Step 8: 提交**
 

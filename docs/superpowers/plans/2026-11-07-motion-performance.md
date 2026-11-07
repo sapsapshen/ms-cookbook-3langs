@@ -1280,6 +1280,16 @@ git add assets/i18n.js assets/language-switcher.js assets/paper.js assets/locale
 git commit -m "perf(load): inject language packs and the exercise bundle on demand"
 ```
 
+### Task 5 实现后的更正（评审发现的功能回归，代码为准）
+
+实现时发现 spec 3.2 的一个错误前提：练习包不只服务 `#practice` 学习地图，`exercise-ui.js` 同时是**章内练习面板**的唯一挂载点（它在 `hashchange` 后创建 `#exercisePanel`，`assets/exercise-ui.js:909-927,966`）。若只在 `#practice` 注入，读者深链进入任意章节将看不到章内练习——这是功能丢失，不是优化。裁定如下：
+
+1. **练习包的触发条件改为「首次进入 `#practice` 或首次进入任意章节」**，且必须排在首屏绘制之后（`requestAnimationFrame` 或 `requestIdleCallback`），memoised，一次会话只注入一次。这样深链读者仍能在面板就绪前看到正文与 LCP，而不会因为要等 1.2 MB 而变慢。
+2. **`practice.loadFailed` 的文案不得承诺「点击重试」**——此时没有可点的控件；改为「请重新进入本页重试」。真正的点击重试由 Task 8 决定是否补。
+3. **契约反转涉及三个既有套件，不止两个**：`scripts/test-exercise-map.cjs` 也断言了旧的 index.html 加载顺序，必须同批反转。
+4. **`scripts/version-assets.mjs` 必须先处理脚本、后处理页面**，否则同一轮里 index.html 的 `i18n.js` 指纹仍是旧的。
+5. **测试里的 `?v=` 断言必须与真实文件哈希比较**，不能写死 12 位字面量——locale 文件内容会在本任务改变，写死的哈希必然过期。
+
 ---
 
 ### Task 6: 分层动效层

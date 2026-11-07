@@ -38,6 +38,7 @@ on:
       - 'scripts/test-exercise-wiring.cjs'
       - 'scripts/test-exercise-locale.cjs'
       - 'scripts/test-i18n.cjs'
+      - 'scripts/test-asset-loading.cjs'
       - 'scripts/test-ci-coverage.cjs'
       - 'README*.md'
       - 'LICENSE'
@@ -85,6 +86,14 @@ jobs:
           # Needs `node` (step "Set up Node.js", same job) to compare each
           # stdout_matches pattern under JS RegExp as well as Python re.
           python3 scripts/check_regex_parity.py
+      - name: Verify the on-demand asset loader
+        run: |
+          # assets/asset-loader.js is the only on-demand injector the site uses:
+          # the language packs and the exercise bundle ride on it, and a script
+          # that runs twice or out of order breaks the exercise modules without
+          # throwing anywhere. It stands alone rather than joining the exercise
+          # step because it guards the page, not the exercise feature.
+          node scripts/test-asset-loading.cjs
       - name: Verify the exercise modules
         run: |
           # The grading logic, against the corpus harness. Its fake Pyodide is

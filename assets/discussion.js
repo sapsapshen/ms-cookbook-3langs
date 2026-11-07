@@ -50,13 +50,16 @@
   }
   async function api(path,options={}) {
     // A 503 from the write endpoints means "same request, later", and the draft
-    // is still in the textarea, so backing off is free for the reader.
+    // is still in the textarea, so backing off is free for the reader. A thrown
+    // fetch gives no such guarantee — the write may have reached the server —
+    // so POST/DELETE surface error.network once instead of replaying. Only GET
+    // loads keep the network retry they already had.
     for (let attempt = 0; ; attempt += 1) {
       let response;
       try {
         response = await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf,...options.headers}});
       } catch {
-        if (attempt < 2) { await wait(400 * (attempt + 1)); continue; }
+        if (!options.method && attempt < 2) { await wait(400 * (attempt + 1)); continue; }
         throw new Error(t('error.network'));
       }
       if (response.status === 503 && attempt < 2) { await wait(400 * (attempt + 1)); continue; }
@@ -74,7 +77,7 @@
     account.replaceChildren();
     if(session.user){
       account.append(el('span',session.user.name,'account-name'));
-      const logout=el('button',t('discussion.logout'));logout.type='button';logout.onclick=async()=>{try{await api('/api/logout',{method:'POST'});await refreshSession();await load();}catch(e){status.textContent=t('error.retryLater');}};account.append(logout);
+      const logout=el('button',t('discussion.logout'));logout.type='button';logout.onclick=async()=>{try{await api('/api/logout',{method:'POST'});await refreshSession();await load();}catch(e){status.textContent=e instanceof Error&&e.message?e.message:t('error.retryLater');}};account.append(logout);
     }else if(session.loginEnabled) account.append(loginLink(t('discussion.loginShort')));
     else {const pending=el('span',t('discussion.loginShort'),'account-pending');pending.title=t('discussion.loginUnconfigured');pending.setAttribute('aria-disabled','true');account.append(pending);}
     window.dispatchEvent(new CustomEvent('purplebook:session',{detail:session}));
@@ -123,7 +126,7 @@
       if(entry.canDelete){
         const highlight=entry.kind==='highlight';
         const del=el('button',highlight?t('discussion.removeHighlight'):t('discussion.delete'),'entry-delete');del.type='button';
-        del.onclick=async()=>{if(!confirm(highlight?t('discussion.deleteHighlightConfirm'):t('discussion.deleteContentConfirm')))return;del.disabled=true;try{await api('/api/entries/'+entry.id,{method:'DELETE'});await load();}catch(e){status.textContent=t('error.retryLater');del.disabled=false;}};card.append(del);
+        del.onclick=async()=>{if(!confirm(highlight?t('discussion.deleteHighlightConfirm'):t('discussion.deleteContentConfirm')))return;del.disabled=true;try{await api('/api/entries/'+entry.id,{method:'DELETE'});await load();}catch(e){status.textContent=e instanceof Error&&e.message?e.message:t('error.retryLater');del.disabled=false;}};card.append(del);
       }
       list.append(card);
     }
@@ -153,12 +156,12 @@
   function canWrite(){if(session.user)return true;status.replaceChildren(el('span',t('discussion.loginFirst')),session.loginEnabled?loginLink():el('span',t('discussion.loginSoon')));panel.scrollIntoView({block:'start',behavior:'smooth'});selectionBar.hidden=true;return false;}
   save.onclick=async()=>{
     if(!canWrite()||!anchor||busy)return;busy=true;save.disabled=true;const selected={...anchor};
-    try{await api(`/api/chapters/${selected.chapter}/entries`,{method:'POST',body:JSON.stringify({...selected,kind:'highlight'})});selectionBar.hidden=true;getSelection().removeAllRanges();showTab('annotation');await load();status.textContent=t('discussion.savedHighlight');notify(status.textContent);}catch(e){status.textContent=t('error.retryLater');notify(status.textContent);}finally{busy=false;save.disabled=false;}
+    try{await api(`/api/chapters/${selected.chapter}/entries`,{method:'POST',body:JSON.stringify({...selected,kind:'highlight'})});selectionBar.hidden=true;getSelection().removeAllRanges();showTab('annotation');await load();status.textContent=t('discussion.savedHighlight');notify(status.textContent);}catch(e){status.textContent=e instanceof Error&&e.message?e.message:t('error.retryLater');notify(status.textContent);}finally{busy=false;save.disabled=false;}
   };
   write.onclick=()=>{if(!canWrite()||!anchor)return;quote.textContent=anchor.quote;dText.value='';dStatus.textContent='';selectionBar.hidden=true;dialog.showModal();dText.focus();};
   dClose.onclick=()=>dialog.close();
   dForm.onsubmit=async e=>{e.preventDefault();if(busy||!anchor||!dText.value.trim())return;busy=true;dSubmit.disabled=true;
-    try{await api(`/api/chapters/${anchor.chapter}/entries`,{method:'POST',body:JSON.stringify({...anchor,kind:'annotation',text:dText.value})});dialog.close();showTab('annotation');getSelection().removeAllRanges();await load();}catch(error){dStatus.textContent=t('error.retryLater');}finally{busy=false;dSubmit.disabled=false;}
+    try{await api(`/api/chapters/${anchor.chapter}/entries`,{method:'POST',body:JSON.stringify({...anchor,kind:'annotation',text:dText.value})});dialog.close();showTab('annotation');getSelection().removeAllRanges();await load();}catch(error){dStatus.textContent=error instanceof Error&&error.message?error.message:t('error.retryLater');}finally{busy=false;dSubmit.disabled=false;}
   };
   form.onsubmit=async e=>{e.preventDefault();if(!canWrite()||busy||!textarea.value.trim())return;busy=true;submit.disabled=true;const target=chapterKey();
     try{await api(`/api/chapters/${target}/entries`,{method:'POST',body:JSON.stringify({kind:'comment',text:textarea.value})});if(chapterKey()===target){textarea.value='';await load();status.textContent=t('discussion.published');}}catch(error){status.textContent=error instanceof Error && error.message ? error.message : t('error.retryLater');}finally{busy=false;submit.disabled=!session.user;}

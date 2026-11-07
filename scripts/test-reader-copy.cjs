@@ -1,10 +1,13 @@
 /* No reader should ever see "Failed to fetch" or a Python exception string.
-   These checks read the shipped sources, because the mapping is the contract.
+   These checks read the shipped sources, because the mapping is the contract,
+   and run the extracted api() helper against a fake fetch to prove a write is
+   never replayed after a network throw.
    Run with: node scripts/test-reader-copy.cjs */
 'use strict';
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = resolve(__dirname, '..');
 const read = path => readFileSync(resolve(ROOT, path), 'utf8');
@@ -13,9 +16,44 @@ const KEYS = ['error.serviceDown', 'error.retryLater', 'error.network', 'error.r
 
 let passed = 0;
 const failures = [];
-function check(name, body) {
-  try { body(); passed += 1; console.log('ok  ' + name); }
-  catch (error) { failures.push([name, error]); console.log('FAIL ' + name + ': ' + error.message); }
+const checks = [];
+function check(name, body) { checks.push([name, body]); }
+
+/* api() lives inside an IIFE, so slice `const wait` … the closing brace of
+   api() and evaluate that slice in a vm with a fake fetch, an immediate
+   setTimeout (records the backoff) and local t()/session stubs. */
+function apiFrom(file, fetchImpl, delays) {
+  const source = read(file);
+  const start = source.indexOf('const wait');
+  assert.ok(start >= 0, `${file} has no wait helper`);
+  const apiAt = source.indexOf('async function api', start);
+  assert.ok(apiAt > start, `${file} has no api helper`);
+  const bodyAt = source.indexOf('{', source.indexOf(')', apiAt));
+  let depth = 0, quote = '', escaped = false, end = -1;
+  for (let i = bodyAt; i < source.length; i += 1) {
+    const char = source[i];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') { quote = char; continue; }
+    if (char === '{') depth += 1;
+    else if (char === '}' && --depth === 0) { end = i + 1; break; }
+  }
+  assert.ok(end > start, `${file} has an unbalanced api helper`);
+  const factory = `(function() {
+    const session = { csrf: 'test' };
+    function t(key) { return key; }
+    function refreshSession() {}
+    ${source.slice(start, end)}
+    return api;
+  })()`;
+  return vm.runInNewContext(factory, {
+    fetch: fetchImpl,
+    setTimeout: (fn, ms) => { delays.push(ms); return fn(); },
+  });
 }
 
 check('no reader-facing surface prints a raw error.message', () => {
@@ -46,5 +84,77 @@ check('all four keys exist in all three locales', () => {
   }
 });
 
-console.log(`\n${passed} passed, ${failures.length} failed`);
-if (failures.length) process.exitCode = 1;
+check('a network throw on a write is never retried', async () => {
+  for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
+    for (const method of ['POST', 'DELETE']) {
+      let calls = 0;
+      const api = apiFrom(file, () => { calls += 1; return Promise.reject(new TypeError('Failed to fetch')); }, []);
+      await assert.rejects(
+        api('/api/wishes', { method, body: method === 'POST' ? '{"text":"hi"}' : undefined }),
+        error => error.message === 'error.network',
+        `${file} did not surface error.network for ${method}`
+      );
+      assert.equal(calls, 1, `${file} replayed a ${method} ${calls} times after a network throw`);
+    }
+  }
+});
+
+check('a network throw on a GET keeps the existing retry', async () => {
+  for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
+    let calls = 0;
+    const delays = [];
+    const api = apiFrom(file, () => {
+      calls += 1;
+      if (calls < 3) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve({ status: 200, ok: true, json: async () => ({ items: [] }) });
+    }, delays);
+    const data = await api('/api/session');
+    assert.equal(calls, 3, `${file} stopped retrying GETs after ${calls} calls`);
+    assert.equal(data.items.length, 0, `${file} lost the GET response`);
+    assert.deepEqual(delays, [400, 800], `${file} changed the GET backoff`);
+  }
+});
+
+check('a 503 on a write still backs off 400 ms then 800 ms', async () => {
+  for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
+    let calls = 0;
+    const delays = [];
+    const api = apiFrom(file, () => {
+      calls += 1;
+      if (calls < 3) return Promise.resolve({ status: 503, ok: false, json: async () => ({ detail: 'busy' }) });
+      return Promise.resolve({ status: 200, ok: true, json: async () => ({ id: calls }) });
+    }, delays);
+    const data = await api('/api/wishes', { method: 'POST', body: '{}' });
+    assert.equal(calls, 3, `${file} made ${calls} calls for a 503 that cleared`);
+    assert.equal(data.id, 3, `${file} lost the response after a 503 retry`);
+    assert.deepEqual(delays, [400, 800], `${file} changed the 503 backoff`);
+  }
+});
+
+check('a 503 that never clears stops after two retries', async () => {
+  for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
+    let calls = 0;
+    const delays = [];
+    const api = apiFrom(file, () => {
+      calls += 1;
+      // A 503 from a proxy may not even be JSON; the status mapping must win.
+      return Promise.resolve({ status: 503, ok: false, json: async () => { throw new SyntaxError('not json'); } });
+    }, delays);
+    await assert.rejects(
+      api('/api/wishes', { method: 'POST', body: '{}' }),
+      error => error.message === 'error.serviceDown',
+      `${file} did not surface error.serviceDown`
+    );
+    assert.equal(calls, 3, `${file} made ${calls} calls before giving up on 503`);
+    assert.deepEqual(delays, [400, 800], `${file} changed the 503 backoff`);
+  }
+});
+
+(async () => {
+  for (const [name, body] of checks) {
+    try { await body(); passed += 1; console.log('ok  ' + name); }
+    catch (error) { failures.push([name, error]); console.log('FAIL ' + name + ': ' + error.message); }
+  }
+  console.log(`\n${passed} passed, ${failures.length} failed`);
+  if (failures.length) process.exitCode = 1;
+})();

@@ -1704,6 +1704,19 @@ git add assets/motion.css assets/motion.js assets/paper.js index.html tests/disc
 git commit -m "feat(motion): one token-driven motion layer for views, reveals and controls"
 ```
 
+### Task 6 实现后的更正（评审裁定，代码为准）
+
+评审在浏览器里实测出六项必须修的问题，其中三项是用户可见回归。以下以本节为准：
+
+1. **reveal 门控必须限定在屏幕媒体**。`@media print` 下 `scan()` 不会运行，未滚动到的正文分节会以 `opacity:0` 打印出去。把隐藏/过渡规则包进 `@media screen`，或补一条打印覆盖。
+2. **`fallbackSwap` 的选择器错了**：阅读页是 `<div class="site-shell" data-page="reader">`，不是 `<main>`。原选择器在不支持 View Transitions 的浏览器里退化为「整页（含页头）淡入位移」。改为 `[data-page]:not([hidden])`。
+3. **首次路由不得走过渡**。`route()` 启动时 `currentView === ''`，深链 `#chapter-1` 会先绘制渲染好的首页再交叉淡入章节。`apply` 直接执行的条件改为 `inPlace || !currentView || !window.Motion`。
+4. **reduced-motion 的守卫要能真的失败**。静态测试补一条：reduced 块里必须出现 `:not(.is-revealed){opacity:1`；E2E 改为「先以 no-preference 加载 → 等钩子出现 → 切到 reduce」，并断言 `h2.length > 0`，否则空集合会让 `every` 永真。
+5. **`scan()` 一次遍历内先写后读**，正是 Task 7 要消除的模式。改为先读所有 rect、再统一写属性与 class。
+6. **控制列表越界且回退了既有缓动**：`motion.css` 声明了 `box-shadow`（违反只碰 transform/opacity），同时用不带 `background` 的列表覆盖了 `paper.css` 里 `.primary-button` 既有的背景过渡，导致按钮悬停变色从渐变变成瞬切。裁定：**删掉这条控制过渡列表**，沿用站点既有的 transition 声明，`motion.css` 只保留 hover/active 的 transform 规则；静态测试补一条「motion.css 中不得出现 transform/opacity 之外的 transition 属性」。
+
+另附小修：`swap.ready` 的拒绝分支目前吞掉异常，改为 `console.error` 后再执行 `after`。
+
 ---
 
 ### Task 7: 消除章节渲染的强制同步布局

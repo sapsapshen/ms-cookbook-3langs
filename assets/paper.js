@@ -561,7 +561,9 @@
       if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(error=>console.warn('exercise bundle failed to load',error));
       if(window.Motion)window.Motion.scan();
     });
-    if(swap && swap.ready) swap.ready.then(after,error=>{console.error('view transition failed',error);after();}); else after();
+    // A skipped transition (rapid navigation) rejects with an AbortError; that is
+    // the skip working as designed, not a failure worth a console error.
+    if(swap && swap.ready) swap.ready.then(after,error=>{if(error?.name!=='AbortError')console.error('view transition failed',error);after();}); else after();
   }
   // A language change rewrites every string the router and panels own.
   window.MSI18N.on(()=>{

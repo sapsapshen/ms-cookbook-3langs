@@ -121,9 +121,36 @@
     'assets/exercise-store.js?v=60f13f8a96a2', 'assets/exercise-sandbox.js?v=248ef0a7613b',
     'assets/exercise-map.js?v=93478189a6bf', 'assets/exercise-ui.js?v=03b76ab6967b'];
   function ensureExerciseBundle() { return window.AssetLoader.loadSequence(EXERCISE_BUNDLE); }
+  /* The practice view has nothing to show until 1.2 MB of modules land, so its
+     status line goes into the map's own container -- and carries role="status",
+     or a screen reader never learns the wait exists. The element itself is not
+     replaced (ExerciseMap.render() swaps its children), so the role has to be
+     taken off again before the grid paints, or the whole map is announced as one
+     long status message on every repaint. */
+  function paintPracticeStatus(text) {
+    const slot=$('#exerciseMap');
+    if(!slot)return;
+    slot.setAttribute('role','status');
+    slot.textContent=text;
+  }
   /* Startup keeps the original guard: a reader who never opens #practice must not
      pay 1.2 MB for it, so the eager call sites stay a no-op until the bundle lands. */
-  function renderExerciseMap() { if (window.ExerciseMap) window.ExerciseMap.render(); }
+  function renderExerciseMap() {
+    const slot=$('#exerciseMap');
+    if(slot)slot.removeAttribute('role');
+    if (window.ExerciseMap) window.ExerciseMap.render();
+  }
+  /* Both #practice entries share this: the route body paints the status line (it
+     has to be on the first paint), this starts the fetch. A page without the
+     injection primitive can never complete the pack, so it says so instead of
+     dereferencing nil. */
+  function loadPracticeBundle() {
+    if(!window.AssetLoader){paintPracticeStatus(t('practice.loadFailed'));return;}
+    ensureExerciseBundle().then(renderExerciseMap).catch(error=>{
+      paintPracticeStatus(t('practice.loadFailed'));
+      console.warn('exercise bundle failed to load',error);
+    });
+  }
   renderProjectLinks(); renderHomePaths(); renderScenes(); renderExerciseMap();
 
   function highlighted(text,query) {
@@ -424,15 +451,18 @@
       if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);
       if(view==='practice'){
         if(window.ExerciseMap)renderExerciseMap();
-        else{
-          const practiceStatus=$('#exerciseMap');
-          practiceStatus.textContent=t('practice.loading');
-          ensureExerciseBundle().then(renderExerciseMap).catch(()=>{practiceStatus.textContent=t('practice.loadFailed');});
-        }
+        else paintPracticeStatus(t('practice.loading'));
       }
     }
     currentView=view;
-    if(inPlace){updateProgress();return;}
+    if(inPlace){
+      updateProgress();
+      /* No frame is scheduled for an in-place route, and a language switch into
+         #practice is also the retry path for a bundle that failed before. Nothing
+         here is waiting on a first paint, so the fetch can start at once. */
+      if(view==='practice'&&!window.ExerciseMap)loadPracticeBundle();
+      return;
+    }
     const analyticsPage=view==='reader'?chapter.id:view;
     if(analyticsPage!==previousPage)window.dispatchEvent(new CustomEvent('purplebook:route',{detail:{page:analyticsPage}}));
     requestAnimationFrame(()=>{
@@ -442,16 +472,17 @@
       updateProgress();
       /* The bundle is not only the #practice map: assets/exercise-ui.js is the
          only mount point for the in-chapter panel, so a reader who deep links
-         into a chapter would lose it if #practice were the only trigger. This
-         runs in the post-render frame rather than in the route body: the
-         chapter's DOM is complete before the injection starts, and the fetch
-         queues behind the images that render just inserted. Nothing awaits it
-         -- AssetLoader memoises the six modules, the panel mounts itself when
-         they land, and a bundle that never arrives costs this view only the
-         panel, so the failure is swallowed here (`window.AssetLoader` is
-         checked first, so a page without the primitive still renders the
-         chapter instead of throwing in this frame). */
-      if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(()=>{});
+         into a chapter would lose it if #practice were the only trigger. Both
+         triggers run in this post-render frame rather than in the route body:
+         the chapter's or the map's markup is complete before the injection
+         starts, and the fetch queues behind whatever the first paint needs.
+         Nothing awaits either one -- AssetLoader memoises the six modules, the
+         panel mounts itself when they land, and a bundle that never arrives
+         costs the chapter view only the panel, so that failure is swallowed and
+         only logged (`window.AssetLoader` is checked first, so a page without
+         the primitive still renders instead of throwing in this frame). */
+      if(view==='practice'&&!window.ExerciseMap)loadPracticeBundle();
+      if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(error=>console.warn('exercise bundle failed to load',error));
     });
   }
   // A language change rewrites every string the router and panels own.

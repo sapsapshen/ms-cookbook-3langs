@@ -404,8 +404,13 @@ const RUNNABLE = [...ORDER.filter(name => !SKIPPED.has(name)), ...EXERCISE_MODUL
 /* Boots the page the way a browser would: run each script in declaration order
    against one shared context, and report which file threw. `hash` picks the
    route the page starts on -- '' is the home page, '#chapter-7' is a reader
-   who deep-linked into a chapter (the case where the panel must exist). */
-function bootPage(hash) {
+   who deep-linked into a chapter (the case where the panel must exist).
+   `deferFrames` holds requestAnimationFrame callbacks instead of running them,
+   which is the only way to see what a route did BEFORE its first paint: the
+   practice trigger has to be in that frame, not in the route body. */
+function bootPage(hash, options) {
+  const opts = options || {};
+  const frames = [];
   const root = new StubNode('body');
   /* The slots index.html actually ships, as real nodes. See the class comment:
      anything left to the memo fallback cannot be asserted on. */
@@ -480,7 +485,9 @@ function bootPage(hash) {
     URLSearchParams,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
     IntersectionObserver: class { observe() {} disconnect() {} unobserve() {} },
-    requestAnimationFrame: fn => { fn(); return 0; },
+    requestAnimationFrame: opts.deferFrames
+      ? (fn => { frames.push(fn); return frames.length; })
+      : (fn => { fn(); return 0; }),
     NodeFilter: {SHOW_ELEMENT: 1, SHOW_TEXT: 4},
     Node: {ELEMENT_NODE: 1, TEXT_NODE: 3},
     setTimeout, clearTimeout, setInterval, clearInterval,
@@ -501,7 +508,12 @@ function bootPage(hash) {
       errors.push(`${name}: ${error && error.message}`);
     }
   }
-  return {window: sandbox, document, root, context, errors, listeners, mapSlot, pager, articleBody};
+  return {
+    window: sandbox, document, root, context, errors, listeners, mapSlot, pager, articleBody,
+    frames,
+    /* Runs what the browser would run after the paint, in order. */
+    flushFrames() { while (frames.length) frames.shift()(); },
+  };
 }
 
 const GLOBALS = ['ExerciseGrader', 'ExerciseStore', 'ExerciseSandbox', 'ExerciseMap', 'ExerciseUI'];
@@ -625,6 +637,65 @@ await check('no Pyodide was fetched while the page loaded (G9)', () => {
   // loading the page had touched it, this list would not be empty.
   assert.deepEqual(chapter.errors, []);
   assert.ok(!chapter.window.location.hash.includes('pyodide'));
+});
+
+/* Ruling #1 covers both triggers: the 1.2 MB must start after the first paint of
+   the view that wants it, not in the route body. #practice is the case the
+   reader branch's frame cannot speak for, so this boot holds every frame and
+   looks at the page between the route and the paint. The status line is the one
+   thing that must already be up -- it is all the view has until the map exists
+   -- and it is a live region, or a screen reader is told nothing at all while
+   it waits.
+
+   The six modules are in RUNNABLE and therefore already on window by the time
+   this harness is asked anything (they run after paper.js, which is why the
+   route saw them missing). They are taken off window again before the frame
+   runs: a real page cannot have them before the frame does, and the guard
+   (`!window.ExerciseMap`) would otherwise read a page that had already paid. */
+const practice = bootPage('#practice', {deferFrames: true});
+const mapRenderer = practice.window.ExerciseMap;
+
+await check('#practice paints its status line first and fetches after the frame', async () => {
+  assert.deepEqual(practice.errors, []);
+  assert.equal(
+    practice.mapSlot.textContent,
+    practice.window.MSI18N.t('practice.loading'),
+    'the loading line must be painted by the route, before the next paint',
+  );
+  assert.equal(
+    practice.mapSlot.getAttribute('role'),
+    'status',
+    'the loading line is silent to assistive tech without role="status"',
+  );
+  assert.deepEqual(
+    injectedSources(practice.root),
+    [],
+    'the bundle fetch started in the route body instead of after the first paint',
+  );
+  /* From inside the context: deleting a property through the host's sandbox
+     object does not reach the context's global, and a silent no-op here would
+     leave a page that had already paid for the bundle. */
+  vm.runInContext('delete window.ExerciseMap', practice.context);
+  practice.flushFrames();
+  assert.deepEqual(
+    injectedSources(practice.root),
+    [BUNDLE_SOURCES[0]],
+    'the post-render frame did not start the bundle fetch',
+  );
+  /* Let the six modules land. The harness never fires onload by itself (nothing
+     on the page may wait for the bundle), so this is only about the paint that
+     follows: the loading line has to be replaced by the grid, with the live
+     region taken off the container. */
+  practice.window.ExerciseMap = mapRenderer;
+  for (let landed = 0; landed < BUNDLE_SOURCES.length; landed += 1) {
+    const tags = practice.root.children.filter(node => node.tagName === 'SCRIPT');
+    tags[tags.length - 1].onload();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  assert.deepEqual(injectedSources(practice.root), BUNDLE_SOURCES, 'the whole bundle was not requested');
+  assert.ok(practice.mapSlot.querySelector('.exercise-map'), 'the map never painted over the loading line');
+  assert.equal(practice.mapSlot.getAttribute('role'), null,
+    'the live region was left on the grid container');
 });
 
 // Asserted, not just printed: an emptied suite would otherwise report

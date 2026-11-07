@@ -10,6 +10,15 @@
   const listeners = new Set();
   const htmlLang = {zh: 'zh-CN', en: 'en-US', es: 'es-ES'};
   let current = DEFAULT;
+  /* Bumped by every set() that succeeds -- including one that picks the language
+     already on screen. That is the case the naive `next === current` return misses:
+     a reader who stored es and picks 中文 during init()'s 3.4 MB fetch changes
+     nothing visible, so nothing else records that they spoke after init() started,
+     and the pack that lands later would take the page back to es. init() reads
+     this before it loads and drops its own result if the value moved.
+     A failed set() does not bump it: that pick never happened, and the reader's
+     stored preference is still the best answer the page has. */
+  let intent = 0;
 
   function register(code, entries) {
     if (!code || !entries || typeof entries !== 'object') return;
@@ -84,15 +93,26 @@
   };
   async function load(code) {
     const next = normalize(code);
-    if (!next || next === DEFAULT || dictionaries[next]) return next;
-    if (!window.AssetLoader) throw new Error('asset loader is unavailable');
-    await window.AssetLoader.loadSequence(extraPaths[next]);
+    if (!next || next === DEFAULT) return next;
+    /* A registered dictionary is not proof the pack is complete: the sequence
+       loads the locale file first and the prose file second, so a failure between
+       them leaves a dictionary that a short-circuit here would accept forever --
+       English chrome over Chinese prose, no error shown, and the missing 2.2 MB
+       never asked for again. So the sequence always runs; AssetLoader remembers
+       every file that succeeded, which makes a complete pack free and re-requests
+       only the one that failed. A page that ships the packs eagerly and has no
+       loader at all (analytics.html) is the one case where the dictionary is the
+       whole story. */
+    if (window.AssetLoader) await window.AssetLoader.loadSequence(extraPaths[next]);
+    else if (!dictionaries[next]) throw new Error('asset loader is unavailable');
     if (!dictionaries[next]) throw new Error('language pack registered nothing');
     return next;
   }
   async function set(code, options) {
     const next = await load(code);
-    if (!next || next === current) return;
+    if (!next) return;
+    intent += 1;
+    if (next === current) return;
     current = next;
     if (!options || options.persist !== false) {
       try { localStorage.setItem(STORAGE_KEY, next); } catch { /* Storage can be disabled in embedded readers. */ }
@@ -103,8 +123,17 @@
     const initial = stored();
     // A returning English reader gets Chinese chrome until the pack lands; that
     // is the trade for not shipping 3.4 MB to everyone. notify() runs once, after.
-    if (initial && initial !== DEFAULT) { load(initial).then(code => { current = code; notify(); }, notify); }
-    else notify();
+    if (initial && initial !== DEFAULT) {
+      const mark = intent;
+      load(initial).then(code => {
+        // The reader may have spent this wait picking a language, including the
+        // one already on screen (see `intent`). Their pick wins; a pack that
+        // lands late is dropped rather than painted over it.
+        if (mark !== intent) return;
+        current = code;
+        notify();
+      }, notify);
+    } else notify();
   }
 
   window.MSI18N = {

@@ -837,14 +837,18 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         if entry.kind!='highlight' and not entry.text.strip(): raise HTTPException(422,'请填写内容')
         if entry.kind!='comment' and (not entry.quote.strip() or entry.end<=entry.start): raise HTTPException(422,'请先选择正文中的文字')
         now=int(time.time()); eid=secrets.token_hex(16)
-        with db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
-            count=conn.execute('SELECT count(*) FROM entries WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
-            if count>=10: raise HTTPException(429,'操作太频繁，请稍后再试')
-            if entry.kind=='highlight':
-                existing=conn.execute('SELECT id FROM entries WHERE chapter=? AND user_id=? AND kind=? AND block=? AND start=? AND end=? AND quote=?',(chapter,u['id'],entry.kind,entry.block,entry.start,entry.end,entry.quote)).fetchone()
-                if existing: return {'id':existing['id']}
-            conn.execute('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?)',(eid,chapter,u['id'],entry.kind,entry.text.strip(),entry.quote,entry.block,entry.start,entry.end,now))
+        try:
+            with db() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                count=conn.execute('SELECT count(*) FROM entries WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
+                if count>=10: raise HTTPException(429,'操作太频繁，请稍后再试')
+                if entry.kind=='highlight':
+                    existing=conn.execute('SELECT id FROM entries WHERE chapter=? AND user_id=? AND kind=? AND block=? AND start=? AND end=? AND quote=?',(chapter,u['id'],entry.kind,entry.block,entry.start,entry.end,entry.quote)).fetchone()
+                    if existing: return {'id':existing['id']}
+                conn.execute('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?)',(eid,chapter,u['id'],entry.kind,entry.text.strip(),entry.quote,entry.block,entry.start,entry.end,now))
+        except sqlite3.OperationalError as error:
+            if 'readonly' not in str(error).lower(): raise
+            return write_unavailable(error)
         return {'id':eid}
 
     @app.delete('/api/entries/{entry_id}')
@@ -875,11 +879,15 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         text=wish.text.strip()
         if not text: raise HTTPException(422,'请写下希望补充的内容')
         now=int(time.time()); wid=secrets.token_hex(16)
-        with db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
-            count=conn.execute('SELECT count(*) FROM wishes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
-            if count>=5: raise HTTPException(429,'愿望发送太频繁，请稍后再试')
-            conn.execute('INSERT INTO wishes VALUES (?,?,?,?)',(wid,u['id'],text,now))
+        try:
+            with db() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                count=conn.execute('SELECT count(*) FROM wishes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
+                if count>=5: raise HTTPException(429,'愿望发送太频繁，请稍后再试')
+                conn.execute('INSERT INTO wishes VALUES (?,?,?,?)',(wid,u['id'],text,now))
+        except sqlite3.OperationalError as error:
+            if 'readonly' not in str(error).lower(): raise
+            return write_unavailable(error)
         return {'id':wid}
 
     @app.delete('/api/wishes/{wish_id}')
@@ -891,6 +899,13 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
             if row['user_id']!=u['id'] and not is_moderator(u): raise HTTPException(403,'只能删除自己发表的愿望')
             conn.execute('DELETE FROM wishes WHERE id=?',(wish_id,))
         return {'ok':True}
+
+    def write_unavailable(error):
+        # The reader's own text is never lost here: the frontend keeps the draft
+        # and retries, and a 503 is the one status that says "same request, later".
+        LOGGER.exception('Site database is unavailable for a write')
+        return JSONResponse(status_code=503, content={'detail': '服务暂时不可用，请稍后重试', 'fallback': True},
+                            headers={'Retry-After': '2', 'x-sils-fallback': '1'})
 
     def grading_unavailable(detail):
         # Grading is a bonus layer: it degrades to the reference answer plus a
@@ -1043,75 +1058,79 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     def save_exercise_progress(payload: ExerciseProgress, request: Request):
         u=require_user(request)
         now=int(time.time()); saved=0; skipped=0
-        with db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
-            # Writes are counted, not rows: progress is upserted, so a reader who
-            # resends the same exercise collapses into one row and a row count would
-            # never trip. The log is pruned in the same transaction that reads it.
-            #
-            # The quota counts REQUESTS, and deliberately not rows: charging for
-            # row count made the ceiling a function of how much progress a reader
-            # had accumulated. Past 20 rows every sync was refused, the refusal
-            # changed nothing on the client, so the next sync sent the same rows
-            # and was refused too -- a deadlock that could not clear itself and
-            # grew more certain with the corpus. Rows are bounded separately by
-            # ExerciseProgress's cap, which is a ceiling on one request body.
-            #
-            # An empty batch is not a write and is not logged: the caller changed
-            # nothing, so charging it would let a client burn the quota by
-            # re-syncing a reader who has never done an exercise.
-            if payload.items:
-                conn.execute('DELETE FROM exercise_progress_writes WHERE created<?',(now-60,))
-                count=conn.execute('SELECT count(*) FROM exercise_progress_writes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
-                if count>=20: raise HTTPException(429,'操作太频繁，请稍后再试')
-                conn.execute('INSERT INTO exercise_progress_writes VALUES (?,?,?)',(secrets.token_hex(16),u['id'],now))
-            for row in payload.items:
-                # One row at a time, because one bad row used to poison the batch:
-                # a score of 1.7 anywhere in the payload failed the whole request
-                # and every other exercise in it lost an hour of work. A row is
-                # either storable or it is skipped and counted, and the response
-                # says how many were dropped so the client can see it.
-                try:
-                    item=ExerciseItem.model_validate(row)
-                except ValidationError as error:
-                    skipped+=1; LOGGER.info('Skipped an unreadable progress row: %s', unreadable_row_reasons(error)); continue
-                if item.chapter not in exercise_index or item.exercise not in exercise_index[item.chapter]:
-                    skipped+=1; LOGGER.info('Skipped a progress row for an exercise that does not exist'); continue
-                # passed and score only ever ratchet up, exactly like the client's
-                # merge: a device replaying a stale snapshot must not un-pass work the
-                # server already accepted, and a client's own push-back carries the
-                # merged values rather than a regressing one.
+        try:
+            with db() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                # Writes are counted, not rows: progress is upserted, so a reader who
+                # resends the same exercise collapses into one row and a row count would
+                # never trip. The log is pruned in the same transaction that reads it.
                 #
-                # self_assessed is the opposite kind of value and is deliberately
-                # NOT ratcheted. passed/score are accumulative achievements -- a pass
-                # is never revoked -- so MAX is their rule. A self-assessment is the
-                # learner's current statement about their own understanding, and it
-                # legitimately moves in both directions: 'fail' becomes 'pass' after
-                # a re-read, 'pass' becomes 'fail' after a bad day. Any merge rule
-                # the server invented here would be wrong twice over: the three
-                # states have no order ('fail' is not "less than" 'pass', and not
-                # "greater" than 'partial'), and the payload has already been
-                # arbitrated. merge() ran on the client before this request existed,
-                # timestamp arbitration decided that side, and the push-back is
-                # snapshot() reading the bucket merge() just wrote -- so the value
-                # arriving here IS the merged result. Re-deciding it server-side
-                # would apply a second, different rule to an already-decided value.
-                # Adding a `updated >= stored.updated` guard on top of that was
-                # tried and rejected: it looks safer, but a device whose clock lags
-                # would have its fresh 'fail' discarded in favour of the server's
-                # older 'pass', and merge() would then adopt that 'pass' locally --
-                # trading the reported bug for the same false progress by another
-                # route. Faithful storage plus the client's own arbitration is the
-                # only rule that cannot manufacture a pass.
-                conn.execute('''INSERT INTO exercise_progress VALUES (?,?,?,?,?,?,?,?,?,?)
+                # The quota counts REQUESTS, and deliberately not rows: charging for
+                # row count made the ceiling a function of how much progress a reader
+                # had accumulated. Past 20 rows every sync was refused, the refusal
+                # changed nothing on the client, so the next sync sent the same rows
+                # and was refused too -- a deadlock that could not clear itself and
+                # grew more certain with the corpus. Rows are bounded separately by
+                # ExerciseProgress's cap, which is a ceiling on one request body.
+                #
+                # An empty batch is not a write and is not logged: the caller changed
+                # nothing, so charging it would let a client burn the quota by
+                # re-syncing a reader who has never done an exercise.
+                if payload.items:
+                    conn.execute('DELETE FROM exercise_progress_writes WHERE created<?',(now-60,))
+                    count=conn.execute('SELECT count(*) FROM exercise_progress_writes WHERE user_id=? AND created>?',(u['id'],now-60)).fetchone()[0]
+                    if count>=20: raise HTTPException(429,'操作太频繁，请稍后再试')
+                    conn.execute('INSERT INTO exercise_progress_writes VALUES (?,?,?)',(secrets.token_hex(16),u['id'],now))
+                for row in payload.items:
+                    # One row at a time, because one bad row used to poison the batch:
+                    # a score of 1.7 anywhere in the payload failed the whole request
+                    # and every other exercise in it lost an hour of work. A row is
+                    # either storable or it is skipped and counted, and the response
+                    # says how many were dropped so the client can see it.
+                    try:
+                        item=ExerciseItem.model_validate(row)
+                    except ValidationError as error:
+                        skipped+=1; LOGGER.info('Skipped an unreadable progress row: %s', unreadable_row_reasons(error)); continue
+                    if item.chapter not in exercise_index or item.exercise not in exercise_index[item.chapter]:
+                        skipped+=1; LOGGER.info('Skipped a progress row for an exercise that does not exist'); continue
+                    # passed and score only ever ratchet up, exactly like the client's
+                    # merge: a device replaying a stale snapshot must not un-pass work the
+                    # server already accepted, and a client's own push-back carries the
+                    # merged values rather than a regressing one.
+                    #
+                    # self_assessed is the opposite kind of value and is deliberately
+                    # NOT ratcheted. passed/score are accumulative achievements -- a pass
+                    # is never revoked -- so MAX is their rule. A self-assessment is the
+                    # learner's current statement about their own understanding, and it
+                    # legitimately moves in both directions: 'fail' becomes 'pass' after
+                    # a re-read, 'pass' becomes 'fail' after a bad day. Any merge rule
+                    # the server invented here would be wrong twice over: the three
+                    # states have no order ('fail' is not "less than" 'pass', and not
+                    # "greater" than 'partial'), and the payload has already been
+                    # arbitrated. merge() ran on the client before this request existed,
+                    # timestamp arbitration decided that side, and the push-back is
+                    # snapshot() reading the bucket merge() just wrote -- so the value
+                    # arriving here IS the merged result. Re-deciding it server-side
+                    # would apply a second, different rule to an already-decided value.
+                    # Adding a `updated >= stored.updated` guard on top of that was
+                    # tried and rejected: it looks safer, but a device whose clock lags
+                    # would have its fresh 'fail' discarded in favour of the server's
+                    # older 'pass', and merge() would then adopt that 'pass' locally --
+                    # trading the reported bug for the same false progress by another
+                    # route. Faithful storage plus the client's own arbitration is the
+                    # only rule that cannot manufacture a pass.
+                    conn.execute('''INSERT INTO exercise_progress VALUES (?,?,?,?,?,?,?,?,?,?)
                                 ON CONFLICT(user_id,chapter,exercise) DO UPDATE SET
                                 code=excluded.code,passed=MAX(exercise_progress.passed,excluded.passed),
                                 score=MAX(exercise_progress.score,excluded.score),
                                 self_assessed=excluded.self_assessed,
                                 attempts=excluded.attempts,updated=excluded.updated''',
-                             (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,
-                              self_assessment_state(item.selfAssessed),item.attempts,second_stamp(item.updated) or now))
-                saved+=1
+                                 (secrets.token_hex(16),u['id'],item.chapter,item.exercise,item.code,item.passed,item.score,
+                                  self_assessment_state(item.selfAssessed),item.attempts,second_stamp(item.updated) or now))
+                    saved+=1
+        except sqlite3.OperationalError as error:
+            if 'readonly' not in str(error).lower(): raise
+            return write_unavailable(error)
         return {'saved':saved,'skipped':skipped}
 
     @app.post('/api/exercises/grade')

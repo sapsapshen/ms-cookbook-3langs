@@ -314,7 +314,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
-from itsdangerous.timestamp import TimestampSigner
+from itsdangerous import TimestampSigner
 
 from app import create_app
 
@@ -520,7 +520,7 @@ Expected: PASS（5 项）
 - [ ] **Step 8: 全量回归**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests -q`
-Expected: `139 passed`
+Expected: `143 passed`
 
 - [ ] **Step 9: 提交**
 

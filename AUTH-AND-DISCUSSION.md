@@ -86,15 +86,22 @@ Docker 监听 7860，持久化数据目录固定为 `/mnt/workspace/purplebook`�
 
 **账本与配额的关系**：`exercise_grade_calls` 记录窗口内的**尝试**（含被拒），额度上限 30 约束的是端点会**尝试**多少次，上游调用次数约束的是它会**花费**多少。这两个数字不是同一个：`outcome='graded'` 的行数应当跟随账单走，`unavailable` 说明上游故障，`refused` 是限流。剪枝在写入的同一个事务里完成，表不会无界增长。审计表**不存答案、不存评分标准**——它是成本与滥用账本，不是读者提交内容的副本。
 
-## 已知问题：Windows 高并发下的 SQLite 写竞争（既有问题，未修）
+## 已知问题：Windows 高并发下的 SQLite 写竞争（已加兜底，未改根因）
 
-`POST /api/chapters/{chapter}/entries`、`POST /api/wishes`、`POST /api/exercises/progress` 这三个写端点在 **Windows + 高并发**下偶发返回 `500`。
+`POST /api/chapters/{chapter}/entries`、`POST /api/wishes`、`POST /api/exercises/progress` 这三个写端点在 **Windows + 高并发**下偶发失败。
 
 原因是 **`SQLITE_READONLY`，不是 `SQLITE_BUSY`**：WAL + 短生命周期连接的竞争（`-shm` 需要至少一个长连接常驻），而不是锁竞争。因此连接上的 `timeout=15` **不生效**，写语句立即失败。隔离复现确认与业务逻辑无关。
 
-**这是既有问题，与评分端点的改动无关。** 评分端点（`POST /api/exercises/grade`）已针对同一失败模式做了兜底：claim（记账）失败时降级为 `503` + `fallback: true` 且不调用模型，settle（结算）失败时记日志不抛出——读者已经拿到分数，一次记账写失败不能变成 500。**上面三个端点没有这层兜底，仍可能返回 500。当前状态：未修。**
+**当前状态：已加兜底，未改根因。** 命中只读型 `sqlite3.OperationalError` 时，端点返回 `503` + `Retry-After: 2` + `{'detail', 'fallback': true}`，不再抛 500。覆盖范围：
 
-真正的修法是消除短生命周期连接（WAL 的 `-shm` 需要常驻连接），那会改变「一次操作一个连接」的既有约定，需要单独决策。短期缓解手段是降低这些端点的并发写入压力（部署侧限流或错峰）。
+- 三个 POST 写端点：章节内容、愿望、练习进度；
+- 两个读者可见的 DELETE：`DELETE /api/entries/{id}`、`DELETE /api/wishes/{id}`（读者删除自己的记录时不该一边收到硬 500、一边看到发表侧的可重试提示）。
+
+前端对 503 退避重试两次（400ms、800ms），读者已输入的内容保留在输入框中；网络异常**不重放写请求**，因为一次丢失的 POST 可能已经落库，重放会造成重复内容。其他 `OperationalError`（如 `database is locked`）仍按原路径抛出。
+
+**仍未覆盖**（同一失效模式下仍可能 500）：`logout`、登录/回台的会话写入、访问统计写入。这些不是读者内容写入，暂不在兜底范围内；若要把范围继续扩大，应连同连接模型一起决策。
+
+真正的修法是消除短生命周期连接（WAL 的 `-shm` 需要常驻连接），那会改变「一次操作一个连接」的既有约定，需要单独决策。短期缓解手段是降低这些端点的并发写入压力（部署侧限流或错峰）。回归由 `tests/test_write_fallback.py` 守住。
 
 ## 身份与安全
 
@@ -112,6 +119,9 @@ Docker 监听 7860，持久化数据目录固定为 `/mnt/workspace/purplebook`�
 .venv/bin/python -m pytest tests -q
 node --check assets/discussion.js
 node scripts/check-site.mjs
+node scripts/test-motion.cjs
+node scripts/test-asset-loading.cjs
+node scripts/test-reader-copy.cjs
 ```
 
 测试覆盖游客写入拒绝、CSRF、私人划线隔离、所有权删除、持久化重启、分页、频率限制、退出撤销、静态文件隔离、OAuth 非法 state，以及模拟已验证身份后的会话建立。

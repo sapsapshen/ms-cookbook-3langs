@@ -66,16 +66,30 @@ def test_versioned_asset_is_immutable(site):
     assert response.headers['cache-control'] == 'public, max-age=31536000, immutable'
 
 
-def test_unversioned_asset_is_not_immutable(site):
-    response = client(site).get('/assets/paper.js')
-    assert 'immutable' not in response.headers.get('cache-control', '')
-
-
 def test_unversioned_asset_must_revalidate(site):
     # Without a content hash the URL is reused across deploys, so the answer has
     # to be re-checked every time rather than guessed from Last-Modified.
     response = client(site).get('/assets/paper.js')
     assert response.headers['cache-control'] == 'public, max-age=0, must-revalidate'
+
+
+def test_index_outranks_the_version_query(site):
+    # A stray ?v= in a shared link must not pin the HTML shell for a year.
+    response = client(site).get('/?v=0123456789ab')
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-cache'
+
+
+def test_analytics_page_outranks_the_version_query(site):
+    response = client(site).get('/analytics?v=0123456789ab')
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-store'
+
+
+def test_short_cache_path_outranks_the_version_query(site):
+    # spec 3.1 names these paths for the short policy; ?v= must not promote them.
+    response = client(site).get('/favicon.svg?v=0123456789ab')
+    assert response.headers['cache-control'] == 'public, max-age=300, must-revalidate'
 
 
 def test_error_response_is_not_immutable(site):
@@ -92,6 +106,14 @@ def test_short_cache_paths(site):
 
 def test_api_still_no_store(site):
     assert client(site).get('/api/session').headers['cache-control'] == 'no-store'
+
+
+def test_error_response_under_auth_still_no_store(site):
+    # The no-store branch sits outside the 2xx guard on purpose: a 503 from
+    # /auth/login must not become cacheable just because it failed.
+    response = client(site).get('/auth/login')
+    assert response.status_code == 503
+    assert response.headers['cache-control'] == 'no-store'
 
 
 def test_index_still_no_cache(site):

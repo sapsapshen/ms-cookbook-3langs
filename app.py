@@ -43,6 +43,7 @@ SHORT_CACHE_PATHS = frozenset(('/favicon.svg', '/deployment.json', '/CONTRIBUTIN
                                '/README.md', '/README.zh-CN.md', '/LICENSE'))
 IMMUTABLE = 'public, max-age=31536000, immutable'
 SHORT_CACHE = 'public, max-age=300, must-revalidate'
+REVALIDATE = 'public, max-age=0, must-revalidate'
 
 # Python's map is built from /etc/mimetypes on Linux, where webp is often absent;
 # StaticFiles then serves it as octet-stream and the browser cannot sniff it.
@@ -613,20 +614,21 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
         if request.url.path.startswith(('/api/','/auth/')):
             response.headers['Cache-Control']='no-store'
-        elif 200 <= response.status_code < 300:
-            # Only a success is cacheable: a 404 or 500 must never inherit a
-            # year of freshness just because the URL happened to carry ?v=.
-            if request.query_params.get('v'):
+        elif 200 <= response.status_code < 300 and 'cache-control' not in response.headers:
+            # A route that already chose a policy outranks any query parameter:
+            # `/` is no-cache and `/analytics` is no-store, and a stray ?v= in a
+            # shared link must not pin a stale shell in a browser for a year.
+            if request.url.path in SHORT_CACHE_PATHS:
+                response.headers['Cache-Control']=SHORT_CACHE
+            elif request.query_params.get('v'):
                 # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
                 # a changed file is a different URL, so the old copy can never be served.
                 response.headers['Cache-Control']=IMMUTABLE
-            elif request.url.path in SHORT_CACHE_PATHS:
-                response.headers['Cache-Control']=SHORT_CACHE
             elif request.url.path.startswith(('/assets/','/content/','/chapters/')):
                 # An asset URL without a content hash gets no long life: with no
                 # header at all, browsers apply heuristic freshness off
                 # Last-Modified and can serve a stale file for days after a deploy.
-                response.headers['Cache-Control']='public, max-age=0, must-revalidate'
+                response.headers['Cache-Control']=REVALIDATE
         return response
 
     @app.get('/api/session')

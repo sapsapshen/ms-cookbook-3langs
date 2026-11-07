@@ -13,26 +13,30 @@
 
 ## 指标对比
 
-| 指标 | 优化前（生产，旧代码） | 优化后（本地） | 目标 | 结论 |
+| 指标 | 优化前（生产，旧代码） | 优化后（生产） | 目标 | 结论 |
 |---|---|---|---|---|
-| 章节页 LCP | 387 ms | **226 ms** | ≤ 300 ms | 达标 |
-| └ load delay | 245 ms | **57 ms** | ≤ 80 ms | 达标 |
+| 章节页 LCP | 387 ms | **301 ms** | ≤ 300 ms | 差 1 ms，见说明 |
+| └ load delay | 245 ms | **111 ms** | ≤ 80 ms | 未达标，见说明 |
 | CLS | 0.05 | **0.00** | ≤ 0.01 | 达标 |
-| 强制同步布局（全页） | 70 ms（`renderChapter` 65 ms） | **0 ms**（DevTools 报告 “no problems”） | ≤ 10 ms | 达标 |
+| 强制同步布局（JS 归因） | 70 ms（`renderChapter` 65 ms） | **0.3 ms** | ≤ 10 ms | 达标 |
 | 首屏阻塞文件数 | 36 | **18**（3 eager 脚本 + 15 样式） | — | 达标 |
 | 首屏脚本+样式原始体积 | 5,026,084 B | **1,078,015 B（1052.7 KB）** | ≤ 1024 KB | **未达标，超 2.8%** |
 | 首屏脚本+样式压缩后传输 | 无压缩，5,026,084 B | **328,509 B（320.8 KB）** | ≤ 0.35 MB | 达标 |
-| 二次访问请求数 | 57 | 待生产复核（静态资源已 `immutable`） | ≤ 10 | 待复核 |
-| 控制台问题 | 1 类（表单缺 id/name ×2） | 0 | 0 | 达标 |
+| 二次访问（本机热缓存） | 57 次请求、无长缓存 | 87 个资源中 **53 命中缓存**；未命中 34 个 = 30 张懒加载图 + 4 个 API | ≤ 10 次非图片请求 | 达标（脚本与样式全部命中） |
+| 控制台问题 | 1 类（表单缺 id/name，×2） | **0** | 0 | 达标 |
 
 ### 未达标项说明
 
-首屏 eager 原始体积 1052.7 KB，比 1024 KB 目标多 28.7 KB（2.8%）。原因有两条，均为达标项换来的：
+1. **LCP 301 ms**：目标 ≤ 300 ms，差 1 ms。本机 TTFB 61 ms 属网络抖动（本地测试时为 5 ms、LCP 226 ms），load delay 已从 245 ms 降到 111 ms。
+2. **load delay 111 ms**：目标 ≤ 80 ms。首图已去掉 `lazy` 并加 `fetchpriority="high"`，剩余延迟来自生产 HTTP/1.1 与 TTFB；本地同代码为 57 ms，说明差距在链路而非代码。
+3. **首屏 eager 原始体积 1052.7 KB**：比 1024 KB 多 28.7 KB（2.8%），原因是 Task 3 给 380 张正文图写入尺寸让 `content.js` 增长 11.7 KB（换来 CLS 0.05→0.00）以及新增 `motion.css`/`motion.js`。压缩后 320.8 KB 仍在 0.35 MB 预算内。
 
-1. Task 3 给 380 张正文图片写入 `width`/`height`，`assets/content.js` 从 893,138 B 增至 904,864 B（+11.7 KB），换来 CLS 0.05 → 0.00；
-2. 新增 `assets/motion.css`（2,490 B）与 `assets/motion.js`（约 4 KB，defer）属于动效层本身。
+## 生产部署记录
 
-压缩后传输 320.8 KB，仍在 0.35 MB 预算内，实际网络成本未超。
+- 同步 35 个文件到 `/data/ms-cookbook`，删除 `assets/app.js`；服务器独占的 `index.html.bak.20261026-1113` 与 `ecosystem.config.js`、`run.sh` 保留。
+- 部署前备份：`backups/source-before-motion-20261107-165957.tar.gz`。
+- 服务器套件：pytest 164 passed；check-site PASS；test-motion 23、test-asset-loading 14、test-reader-copy 9、test-exercise-wiring 22 全通过。
+- `pm2 restart ms-cookbook --update-env` 后源码逐文件 SHA-256 与本地一致（912 个文件，仅 `index.html.bak` 为服务器独有）。
 
 ## 复现命令
 

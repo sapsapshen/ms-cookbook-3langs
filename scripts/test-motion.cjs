@@ -185,5 +185,26 @@ check('a mid-visit preference change reveals hidden content instead of reloading
   assert.ok(!/window\.location\.reload\(\)/.test(JS), 'reloading the document is not a motion fallback');
 });
 
+check('the dead app.js is gone', () => {
+  assert.ok(!HTML.includes('assets/app.js'), 'index.html still references app.js');
+  let exists = true;
+  try { read('assets/app.js'); } catch { exists = false; }
+  assert.ok(!exists, 'assets/app.js still on disk');
+});
+
+check('every generated language picker is a named control', () => {
+  assert.match(read('assets/language-switcher.js'), /select\.name\s*=/, 'the picker has no name');
+});
+
+/* Same contract check-site.mjs enforces, restated here so the motion suite fails
+   on its own when a new blocking script joins the page: anything past the three
+   essentials must defer, or it delays first paint for every reader. */
+check('index.html ships nothing eager beyond the three essentials', () => {
+  const eager = [...HTML.matchAll(/<script(?![^>]*\bdefer\b)[^>]*\ssrc="([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(eager.map(name => name.split('?')[0]).sort(), [
+    'assets/content.js', 'assets/i18n.js', 'assets/locale/zh.js',
+  ].sort());
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exitCode = 1;

@@ -301,7 +301,6 @@ MSI18N.register('zh', {
   'wish.emptyValue': '请写下希望补充的内容。',
   'wish.posting': '正在投下愿望…',
   'wish.posted': '愿望已发布，期待有经验的伙伴来补上这一页。',
-  'wish.offline': '许愿池暂时无法连接，请稍后重试。',
   'wish.dailyCount': '{count} / 2000',
 
   'reader.sidebarTitle': '全书目录',
@@ -410,9 +409,7 @@ MSI18N.register('zh', {
   'discussion.logout': '退出',
   'discussion.published': '留言已发表。',
   'discussion.loginFailed': '登录未完成，请重新登录。',
-  'error.commentService': '评论服务暂时不可用，请稍后重试。',
-  'error.requestFailed': '请求未完成，请重试。',
-  'error.serviceDown': '服务暂时不可用，正在自动重试…',
+  'error.serviceDown': '服务暂时不可用，请稍后重试',
   'error.retryLater': '操作没有成功，请稍后重试',
   'error.network': '网络连接失败，请检查网络后重试',
   'error.rateLimited': '操作太频繁，请稍后再试',

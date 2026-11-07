@@ -301,7 +301,6 @@ MSI18N.register('en', {
   'wish.emptyValue': 'Please write what you would like to see added.',
   'wish.posting': 'Sending your wish…',
   'wish.posted': 'Wish published. Hopefully an experienced reader will fill this page in.',
-  'wish.offline': 'The wish pool is unreachable right now. Please try again later.',
   'wish.dailyCount': '{count} / 2000',
 
   'reader.sidebarTitle': 'Full contents',
@@ -410,9 +409,7 @@ MSI18N.register('en', {
   'discussion.logout': 'Sign out',
   'discussion.published': 'Comment posted.',
   'discussion.loginFailed': 'Sign-in did not complete. Please try again.',
-  'error.commentService': 'The comment service is unavailable right now. Please try again later.',
-  'error.requestFailed': 'The request did not complete. Please try again.',
-  'error.serviceDown': 'The service is briefly unavailable. Retrying…',
+  'error.serviceDown': 'The service is unavailable right now. Please try again shortly.',
   'error.retryLater': 'That did not go through. Please try again.',
   'error.network': 'Network connection failed. Check your connection and retry.',
   'error.rateLimited': 'Too many actions. Please wait a moment.',

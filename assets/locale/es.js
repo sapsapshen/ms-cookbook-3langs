@@ -301,7 +301,6 @@ MSI18N.register('es', {
   'wish.emptyValue': 'Escribe qué te gustaría que añadéramos.',
   'wish.posting': 'Enviando tu deseo…',
   'wish.posted': 'Deseo publicado. Ojalá alguien con experiencia complete esta página.',
-  'wish.offline': 'El pozo de deseos no está disponible ahora. Inténtalo más tarde.',
   'wish.dailyCount': '{count} / 2000',
 
   'reader.sidebarTitle': 'Índice completo',
@@ -410,9 +409,7 @@ MSI18N.register('es', {
   'discussion.logout': 'Cerrar sesión',
   'discussion.published': 'Comentario publicado.',
   'discussion.loginFailed': 'El inicio de sesión no se completó. Inténtalo de nuevo.',
-  'error.commentService': 'El servicio de comentarios no está disponible ahora. Inténtalo más tarde.',
-  'error.requestFailed': 'La solicitud no se completó. Inténtalo de nuevo.',
-  'error.serviceDown': 'El servicio no está disponible por un momento. Reintentando…',
+  'error.serviceDown': 'El servicio no está disponible ahora. Inténtalo de nuevo en un momento.',
   'error.retryLater': 'La acción no se completó. Inténtalo de nuevo.',
   'error.network': 'Falló la conexión de red. Revísala y reintenta.',
   'error.rateLimited': 'Demasiadas acciones. Espera un momento.',

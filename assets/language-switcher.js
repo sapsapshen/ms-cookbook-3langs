@@ -10,6 +10,7 @@
     wrapper.setAttribute('data-i18n-attr', 'title:common.language');
 
     const select = document.createElement('select');
+    select.name = 'language';
     select.className = 'language-select';
     select.setAttribute('data-i18n-attr', 'aria-label:common.language');
     for (const code of window.MSI18N.codes) {

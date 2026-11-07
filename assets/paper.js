@@ -420,12 +420,20 @@
     // a heading cannot jump over the band between two samples without its
     // boolean flipping.
     if(headingObserver)headingObserver.disconnect();
-    requestAnimationFrame(()=>{
-      headingObserver=new IntersectionObserver(updateActiveHeading,{rootMargin:'1000000px 0px -76% 0px',threshold:0});
-      chapter.headings.filter(h=>h.text.trim()).forEach(h=>{const target=document.getElementById(h.id);if(target)headingObserver.observe(target);});
-      $('#localToc').scrollTop=0;
-      afterLayout(measureAndProgress);
-    });
+    requestAnimationFrame(()=>requestAnimationFrame(settleChapterHeadings));
+  }
+  /* observe() asks each heading for its scroll container, and resetting the TOC
+     needs its scroll box, so both are layout reads in disguise -- the same reason
+     measureArticle waits. Two frames after the chapter was written the browser has
+     already laid the new markup out to paint it, so this whole block is served from
+     that layout and forces nothing itself. */
+  function settleChapterHeadings() {
+    if(currentView!=='reader'||!currentChapter)return;
+    $('#localToc').scrollTop=0;
+    headingObserver=new IntersectionObserver(updateActiveHeading,{rootMargin:'1000000px 0px -76% 0px',threshold:0});
+    currentChapter.headings.filter(h=>h.text.trim()).forEach(h=>{const target=document.getElementById(h.id);if(target)headingObserver.observe(target);});
+    measureArticle();
+    updateProgress();
   }
   function updateActiveHeading(entries) {
     if(currentView!=='reader'||!currentChapter)return;
@@ -442,25 +450,26 @@
       if(seen&&(seen.isIntersecting||seen.boundingClientRect.top<=line))active=h.id;
     }
     if(active===activeHeading)return;
-    // One frame per change, and the latest change wins: measuring inside the
-    // frame means a flick that moved two headings never reads after a write.
+    /* The observer's callback is the frame's own post-layout step, so the TOC box
+       measured here is free; the class and scroll writes wait for the next frame,
+       where nothing reads them back. Measuring inside that frame instead would
+       force a layout per heading change -- 13 ms over a scroll of one chapter. */
+    const delta=tocScrollDelta(active);
     if(headingFrame)cancelAnimationFrame(headingFrame);
-    headingFrame=requestAnimationFrame(()=>applyActiveHeading(active));
+    headingFrame=requestAnimationFrame(()=>applyActiveHeading(active,delta));
   }
-  function applyActiveHeading(active) {
-    if(currentView!=='reader'||active===activeHeading)return;
+  function tocScrollDelta(active) {
     const nav=$('#localToc'),link=nav.querySelector(`[data-heading="${CSS.escape(active)}"]`);
-    // Read first, write last. `.active` only changes colour and an absolutely
-    // positioned marker, so the box measured before the class lands is the box
-    // the reader sees, and nothing here forces a layout.
-    let delta=null;
-    if(link&&nav.clientHeight) {
-      const bounds=nav.getBoundingClientRect(),rect=link.getBoundingClientRect();
-      if(rect.top<bounds.top||rect.bottom>bounds.bottom)delta=rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
-    }
+    if(!link||!nav.clientHeight)return null;
+    const bounds=nav.getBoundingClientRect(),rect=link.getBoundingClientRect();
+    if(rect.top>=bounds.top&&rect.bottom<=bounds.bottom)return null;
+    return rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
+  }
+  function applyActiveHeading(active,delta) {
+    if(currentView!=='reader'||active===activeHeading)return;
     activeHeading=active;
     $$('[data-heading]').forEach(a=>{const on=a.dataset.heading===active;a.classList.toggle('active',on);if(on)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});
-    if(delta!==null)nav.scrollTop+=delta;
+    if(delta!==null)$('#localToc').scrollTop+=delta;
   }
   let articleTop = 0, articleHeight = 1;
   /* Reading offsetHeight inside a scroll handler forces a layout on every frame
@@ -473,13 +482,6 @@
     articleTop = rect.top + window.scrollY;
     articleHeight = Math.max(1, article.offsetHeight - window.innerHeight);
   }
-  function measureAndProgress() { measureArticle(); updateProgress(); }
-  /* A read in the frame that follows a write burst makes the browser lay the new
-     document out inside the task; a read one frame later finds the layout it
-     already computed for painting, and costs nothing. A chapter render and an
-     in-place route are the only paths that rewrite the whole article, so they are
-     the only ones that need the wait. */
-  function afterLayout(read) { requestAnimationFrame(()=>requestAnimationFrame(read)); }
   function updateProgress() {
     if(currentView!=='reader')return;
     // scrollY and the cached box are the only inputs: no layout property is read,
@@ -526,9 +528,11 @@
     // the rendered home page and then cross-fade it into the chapter.
     const swap = (inPlace || !currentView || !window.Motion) ? (apply(), undefined) : window.Motion.transition(apply);
     if(inPlace){
-      // The language switch that lands here has just rewritten the article, so
-      // the bar waits for the browser's own layout pass instead of forcing one.
-      afterLayout(updateProgress);
+      /* The bar is not refreshed here. An in-place route is a language switch, and
+         the i18n listener that issues it re-renders the chapter first, which already
+         schedules the post-layout read; a second one on this path was measured at
+         9.5 ms of forced layout, because the translated article had just been
+         written. Views other than the reader have no bar to place. */
       /* No frame is scheduled for an in-place route, and a language switch into
          #practice is also the retry path for a bundle that failed before. Nothing
          here is waiting on a first paint, so the fetch can start at once. */

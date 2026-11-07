@@ -1,7 +1,7 @@
 /* No reader should ever see "Failed to fetch" or a Python exception string.
    These checks read the shipped sources, because the mapping is the contract,
-   and run the extracted api() helper against a fake fetch to prove a write is
-   never replayed after a network throw.
+   and run the extracted api() helper against a fake fetch to prove a GET goes
+   out exactly once and a write is only replayed on a 503.
    Run with: node scripts/test-reader-copy.cjs */
 'use strict';
 const assert = require('node:assert/strict');
@@ -21,8 +21,9 @@ function check(name, body) { checks.push([name, body]); }
 
 /* api() lives inside an IIFE, so slice `const wait` … the closing brace of
    api() and evaluate that slice in a vm with a fake fetch, an immediate
-   setTimeout (records the backoff) and local t()/session stubs. */
-function apiFrom(file, fetchImpl, delays) {
+   setTimeout (records the backoff), a recording console and local
+   t()/session stubs. */
+function apiFrom(file, fetchImpl, delays, logged) {
   const source = read(file);
   const start = source.indexOf('const wait');
   assert.ok(start >= 0, `${file} has no wait helper`);
@@ -53,6 +54,7 @@ function apiFrom(file, fetchImpl, delays) {
   return vm.runInNewContext(factory, {
     fetch: fetchImpl,
     setTimeout: (fn, ms) => { delays.push(ms); return fn(); },
+    console: { error: (...args) => logged.push(args) },
   });
 }
 
@@ -88,30 +90,55 @@ check('a network throw on a write is never retried', async () => {
   for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
     for (const method of ['POST', 'DELETE']) {
       let calls = 0;
-      const api = apiFrom(file, () => { calls += 1; return Promise.reject(new TypeError('Failed to fetch')); }, []);
+      const delays = [], logged = [];
+      const api = apiFrom(file, () => { calls += 1; return Promise.reject(new TypeError('Failed to fetch')); }, delays, logged);
       await assert.rejects(
         api('/api/wishes', { method, body: method === 'POST' ? '{"text":"hi"}' : undefined }),
         error => error.message === 'error.network',
         `${file} did not surface error.network for ${method}`
       );
       assert.equal(calls, 1, `${file} replayed a ${method} ${calls} times after a network throw`);
+      assert.equal(logged.length, 1, `${file} swallowed the ${method} network cause without a console.error`);
+      assert.equal(logged[0][1].message, 'Failed to fetch', `${file} console.error logged something other than the cause`);
     }
   }
 });
 
-check('a network throw on a GET keeps the existing retry', async () => {
+check('a network throw on a GET is not retried', async () => {
   for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
     let calls = 0;
-    const delays = [];
+    const delays = [], logged = [];
     const api = apiFrom(file, () => {
       calls += 1;
-      if (calls < 3) return Promise.reject(new TypeError('Failed to fetch'));
-      return Promise.resolve({ status: 200, ok: true, json: async () => ({ items: [] }) });
-    }, delays);
-    const data = await api('/api/session');
-    assert.equal(calls, 3, `${file} stopped retrying GETs after ${calls} calls`);
-    assert.equal(data.items.length, 0, `${file} lost the GET response`);
-    assert.deepEqual(delays, [400, 800], `${file} changed the GET backoff`);
+      return Promise.reject(new TypeError('Failed to fetch'));
+    }, delays, logged);
+    await assert.rejects(
+      api('/api/session'),
+      error => error.message === 'error.network',
+      `${file} did not surface error.network for a GET`
+    );
+    assert.equal(calls, 1, `${file} replayed a GET ${calls} times after a network throw`);
+    assert.deepEqual(delays, [], `${file} backed off before failing a GET`);
+    assert.equal(logged.length, 1, `${file} swallowed the GET network cause without a console.error`);
+    assert.equal(logged[0][1].message, 'Failed to fetch', `${file} console.error logged something other than the cause`);
+  }
+});
+
+check('a 503 on a GET is not retried either', async () => {
+  for (const file of ['assets/discussion.js', 'assets/wishes.js']) {
+    let calls = 0;
+    const delays = [], logged = [];
+    const api = apiFrom(file, () => {
+      calls += 1;
+      return Promise.resolve({ status: 503, ok: false, json: async () => { throw new SyntaxError('not json'); } });
+    }, delays, logged);
+    await assert.rejects(
+      api('/api/session'),
+      error => error.message === 'error.serviceDown',
+      `${file} did not surface error.serviceDown for a GET`
+    );
+    assert.equal(calls, 1, `${file} made ${calls} calls for a 503 on a GET`);
+    assert.deepEqual(delays, [], `${file} backed off on a 503 for a GET`);
   }
 });
 
@@ -123,7 +150,7 @@ check('a 503 on a write still backs off 400 ms then 800 ms', async () => {
       calls += 1;
       if (calls < 3) return Promise.resolve({ status: 503, ok: false, json: async () => ({ detail: 'busy' }) });
       return Promise.resolve({ status: 200, ok: true, json: async () => ({ id: calls }) });
-    }, delays);
+    }, delays, []);
     const data = await api('/api/wishes', { method: 'POST', body: '{}' });
     assert.equal(calls, 3, `${file} made ${calls} calls for a 503 that cleared`);
     assert.equal(data.id, 3, `${file} lost the response after a 503 retry`);
@@ -139,7 +166,7 @@ check('a 503 that never clears stops after two retries', async () => {
       calls += 1;
       // A 503 from a proxy may not even be JSON; the status mapping must win.
       return Promise.resolve({ status: 503, ok: false, json: async () => { throw new SyntaxError('not json'); } });
-    }, delays);
+    }, delays, []);
     await assert.rejects(
       api('/api/wishes', { method: 'POST', body: '{}' }),
       error => error.message === 'error.serviceDown',

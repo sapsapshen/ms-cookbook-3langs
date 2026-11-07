@@ -49,20 +49,21 @@
     return t('error.retryLater');
   }
   async function api(path,options={}) {
-    // A 503 from the write endpoints means "same request, later", and the draft
-    // is still in the textarea, so backing off is free for the reader. A thrown
-    // fetch gives no such guarantee — the write may have reached the server —
-    // so POST/DELETE surface error.network once instead of replaying. Only GET
-    // loads keep the network retry they already had.
+    // Only a write backs off on a 503: the server refused before doing anything,
+    // so the identical request can go again while the draft is still in the
+    // textarea. A GET load is issued exactly once — "has no method" does not
+    // mean "safe to replay", and an outage must not multiply every load.
+    const isWrite = (options.method || 'GET').toUpperCase() !== 'GET';
     for (let attempt = 0; ; attempt += 1) {
       let response;
       try {
         response = await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf,...options.headers}});
-      } catch {
-        if (!options.method && attempt < 2) { await wait(400 * (attempt + 1)); continue; }
+      } catch (error) {
+        // The reader gets one localized line; the technical cause goes to the console.
+        console.error(path,error);
         throw new Error(t('error.network'));
       }
-      if (response.status === 503 && attempt < 2) { await wait(400 * (attempt + 1)); continue; }
+      if (isWrite && response.status === 503 && attempt < 2) { await wait(400 * (attempt + 1)); continue; }
       let data;try{data=await response.json();}catch{throw new Error(friendlyStatus(response.status));}
       if(!response.ok){if(response.status===401)refreshSession();throw new Error(typeof data.detail==='string'?data.detail:friendlyStatus(response.status));}
       return data;

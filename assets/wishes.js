@@ -12,14 +12,14 @@
     return t('error.retryLater');
   }
   async function api(path,options={}){
-    // Writes (POST/DELETE) are not idempotent: a thrown fetch may have reached
-    // the server, so they show error.network once and leave the draft alone.
-    // GET loads keep the network retry they already had.
+    // Only a write backs off on a 503: the server refused before doing anything.
+    // A GET load is issued once — "has no method" does not mean "safe to replay".
+    const isWrite=(options.method||'GET').toUpperCase()!=='GET';
     for(let attempt=0;;attempt+=1){
       let r;
       try{r=await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf}});}
-      catch{if(!options.method&&attempt<2){await wait(400*(attempt+1));continue;}throw Error(t('error.network'));}
-      if(r.status===503&&attempt<2){await wait(400*(attempt+1));continue;}
+      catch(error){console.error(path,error);throw Error(t('error.network'));}
+      if(isWrite&&r.status===503&&attempt<2){await wait(400*(attempt+1));continue;}
       let data;try{data=await r.json();}catch{throw Error(friendlyStatus(r.status));}
       if(!r.ok){if(r.status===401)refreshSession();throw Error(typeof data.detail==='string'?data.detail:friendlyStatus(r.status));}
       return data;

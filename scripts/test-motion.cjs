@@ -126,6 +126,27 @@ check('index.html links motion.css', () => {
   assert.match(HTML, /<link rel="stylesheet" href="assets\/motion\.css\?v=[0-9a-f]{12}">/);
 });
 
+check('updateProgress reads no layout property', () => {
+  const body = /function updateProgress\(\)\s*\{([\s\S]*?)\n  \}/.exec(PAPER);
+  assert.ok(body, 'updateProgress not found in paper.js');
+  for (const read of ['offsetHeight', 'offsetWidth', 'clientHeight', 'getBoundingClientRect']) {
+    assert.ok(!body[1].includes(read), `updateProgress still reads ${read}`);
+  }
+});
+
+check('the article height is measured once per resize and per chapter', () => {
+  assert.match(PAPER, /function measureArticle\(\)/, 'measureArticle is missing');
+  assert.match(PAPER, /window\.addEventListener\('resize',\s*\(\)=>\{measureArticle\(\);updateProgress\(\);\}\)/,
+    'resize must re-measure before it re-renders the bar');
+  assert.match(PAPER, /measureArticle\(\);/, 'renderChapter must measure once after the DOM settles');
+});
+
+check('the heading observer is armed inside a frame, not during writes', () => {
+  const tail = /if\(headingObserver\)headingObserver\.disconnect\(\);([\s\S]{0,400}?)\n  \}/.exec(PAPER);
+  assert.ok(tail, 'could not find the heading observer setup');
+  assert.match(tail[1], /requestAnimationFrame/, 'observer setup must be deferred out of the write phase');
+});
+
 check('motion.js loads before paper.js', () => {
   const order = [...HTML.matchAll(/<script[^>]*\ssrc="assets\/([^"?]+\.js)/g)].map(m => m[1]);
   assert.notEqual(order.indexOf('motion.js'), -1, 'motion.js is not loaded');

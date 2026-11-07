@@ -382,7 +382,7 @@
     const emptyToc=`<p class="toc-empty">${esc(t('contents.tocEmpty'))}</p>`;
     const toc=chapter.headings.filter(h=>h.text.trim()).map(h=>`<a href="${chapterHash(chapter.id,h.id,currentPathKey)}" data-heading="${h.id}" data-level="${h.level}">${esc(headingText(h,chapter))}</a>`).join('');
     $('#localToc').innerHTML=toc || emptyToc;$('#mobileToc').innerHTML=toc || emptyToc;
-    $('#localToc').scrollTop=0;activeHeading='';
+    activeHeading='';
     $$('.chapter-nav details').forEach(d=>{d.open=Number(d.dataset.part)===partIndex;});
     $$('[data-chapter]').forEach(a=>{const active=a.dataset.chapter===chapter.id;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     $$('#articleBody img').forEach(img=> {
@@ -399,9 +399,16 @@
         setTimeout(()=>button.textContent=t('reader.copy'),2000);
       });pre.append(button);
     });
+    // Everything from here on reads geometry, so it happens in one frame after
+    // the writes above instead of interleaving a read with every write.
     if(headingObserver)headingObserver.disconnect();
-    headingObserver=new IntersectionObserver(updateActiveHeading,{rootMargin:'-12% 0px -65% 0px',threshold:0});
-    chapter.headings.filter(h=>h.text.trim()).forEach(h=>{const target=document.getElementById(h.id);if(target)headingObserver.observe(target);});
+    requestAnimationFrame(()=>{
+      headingObserver=new IntersectionObserver(updateActiveHeading,{rootMargin:'-12% 0px -65% 0px',threshold:0});
+      chapter.headings.filter(h=>h.text.trim()).forEach(h=>{const target=document.getElementById(h.id);if(target)headingObserver.observe(target);});
+      $('#localToc').scrollTop=0;
+      measureArticle();
+      updateProgress();
+    });
   }
   function updateActiveHeading() {
     if(currentView!=='reader'||!currentChapter)return;
@@ -411,18 +418,35 @@
     $$('[data-heading]').forEach(a=>{const on=a.dataset.heading===active;a.classList.toggle('active',on);if(on)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});
     if(active!==activeHeading) {
       activeHeading=active;
-      const nav=$('#localToc'),link=nav.querySelector('[aria-current="location"]');
-      if(link&&nav.clientHeight) {
-        const bounds=nav.getBoundingClientRect(),rect=link.getBoundingClientRect();
-        if(rect.top<bounds.top||rect.bottom>bounds.bottom)nav.scrollTop+=rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
-      }
+      // The auto-scroll reads the nav box; keeping it in a frame means the
+      // class writes above are not interleaved with layout reads.
+      requestAnimationFrame(()=>{
+        const nav=$('#localToc'),link=nav.querySelector('[aria-current="location"]');
+        if(link&&nav.clientHeight) {
+          const bounds=nav.getBoundingClientRect(),rect=link.getBoundingClientRect();
+          if(rect.top<bounds.top||rect.bottom>bounds.bottom)nav.scrollTop+=rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
+        }
+      });
     }
+  }
+  let articleTop = 0, articleHeight = 1;
+  /* Reading offsetHeight inside a scroll handler forces a layout on every frame
+     of a 400k-word document. The article's box only changes when the chapter
+     changes or the viewport does, so those are the only two moments we measure;
+     the scroll handler then does arithmetic on scrollY, which reads no layout. */
+  function measureArticle() {
+    const article = $('#article');
+    const rect = article.getBoundingClientRect();
+    articleTop = rect.top + window.scrollY;
+    articleHeight = Math.max(1, article.offsetHeight - window.innerHeight);
   }
   function updateProgress() {
     if(currentView!=='reader')return;
-    const article=$('#article'),total=Math.max(1,article.offsetHeight-window.innerHeight);
-    $('#readingProgress').style.width=Math.max(0,Math.min(100,-article.getBoundingClientRect().top/total*100))+'%';
+    // Read first, write last. The bar's width dirties layout and the heading
+    // scan reads geometry, so writing before scanning would force a layout on
+    // every scroll event; scanning first finds the layout already clean.
     updateActiveHeading();
+    $('#readingProgress').style.width=Math.max(0,Math.min(100,(window.scrollY-articleTop)/articleHeight*100))+'%';
   }
   function route(options) {
     // A language switch re-runs the router in place: dialogs stay open and the
@@ -508,6 +532,6 @@
   });
   window.addEventListener('hashchange',route);
   window.addEventListener('scroll',updateProgress,{passive:true});
-  window.addEventListener('resize',updateProgress);
+  window.addEventListener('resize',()=>{measureArticle();updateProgress();});
   buildChapterNav();renderIndex();route();
 })();

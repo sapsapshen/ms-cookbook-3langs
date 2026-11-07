@@ -440,6 +440,18 @@
       else if(!samePath)window.scrollTo({top:0,behavior:'instant'});
       if(view==='reader')ensureCurrentChapterVisible();
       updateProgress();
+      /* The bundle is not only the #practice map: assets/exercise-ui.js is the
+         only mount point for the in-chapter panel, so a reader who deep links
+         into a chapter would lose it if #practice were the only trigger. This
+         runs in the post-render frame rather than in the route body: the
+         chapter's DOM is complete before the injection starts, and the fetch
+         queues behind the images that render just inserted. Nothing awaits it
+         -- AssetLoader memoises the six modules, the panel mounts itself when
+         they land, and a bundle that never arrives costs this view only the
+         panel, so the failure is swallowed here (`window.AssetLoader` is
+         checked first, so a page without the primitive still renders the
+         chapter instead of throwing in this frame). */
+      if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(()=>{});
     });
   }
   // A language change rewrites every string the router and panels own.

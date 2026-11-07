@@ -227,7 +227,7 @@ MSI18N.register('es', {
   'practice.title': 'Empieza por una tarea real',
   'practice.subtitle': 'Lleva la capacidad del modelo al escenario que te importa.',
   'practice.loading': 'Cargando el mapa de aprendizaje…',
-  'practice.loadFailed': 'No se pudo cargar el mapa. Toca para reintentar.',
+  'practice.loadFailed': 'No se pudo cargar el mapa. Vuelve a abrir esta vista para reintentar.',
   'practice.sceneMeta': 'Capítulo {n} · {type}',
   'practice.readPractice': 'Leer la práctica',
   'practice.viewChapter': 'Ver el capítulo',

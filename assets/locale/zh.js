@@ -227,7 +227,7 @@ MSI18N.register('zh', {
   'practice.title': '从一个真实任务开始',
   'practice.subtitle': '把模型能力，放进你关心的应用场景。',
   'practice.loading': '学习地图加载中…',
-  'practice.loadFailed': '学习地图加载失败，请点击重试',
+  'practice.loadFailed': '学习地图加载失败，请重新进入本页重试',
   'practice.sceneMeta': '第 {n} 章 · {type}',
   'practice.readPractice': '阅读实践',
   'practice.viewChapter': '查看章节',

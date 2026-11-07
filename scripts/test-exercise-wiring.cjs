@@ -83,6 +83,9 @@ const bundleSource = read('assets/paper.js');
 const bundleList = /const EXERCISE_BUNDLE = \[([\s\S]*?)\]/.exec(bundleSource);
 assert.ok(bundleList, 'paper.js no longer declares EXERCISE_BUNDLE');
 const BUNDLE = [...bundleList[1].matchAll(/'assets\/([^'?]+)\.js/g)].map(m => m[1] + '.js');
+/* The same list WITH its ?v= pins, i.e. the exact src strings AssetLoader is
+   handed. A behavioural check below reads them back off the injected tags. */
+const BUNDLE_SOURCES = [...bundleList[1].matchAll(/'(assets\/[^']+)'/g)].map(m => m[1]);
 
 async function main() {
 /* The order INSIDE the bundle is now the whole ordering contract, so this is
@@ -105,6 +108,34 @@ await check('asset-loader.js is loaded before paper.js', () => {
   const at = ORDER.indexOf('asset-loader.js');
   assert.notEqual(at, -1, 'asset-loader.js is not loaded by index.html');
   assert.ok(at < paperAt, `asset-loader.js sits at ${at}, after paper.js at ${paperAt}`);
+});
+
+/* The trigger `#practice` alone cannot cover, and the one nothing else in this
+   suite can see: the six modules are appended to RUNNABLE below, so the
+   #chapter-7 boot mounts the panel whether or not the page would ever have
+   fetched it. exercise-ui.js is the in-chapter panel's only mount point, so a
+   reader who deep links into a chapter must get the bundle from the ROUTER --
+   from the reader branch, in the post-render frame (so the chapter's own paint
+   is not behind a 1.2 MB fetch), with the failure swallowed (the chapter
+   renders fine without the panel). Static, because the source is the only place
+   that names the BRANCH; "did it actually run?" is the injected-tag check next
+   to the #chapter-7 boot further down. */
+await check('paper.js also loads the bundle for the first chapter view', () => {
+  const paper = read('assets/paper.js');
+  const routeBody = paper.slice(paper.indexOf('function route(options)'));
+  const afterRender = /requestAnimationFrame\(\(\)=>\{([\s\S]*?)\n    \}\);/.exec(routeBody);
+  assert.ok(afterRender, 'route() lost its post-render requestAnimationFrame');
+  const frame = afterRender[1];
+  assert.match(frame, /if\(view==='reader'/, 'the post-render frame no longer names the reader branch');
+  assert.match(
+    frame,
+    /ensureExerciseBundle\(\)\.catch\(/,
+    'the reader branch stopped loading the exercise bundle: #chapter-7 would lose #exercisePanel',
+  );
+  assert.ok(
+    !frame.includes('practice.loadFailed'),
+    'the reader-branch trigger must stay silent, not paint the practice status line',
+  );
 });
 
 /* The circular dependency the brief warns about, checked and found NOT to
@@ -402,6 +433,11 @@ function bootPage(hash) {
     readyState: 'complete',
     documentElement: new StubNode('html'),
     body: root,
+    /* assets/asset-loader.js appends the tags it injects to document.head. The
+       root doubles as head so an injection lands in the tree this suite can
+       inspect -- which is how `paper.js`'s reader-branch trigger is observed
+       rather than merely grepped for. */
+    head: root,
     title: '',
     createElement: tag => new StubNode(tag),
     createTreeWalker: () => ({nextNode: () => null}),
@@ -470,10 +506,24 @@ function bootPage(hash) {
 
 const GLOBALS = ['ExerciseGrader', 'ExerciseStore', 'ExerciseSandbox', 'ExerciseMap', 'ExerciseUI'];
 
+/* The src of every <script> AssetLoader appended, in order. At most the first
+   module appears per boot: loadSequence waits for each onload, and this harness
+   never fires it -- which is the point, nothing on the page may wait either. */
+function injectedSources(root) {
+  return root.children.filter(node => node.tagName === 'SCRIPT').map(node => node.src);
+}
+
 const home = bootPage('');
 
 await check('every index.html script executes without throwing', () => {
   assert.deepEqual(home.errors, []);
+});
+
+/* Read before any check navigates this page: a home-page reader never enters a
+   chapter, so nothing may be fetched for them. The bundle is 1.2 MB and the
+   panel it mounts belongs to the chapter view. */
+await check('the home page does not fetch the exercise bundle', () => {
+  assert.deepEqual(injectedSources(home.root), [], 'the home route started an exercise bundle fetch');
 });
 
 await check('the five exercise globals are on window after load', () => {
@@ -533,6 +583,22 @@ await check('a deep link into #chapter-7 mounts the panel on load', () => {
   assert.ok(
     panel.querySelectorAll('.exercise-card').length > 0,
     'the panel mounted but painted no exercise cards',
+  );
+});
+
+/* The trigger that check above CANNOT see: this harness appends the six
+   modules to RUNNABLE, so the panel mounts whether or not the page would ever
+   have fetched them. Before the Task 5 correction only #practice fetched the
+   bundle, and every deep link into a chapter lost the panel in a real browser
+   with this suite green. Here the page must ask the loader for it by itself --
+   the first module of EXERCISE_BUNDLE, pins included, injected after paper.js
+   routed into the chapter. */
+await check('a #chapter-7 deep link asks the loader for the exercise bundle', () => {
+  assert.deepEqual(chapter.errors, []);
+  assert.deepEqual(
+    injectedSources(chapter.root),
+    [BUNDLE_SOURCES[0]],
+    'paper.js did not start the bundle fetch on a chapter route',
   );
 });
 

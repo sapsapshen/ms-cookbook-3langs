@@ -6,6 +6,7 @@ import hmac
 import httpx
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
@@ -23,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
@@ -30,6 +32,34 @@ from accounts import AccountsStore, LoginLimiter
 
 ROOT = Path(__file__).resolve().parent
 LOGGER = logging.getLogger(__name__)
+
+# Already-compressed payloads must not be re-deflated: it burns CPU on every
+# request and the result is usually larger. Text is where gzip pays for itself.
+SELECTIVE_BINARY_SUFFIXES = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.avif',
+                             '.woff', '.woff2', '.ttf', '.otf', '.eot',
+                             '.wasm', '.mp4', '.webm', '.mp3', '.zip', '.gz', '.br')
+# Assets without a content hash in the URL cannot be cached forever.
+SHORT_CACHE_PATHS = frozenset(('/favicon.svg', '/deployment.json', '/CONTRIBUTING.md',
+                               '/README.md', '/README.zh-CN.md', '/LICENSE'))
+IMMUTABLE = 'public, max-age=31536000, immutable'
+SHORT_CACHE = 'public, max-age=300, must-revalidate'
+
+# Python's map is built from /etc/mimetypes on Linux, where webp is often absent;
+# StaticFiles then serves it as octet-stream and the browser cannot sniff it.
+mimetypes.add_type('image/webp', '.webp')
+
+
+class SelectiveEncoding:
+    """Strip accept-encoding for binary paths so GZipMiddleware passes them through."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] == 'http' and scope.get('path', '').lower().endswith(SELECTIVE_BINARY_SUFFIXES):
+            scope = dict(scope)
+            scope['headers'] = [(k, v) for k, v in scope['headers'] if k.lower() != b'accept-encoding']
+        await self.app(scope, receive, send)
 
 ANALYTICS_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS analytics_page_daily(day TEXT NOT NULL, page TEXT NOT NULL, pv INTEGER NOT NULL DEFAULT 0 CHECK(pv >= 0), PRIMARY KEY(day, page));
@@ -440,6 +470,8 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     session_secret = os.getenv('SESSION_SECRET') or key_path.read_text()
     app.add_middleware(SessionMiddleware, secret_key=session_secret, session_cookie='purplebook_session', max_age=7*86400, same_site='lax', https_only=parsed.scheme=='https')
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(SelectiveEncoding)
     oauth = OAuth()
     oidc_enabled = bool(os.getenv('OAUTH_CLIENT_ID') and os.getenv('OAUTH_CLIENT_SECRET'))
     login_enabled = oidc_enabled or local_login_enabled
@@ -581,6 +613,12 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
         if request.url.path.startswith(('/api/','/auth/')):
             response.headers['Cache-Control']='no-store'
+        elif request.query_params.get('v'):
+            # version-assets.mjs stamps a SHA-256 prefix into every asset URL;
+            # a changed file is a different URL, so the old copy can never be served.
+            response.headers['Cache-Control']=IMMUTABLE
+        elif request.url.path in SHORT_CACHE_PATHS:
+            response.headers['Cache-Control']=SHORT_CACHE
         return response
 
     @app.get('/api/session')

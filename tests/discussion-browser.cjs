@@ -5,7 +5,7 @@ const fs=require('node:fs');const os=require('node:os');const path=require('node
 (async()=>{
  const root=path.resolve(__dirname,'..'), data=fs.mkdtempSync(path.join(os.tmpdir(),'purplebook-browser-'));
  const env={...process.env,DATA_DIR:data,APP_BASE_URL:'http://127.0.0.1:7861',PYTHONPATH:root,OAUTH_CLIENT_ID:'',OAUTH_CLIENT_SECRET:''};
- const python=path.join(root,'.venv/bin/python');
+ const python=path.join(root,process.platform==='win32'?'.venv/Scripts/python.exe':'.venv/bin/python');
  const setup=spawnSync(python,['tests/prepare_browser_fixture.py'],{cwd:root,env,encoding:'utf8'});assert.equal(setup.status,0,setup.stderr);
  const server=spawn(python,['-m','uvicorn','app:app','--host','127.0.0.1','--port','7861','--no-access-log'],{cwd:root,env,stdio:'ignore'});
  let browser;
@@ -43,7 +43,23 @@ const fs=require('node:fs');const os=require('node:os');const path=require('node
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'wish pool mobile overflow');
   await page.screenshot({path:'/tmp/purplebook-wishes-mobile.png'});
   page.once('dialog',d=>d.accept());await page.locator('.wish-entry button').click();
-  await page.getByText('还没有人许愿。你希望紫皮书补上的第一份实践是什么？',{exact:true}).waitFor();
+  await page.getByText('还没有人许愿。你希望超智学习空间补上的第一份实践是什么？',{exact:true}).waitFor();
+  // Motion must be invisible to a reader who asked for it to be, and must not
+  // leave a stale page behind when it does run. Both are cheap to assert here and
+  // impossible to assert from the static suites.
+  const reduced = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 390, height: 700 } });
+  const quiet = await reduced.newPage();
+  quiet.on('pageerror', e => errors.push('reduced: ' + e.message));
+  await quiet.goto(env.APP_BASE_URL + '/#home');
+  await quiet.evaluate(() => location.hash = '#chapter-1');
+  await quiet.waitForFunction(() => document.body.dataset.view === 'reader');
+  const animated = await quiet.evaluate(() => [...document.querySelectorAll('#articleBody h2')]
+    .some(node => getComputedStyle(node).transitionDuration !== '0s'));
+  assert.equal(animated, false, 'reduced motion still transitions chapter sections');
+  const visible = await quiet.evaluate(() => [...document.querySelectorAll('#articleBody h2')]
+    .every(node => getComputedStyle(node).opacity === '1'));
+  assert.equal(visible, true, 'reduced motion left sections invisible');
+  await reduced.close();
   assert.deepEqual(errors,[]);console.log('PASS: browser comment, highlight, annotation, XSS text rendering, reload, chapter isolation, guest privacy, wishes publish/persist/delete/XSS/guest permissions, mobile layout');
  }finally{if(browser)await browser.close();server.kill();fs.rmSync(data,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

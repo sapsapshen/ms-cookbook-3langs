@@ -39,6 +39,7 @@ on:
       - 'scripts/test-exercise-locale.cjs'
       - 'scripts/test-i18n.cjs'
       - 'scripts/test-asset-loading.cjs'
+      - 'scripts/test-motion.cjs'
       - 'scripts/test-ci-coverage.cjs'
       - 'README*.md'
       - 'LICENSE'
@@ -94,6 +95,15 @@ jobs:
           # throwing anywhere. It stands alone rather than joining the exercise
           # step because it guards the page, not the exercise feature.
           node scripts/test-asset-loading.cjs
+      - name: Verify the motion layer
+        run: |
+          # Motion failures are silent in a browser: a reveal node that never
+          # gets the [data-reveal] hook simply never animates, and a hiding rule
+          # the reduced-motion branch cannot out-specify leaves readers staring
+          # at invisible prose. Both are invisible to every other suite, so this
+          # asserts the contract at the source -- tokens, no layout-property
+          # transitions, and reduced motion honoured in CSS and JS alike.
+          node scripts/test-motion.cjs
       - name: Verify the exercise modules
         run: |
           # The grading logic, against the corpus harness. Its fake Pyodide is

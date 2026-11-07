@@ -437,24 +437,28 @@
     const chapter=chapters.get(name);
     const view=chapter?'reader':['contents','paths','practice','contribute'].includes(name)?name:'home';
     const samePath=currentView==='paths'&&view==='paths';
-    if(!inPlace)closeDialogs();
-    $$('[data-page]').forEach(p=>p.hidden=p.dataset.page!==view);
-    document.body.dataset.view=view;
-    $$('.desktop-nav [data-route]').forEach(a=>{if(a.dataset.route===view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-    $('#headerAction').textContent=view==='reader'?t('nav.backHome'):t('nav.startReading');$('#headerAction').href=view==='reader'?'#home':'#chapter-1';
-    $('#mobileChapterNav').hidden=view!=='reader';
-    if(view==='reader') {
-      if(currentChapter?.id!==chapter.id||currentView!=='reader'||pathChanged)renderChapter(chapter);
-    } else {
-      if(headingObserver)headingObserver.disconnect();
-      document.title=t('doc.'+view)+t('doc.suffix');
-      if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);
-      if(view==='practice'){
-        if(window.ExerciseMap)renderExerciseMap();
-        else paintPracticeStatus(t('practice.loading'));
+    const apply = () => {
+      if(!inPlace)closeDialogs();
+      $$('[data-page]').forEach(p=>p.hidden=p.dataset.page!==view);
+      document.body.dataset.view=view;
+      $$('.desktop-nav [data-route]').forEach(a=>{if(a.dataset.route===view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+      $('#headerAction').textContent=view==='reader'?t('nav.backHome'):t('nav.startReading');$('#headerAction').href=view==='reader'?'#home':'#chapter-1';
+      $('#mobileChapterNav').hidden=view!=='reader';
+      if(view==='reader') {
+        if(currentChapter?.id!==chapter.id||currentView!=='reader'||pathChanged)renderChapter(chapter);
+      } else {
+        if(headingObserver)headingObserver.disconnect();
+        document.title=t('doc.'+view)+t('doc.suffix');
+        if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);
+        if(view==='practice'){
+          if(window.ExerciseMap)renderExerciseMap();
+          else paintPracticeStatus(t('practice.loading'));
+        }
       }
-    }
-    currentView=view;
+      currentView=view;
+    };
+    // A language switch re-runs in place: no transition, no flash of the old copy.
+    const swap = (inPlace || !window.Motion) ? (apply(), undefined) : window.Motion.transition(apply);
     if(inPlace){
       updateProgress();
       /* No frame is scheduled for an in-place route, and a language switch into
@@ -465,7 +469,7 @@
     }
     const analyticsPage=view==='reader'?chapter.id:view;
     if(analyticsPage!==previousPage)window.dispatchEvent(new CustomEvent('purplebook:route',{detail:{page:analyticsPage}}));
-    requestAnimationFrame(()=>{
+    const after = () => requestAnimationFrame(()=>{
       if(view==='reader'&&sub){const target=document.getElementById(sub);if(target){target.scrollIntoView({block:'start',behavior:'instant'});target.tabIndex=-1;target.focus({preventScroll:true});}}
       else if(!samePath)window.scrollTo({top:0,behavior:'instant'});
       if(view==='reader')ensureCurrentChapterVisible();
@@ -483,7 +487,9 @@
          the primitive still renders instead of throwing in this frame). */
       if(view==='practice'&&!window.ExerciseMap)loadPracticeBundle();
       if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(error=>console.warn('exercise bundle failed to load',error));
+      if(window.Motion)window.Motion.scan();
     });
+    if(swap && swap.ready) swap.ready.then(after, after); else after();
   }
   // A language change rewrites every string the router and panels own.
   window.MSI18N.on(()=>{

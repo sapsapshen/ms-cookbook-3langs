@@ -451,6 +451,12 @@ function bootPage(hash, options) {
     getElementById: id => root.querySelector(`#${id}`) || memoFor(`#${id}`, id),
     addEventListener: () => {},
     removeEventListener: () => {},
+    /* assets/motion.js asks whether the browser can cross-fade a view swap. The
+       stub answers "yes, synchronously": it runs the mutation and returns
+       nothing, which is the shape window.Motion.transition documents for "the
+       mutation already happened", so the route keeps the same post-render frame
+       this suite asserts. ViewTransition sequencing is the browser E2E's job. */
+    startViewTransition: mutate => { mutate(); },
   };
   document.documentElement.setAttribute('lang', 'zh-CN');
 
@@ -485,6 +491,10 @@ function bootPage(hash, options) {
     URLSearchParams,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
     IntersectionObserver: class { observe() {} disconnect() {} unobserve() {} },
+    /* assets/motion.js reads the OS preference once at load, then subscribes to
+       changes. `matches: false` keeps the animated path, which is what the
+       loading assertions below were written against. */
+    matchMedia: () => ({matches: false, addEventListener() {}, removeEventListener() {}}),
     requestAnimationFrame: opts.deferFrames
       ? (fn => { frames.push(fn); return frames.length; })
       : (fn => { fn(); return 0; }),

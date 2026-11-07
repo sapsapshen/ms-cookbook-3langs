@@ -22,6 +22,29 @@ REPO = 'https://github.com/modelscope/ms-cookbook'
 SHORT_PARTS = ['认识开源模型', '从问题出发', '让模型工作起来', '微调与评测', '业务系统实践', 'AIGC 特别篇', 'Agent 特别篇', '基础知识补充']
 SAFE = set('article p br hr h1 h2 h3 h4 h5 h6 ul ol li blockquote pre code strong em b i s del sup sub table thead tbody tr th td colgroup col a img span div figure u'.split())
 
+def image_size(path):
+    """Return (width, height) for a PNG or WebP, or None when the header is unreadable.
+
+    Stdlib only, because the build must stay runnable without Pillow: normal
+    builds and --check never import it. Returning None instead of raising keeps a
+    single odd file from blocking the whole book, and check-site.mjs then reports
+    the gap rather than trusting a guessed number.
+    """
+    with path.open('rb') as handle:
+        head = handle.read(30)
+    if head.startswith(b'\x89PNG\r\n\x1a\n') and len(head) >= 24:
+        return int.from_bytes(head[16:20], 'big'), int.from_bytes(head[20:24], 'big')
+    if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+        fourcc = head[12:16]
+        if fourcc == b'VP8X' and len(head) >= 30:
+            return 1 + int.from_bytes(head[24:27], 'little'), 1 + int.from_bytes(head[27:30], 'little')
+        if fourcc == b'VP8 ' and len(head) >= 30:
+            return int.from_bytes(head[26:28], 'little') & 0x3FFF, int.from_bytes(head[28:30], 'little') & 0x3FFF
+        if fourcc == b'VP8L' and len(head) >= 25:
+            bits = int.from_bytes(head[21:25], 'little')
+            return bits % 4096 + 1, (bits // 4096) % 4096 + 1
+    return None
+
 def digest(value):
     return hashlib.sha256(value).hexdigest()
 
@@ -194,6 +217,11 @@ def build(check=False):
                     assert (ROOT / value).is_file(), value
                     node.set(attr, value)
                 assert not urlparse(value).scheme or urlparse(value).scheme in {'https', 'http', 'mailto'}, 'Unsafe URL'
+            if node.tag == 'img':
+                size = image_size(ROOT / node.get('src', ''))
+                if size:
+                    node.set('width', str(size[0]))
+                    node.set('height', str(size[1]))
         for parent in list(article.iter()):
             for i, child in enumerate(list(parent)):
                 if child.tag == 'table':
@@ -201,6 +229,13 @@ def build(check=False):
                     parent.remove(child)
                     wrapper.append(child)
                     parent.insert(i, wrapper)
+        # The chapter's first image is the LCP element. Chrome's own guidance is
+        # explicit: a lazy-loaded LCP image is discovered too late, which is the
+        # 245ms load delay measured on the live site.
+        first_image = article.find('.//img')
+        if first_image is not None:
+            first_image.attrib.pop('loading', None)
+            first_image.set('fetchpriority', 'high')
         body = '\n'.join(dump(n) for n in article)
         chapters.append({'id': f'chapter-{number}', 'number': number, 'title': entry['title'], 'sourceUrl': f'{REPO}/blob/main/content/chapters/chapter-{number:02d}.md', 'editUrl': f'{REPO}/edit/main/content/{entry["file"]}', 'minutes': max(1, round(len(re.sub(r'\s+', '', plain(article))) / 520)) if entry['status']=='ready' else 0, 'status': entry['status'], 'headings': headings, 'html': body, 'imageCount': len(list(article.iter('img'))), 'attachmentCount': sum(n.get('class') == 'attachment' for n in article.iter('a'))})
     for chapter, entry in zip(chapters, manifest['chapters']):

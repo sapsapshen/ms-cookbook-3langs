@@ -18,6 +18,17 @@ const partIds=data.parts.flatMap(p=>p.chapters);
 assert.equal(partIds.length,ids.size);
 assert.equal(new Set(partIds).size,ids.size);
 for(const id of partIds)assert(ids.has(id));
+function imageSize(buffer){
+  if(buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])))
+    return [buffer.readUInt32BE(16),buffer.readUInt32BE(20)];
+  if(buffer.toString('latin1',0,4)==='RIFF'&&buffer.toString('latin1',8,12)==='WEBP'){
+    const fourcc=buffer.toString('latin1',12,16);
+    if(fourcc==='VP8X')return [1+buffer.readUIntLE(24,3),1+buffer.readUIntLE(27,3)];
+    if(fourcc==='VP8 ')return [buffer.readUInt16LE(26)&0x3fff,buffer.readUInt16LE(28)&0x3fff];
+    if(fourcc==='VP8L'){const bits=buffer.readUInt32LE(21);return [bits%4096+1,Math.floor(bits/4096)%4096+1];}
+  }
+  return null;
+}
 let imageCount=0,attachmentCount=0;
 function checkLinks(html,base='.'){
   for(const tag of html.matchAll(/<(?:a|img|script|link)\b[^>]*>/g))for(const m of tag[0].matchAll(/(?:src|href)="([^"]+)"/g)){
@@ -40,6 +51,17 @@ for(const chapter of data.chapters){
   imageCount+=(chapter.html.match(/<img\b/g)||[]).length;
   attachmentCount+=(chapter.html.match(/class="attachment"/g)||[]).length;
   checkLinks(chapter.html);
+  for(const tag of chapter.html.matchAll(/<img\b[^>]*class="article-image"[^>]*>/g)){
+    const src=/src="([^"]+)"/.exec(tag[0])[1];
+    const width=/\swidth="(\d+)"/.exec(tag[0]), height=/\sheight="(\d+)"/.exec(tag[0]);
+    assert(width&&height,`article image without intrinsic size: ${src}`);
+    const size=imageSize(readFileSync(resolve(root,src.split('?')[0])));
+    if(size)assert(Number(width[1])===size[0]&&Number(height[1])===size[1],
+      `${src} declares ${width[1]}x${height[1]}, file is ${size[0]}x${size[1]}`);
+  }
+  const firstImage=/<img\b[^>]*class="article-image"[^>]*>/.exec(chapter.html);
+  if(firstImage)assert(!/loading="lazy"/.test(firstImage[0])&&/fetchpriority="high"/.test(firstImage[0]),
+    `chapter-${chapter.number} first image must stay eager and high priority`);
 }
 assert.equal(imageCount,data.imageCount);assert.equal(attachmentCount,data.attachmentCount);
 checkLinks(read('index.html'));

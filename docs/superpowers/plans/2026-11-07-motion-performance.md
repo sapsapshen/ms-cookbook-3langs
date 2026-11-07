@@ -1280,6 +1280,13 @@ check('reveal targets are the three generated lists plus any authored hook', () 
   }
 });
 
+check('scan writes the data-reveal hook the CSS gate keys off', () => {
+  const body = /function scan\(root\)\s*\{([\s\S]*?)\n  \}/.exec(JS);
+  assert.ok(body, 'scan() not found in motion.js');
+  assert.match(body[1], /setAttribute\('data-reveal'/,
+    'without the hook, CSS never hides the node and the entrance animation is a no-op');
+});
+
 check('paper.js routes every view change through Motion.transition', () => {
   assert.match(PAPER, /window\.Motion\.transition\(apply\)/);
   assert.match(PAPER, /const apply = \(\) =>/, 'route() must keep its DOM mutation in one closure');
@@ -1426,8 +1433,9 @@ Expected: FAIL —`ENOENT ... assets/motion.css`。
     for (const node of revealables(root)) {
       if (node.dataset.revealBound === '1' || node.classList.contains('is-revealed')) continue;
       node.dataset.revealBound = '1';
-      // Anything already on screen is revealed without a transition: an entrance
-      // animation the reader cannot see is just a delay.
+      // The CSS gate keys off [data-reveal]; a node selected by #articleBody h2
+      // is invisible until it is revealed only once it carries that hook.
+      node.setAttribute('data-reveal', '');
       const box = node.getBoundingClientRect();
       if (box.top < window.innerHeight && box.bottom > 0) { node.classList.add('is-revealed'); continue; }
       watch.observe(node);
@@ -1542,7 +1550,7 @@ Expected: FAIL —`ENOENT ... assets/motion.css`。
 - [ ] **Step 7: 运行，确认通过**
 
 Run: `node scripts/test-motion.cjs`
-Expected: `12 passed, 0 failed`
+Expected: `13 passed, 0 failed`
 
 - [ ] **Step 8: 版本哈希与站点自检**
 
@@ -1578,7 +1586,7 @@ Expected: 全部断言通过（该脚本自带 7861 端口隔离服务，结束�
 - [ ] **Step 10: 全量回归**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests -q && node scripts/test-motion.cjs && node scripts/test-asset-loading.cjs`
-Expected: `147 passed`；`12 passed, 0 failed`；`8 passed, 0 failed`
+Expected: `147 passed`；`13 passed, 0 failed`；`8 passed, 0 failed`
 
 - [ ] **Step 11: 提交**
 
@@ -1713,7 +1721,7 @@ Expected: 新增 3 项 FAIL。
 - [ ] **Step 6: 运行，确认通过**
 
 Run: `node scripts/test-motion.cjs && node scripts/check-site.mjs && node scripts/test-exercise-wiring.cjs`
-Expected: 全部 PASS；`test-motion.cjs` 输出 `15 passed, 0 failed`
+Expected: 全部 PASS；`test-motion.cjs` 输出 `16 passed, 0 failed`
 
 - [ ] **Step 7: 浏览器实测重排归零**
 
@@ -2018,7 +2026,7 @@ assert.deepEqual(eager.sort(),['assets/content.js','assets/i18n.js','assets/loca
 - [ ] **Step 6: 运行，确认通过**
 
 Run: `node scripts/test-motion.cjs && node scripts/check-site.mjs`
-Expected: `18 passed, 0 failed`；check-site PASS
+Expected: `19 passed, 0 failed`；check-site PASS
 
 - [ ] **Step 7: 全量回归**
 

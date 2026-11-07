@@ -41,8 +41,11 @@ def image_size(path):
         if fourcc == b'VP8 ' and len(head) >= 30:
             return int.from_bytes(head[26:28], 'little') & 0x3FFF, int.from_bytes(head[28:30], 'little') & 0x3FFF
         if fourcc == b'VP8L' and len(head) >= 25:
+            # VP8L allocates 14 bits each to width-1 and height-1. Masking 12
+            # inflated every height under 4096 by four times and wrapped any
+            # width past 4096, so a 1000x700 file read back as 1000x2797.
             bits = int.from_bytes(head[21:25], 'little')
-            return bits % 4096 + 1, (bits // 4096) % 4096 + 1
+            return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
     return None
 
 def digest(value):
@@ -218,8 +221,13 @@ def build(check=False):
                     node.set(attr, value)
                 assert not urlparse(value).scheme or urlparse(value).scheme in {'https', 'http', 'mailto'}, 'Unsafe URL'
             if node.tag == 'img':
-                size = image_size(ROOT / node.get('src', ''))
-                if size:
+                # is_file() keeps a missing or off-repo src on the "leave it
+                # alone and let check-site report the gap" path instead of
+                # raising PermissionError and aborting the whole book build;
+                # the positive check stops a header whose 14-bit field masks to
+                # 0 from writing width="0" height="0" into the payload.
+                size = image_size(ROOT / node.get('src', '')) if (ROOT / node.get('src', '')).is_file() else None
+                if size and size[0] > 0 and size[1] > 0:
                     node.set('width', str(size[0]))
                     node.set('height', str(size[1]))
         for parent in list(article.iter()):

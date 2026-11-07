@@ -25,7 +25,9 @@ function imageSize(buffer){
     const fourcc=buffer.toString('latin1',12,16);
     if(fourcc==='VP8X')return [1+buffer.readUIntLE(24,3),1+buffer.readUIntLE(27,3)];
     if(fourcc==='VP8 ')return [buffer.readUInt16LE(26)&0x3fff,buffer.readUInt16LE(28)&0x3fff];
-    if(fourcc==='VP8L'){const bits=buffer.readUInt32LE(21);return [bits%4096+1,Math.floor(bits/4096)%4096+1];}
+    // VP8L packs width-1 then height-1 as 14 bits each; a 12-bit mask inflated
+    // every height under 4096 four times and wrapped widths past 4096.
+    if(fourcc==='VP8L'){const bits=buffer.readUInt32LE(21);return [(bits&0x3fff)+1,((bits>>14)&0x3fff)+1];}
   }
   return null;
 }
@@ -51,6 +53,7 @@ for(const chapter of data.chapters){
   imageCount+=(chapter.html.match(/<img\b/g)||[]).length;
   attachmentCount+=(chapter.html.match(/class="attachment"/g)||[]).length;
   checkLinks(chapter.html);
+  let articleImageIndex=0,eagerFollowers=0;
   for(const tag of chapter.html.matchAll(/<img\b[^>]*class="article-image"[^>]*>/g)){
     const src=/src="([^"]+)"/.exec(tag[0])[1];
     const width=/\swidth="(\d+)"/.exec(tag[0]), height=/\sheight="(\d+)"/.exec(tag[0]);
@@ -58,7 +61,13 @@ for(const chapter of data.chapters){
     const size=imageSize(readFileSync(resolve(root,src.split('?')[0])));
     if(size)assert(Number(width[1])===size[0]&&Number(height[1])===size[1],
       `${src} declares ${width[1]}x${height[1]}, file is ${size[0]}x${size[1]}`);
+    /* Only checking "the first image is eager" passes silently when a *later*
+       image loses loading="lazy", so count every eager image after the first.
+       The first one is the chapter's LCP element; the rest must stay lazy. */
+    if(articleImageIndex++>0&&!/loading="lazy"/.test(tag[0]))eagerFollowers++;
   }
+  assert(eagerFollowers===0,
+    `chapter-${chapter.number} has ${eagerFollowers} article image(s) after the first one without loading="lazy"`);
   const firstImage=/<img\b[^>]*class="article-image"[^>]*>/.exec(chapter.html);
   if(firstImage)assert(!/loading="lazy"/.test(firstImage[0])&&/fetchpriority="high"/.test(firstImage[0]),
     `chapter-${chapter.number} first image must stay eager and high priority`);

@@ -1605,7 +1605,7 @@ Expected: FAIL —`ENOENT ... assets/motion.css`。
 
 - [ ] **Step 6: route() 走过渡**
 
-`assets/paper.js` 的 `route()` 内，从 `if(!inPlace)closeDialogs();` 到 `currentView=view;` 的整段（Task 5 之后行号已移动，按这两个锚点定位）替换为。注意 practice 分支必须保留 **Task 5 写入的按需注入版本**，不要退回成一句 `renderExerciseMap()`：
+`assets/paper.js` 的 `route()` 内，从 `if(!inPlace)closeDialogs();` 到 `currentView=view;` 的整段替换为下面的 `apply` 闭包。**必须逐字保留 Task 5 收盘时的分支现状**（practice 只画状态行、bundle 由帧内触发；reader 分支不动），只在最外层加动效包裹：
 
 ```js
     const apply = () => {
@@ -1623,11 +1623,7 @@ Expected: FAIL —`ENOENT ... assets/motion.css`。
         if(view==='contents')renderIndex();if(view==='paths')renderPath(sub);
         if(view==='practice'){
           if(window.ExerciseMap)renderExerciseMap();
-          else{
-            const practiceStatus=$('#exerciseMap');
-            practiceStatus.textContent=t('practice.loading');
-            ensureExerciseBundle().then(renderExerciseMap).catch(()=>{practiceStatus.textContent=t('practice.loadFailed');});
-          }
+          else paintPracticeStatus(t('practice.loading'));
         }
       }
       currentView=view;
@@ -1636,19 +1632,27 @@ Expected: FAIL —`ENOENT ... assets/motion.css`。
     const swap = (inPlace || !window.Motion) ? (apply(), undefined) : window.Motion.transition(apply);
 ```
 
-`route()` 内紧随其后的那段（原 `assets/paper.js:421-429`，即 `if(inPlace){updateProgress();return;}` 到函数结尾）替换为：
+这段之后的既有内容（in-place 提前返回、`purplebook:route` 派发、末尾的 `requestAnimationFrame`）保持原样——**不要**把 Task 5 的两个 bundle 触发从帧里挪走。唯一的改动是把末尾的裸 `requestAnimationFrame(...)` 提取成 `after`，在过渡就绪后调用，并在帧末补一次 `window.Motion.scan()`：
 
 ```js
+    if(inPlace){
+      updateProgress();
+      /* 保持 Task 5 的原样：语言切换进入 #practice 也是失败包的重试路径。 */
+      if(view==='practice'&&!window.ExerciseMap)loadPracticeBundle();
+      return;
+    }
+    const analyticsPage=view==='reader'?chapter.id:view;
+    if(analyticsPage!==previousPage)window.dispatchEvent(new CustomEvent('purplebook:route',{detail:{page:analyticsPage}}));
     const after = () => requestAnimationFrame(()=>{
       if(view==='reader'&&sub){const target=document.getElementById(sub);if(target){target.scrollIntoView({block:'start',behavior:'instant'});target.tabIndex=-1;target.focus({preventScroll:true});}}
       else if(!samePath)window.scrollTo({top:0,behavior:'instant'});
       if(view==='reader')ensureCurrentChapterVisible();
       updateProgress();
+      /* Task 5 的两个触发必须留在这个帧里：章节深链同样需要练习面板。 */
+      if(view==='practice'&&!window.ExerciseMap)loadPracticeBundle();
+      if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(error=>console.warn('exercise bundle failed to load',error));
       if(window.Motion)window.Motion.scan();
     });
-    if(inPlace){after();return;}
-    const analyticsPage=view==='reader'?chapter.id:view;
-    if(analyticsPage!==previousPage)window.dispatchEvent(new CustomEvent('purplebook:route',{detail:{page:analyticsPage}}));
     if(swap && swap.ready) swap.ready.then(after, after); else after();
 ```
 

@@ -76,6 +76,11 @@
   let activeHeading = '';
   const {chapterHash, pathStep, parseHash} = window.ReaderRoutes;
   let headingObserver;
+  // Heading id -> the last entry the observer delivered for it. Entries carry
+  // boundingClientRect and isIntersecting for free, so the active heading is
+  // known without asking the layout where every heading sits.
+  const headingPositions = new Map();
+  let headingFrame = 0;
   let searchTimer;
   // Rebuilt per language: the index always carries the translated chapter title next to
   // the Chinese source, so searching works in whichever language the reader picked.
@@ -263,9 +268,17 @@
     if(rect.top<bounds.top||rect.bottom>bounds.bottom)nav.scrollTop+=rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
   }
   function setSidebarCollapsed(collapsed,keepPosition=false) {
-    const top=$('.app-header').getBoundingClientRect().bottom+24;
-    const anchor=keepPosition?$$('#article h1,#article h2,#article h3,#article p,#article pre').find(el=>el.getBoundingClientRect().bottom>top):null;
-    const before=anchor?.getBoundingClientRect().top;
+    // One read pass, every element measured once, and nothing measured on the
+    // startup path that keeps its position. The only read left after the writes
+    // is the anchor's new position: collapsing the sidebar re-wraps the prose, so
+    // where the anchor lands cannot be known before the layout has run.
+    let anchor=null,before;
+    if(keepPosition) {
+      const top=$('.app-header').getBoundingClientRect().bottom+24;
+      for(const el of $$('#article h1,#article h2,#article h3,#article p,#article pre')){
+        const rect=el.getBoundingClientRect();if(rect.bottom>top){anchor=el;before=rect.top;break;}
+      }
+    }
     document.body.classList.toggle('sidebar-collapsed',collapsed);
     $('#bookSidebar').hidden=collapsed;$('#expandSidebar').hidden=!collapsed;
     if(anchor)window.scrollBy({top:anchor.getBoundingClientRect().top-before,behavior:'instant'});
@@ -382,7 +395,8 @@
     const emptyToc=`<p class="toc-empty">${esc(t('contents.tocEmpty'))}</p>`;
     const toc=chapter.headings.filter(h=>h.text.trim()).map(h=>`<a href="${chapterHash(chapter.id,h.id,currentPathKey)}" data-heading="${h.id}" data-level="${h.level}">${esc(headingText(h,chapter))}</a>`).join('');
     $('#localToc').innerHTML=toc || emptyToc;$('#mobileToc').innerHTML=toc || emptyToc;
-    activeHeading='';
+    activeHeading='';headingPositions.clear();
+    if(headingFrame)cancelAnimationFrame(headingFrame);
     $$('.chapter-nav details').forEach(d=>{d.open=Number(d.dataset.part)===partIndex;});
     $$('[data-chapter]').forEach(a=>{const active=a.dataset.chapter===chapter.id;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     $$('#articleBody img').forEach(img=> {
@@ -400,34 +414,53 @@
       });pre.append(button);
     });
     // Everything from here on reads geometry, so it happens in one frame after
-    // the writes above instead of interleaving a read with every write.
+    // the writes above instead of interleaving a read with every write. The band
+    // starts a million pixels above the viewport and ends on the 24% line, so
+    // entry.isIntersecting is exactly "this heading is at or above the line" and
+    // a heading cannot jump over the band between two samples without its
+    // boolean flipping.
     if(headingObserver)headingObserver.disconnect();
     requestAnimationFrame(()=>{
-      headingObserver=new IntersectionObserver(updateActiveHeading,{rootMargin:'-12% 0px -65% 0px',threshold:0});
+      headingObserver=new IntersectionObserver(updateActiveHeading,{rootMargin:'1000000px 0px -76% 0px',threshold:0});
       chapter.headings.filter(h=>h.text.trim()).forEach(h=>{const target=document.getElementById(h.id);if(target)headingObserver.observe(target);});
       $('#localToc').scrollTop=0;
-      measureArticle();
-      updateProgress();
+      afterLayout(measureAndProgress);
     });
   }
-  function updateActiveHeading() {
+  function updateActiveHeading(entries) {
     if(currentView!=='reader'||!currentChapter)return;
+    for(const entry of entries||[]) headingPositions.set(entry.target.id,entry);
+    // The newest heading the observer has seen at or above the 24% line. A
+    // record survives until a later crossing replaces it, and both edges of the
+    // band sit at or above that line, so a stale record never un-highlights a
+    // heading the live scan would still have kept.
+    const line=window.innerHeight*0.24;
     const headings=currentChapter.headings.filter(h=>h.text.trim());
     let active=headings[0]?.id;
-    for(const h of headings){const el=document.getElementById(h.id);if(el&&el.getBoundingClientRect().top<=window.innerHeight*.24)active=h.id;}
-    $$('[data-heading]').forEach(a=>{const on=a.dataset.heading===active;a.classList.toggle('active',on);if(on)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});
-    if(active!==activeHeading) {
-      activeHeading=active;
-      // The auto-scroll reads the nav box; keeping it in a frame means the
-      // class writes above are not interleaved with layout reads.
-      requestAnimationFrame(()=>{
-        const nav=$('#localToc'),link=nav.querySelector('[aria-current="location"]');
-        if(link&&nav.clientHeight) {
-          const bounds=nav.getBoundingClientRect(),rect=link.getBoundingClientRect();
-          if(rect.top<bounds.top||rect.bottom>bounds.bottom)nav.scrollTop+=rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
-        }
-      });
+    for(const h of headings){
+      const seen=headingPositions.get(h.id);
+      if(seen&&(seen.isIntersecting||seen.boundingClientRect.top<=line))active=h.id;
     }
+    if(active===activeHeading)return;
+    // One frame per change, and the latest change wins: measuring inside the
+    // frame means a flick that moved two headings never reads after a write.
+    if(headingFrame)cancelAnimationFrame(headingFrame);
+    headingFrame=requestAnimationFrame(()=>applyActiveHeading(active));
+  }
+  function applyActiveHeading(active) {
+    if(currentView!=='reader'||active===activeHeading)return;
+    const nav=$('#localToc'),link=nav.querySelector(`[data-heading="${CSS.escape(active)}"]`);
+    // Read first, write last. `.active` only changes colour and an absolutely
+    // positioned marker, so the box measured before the class lands is the box
+    // the reader sees, and nothing here forces a layout.
+    let delta=null;
+    if(link&&nav.clientHeight) {
+      const bounds=nav.getBoundingClientRect(),rect=link.getBoundingClientRect();
+      if(rect.top<bounds.top||rect.bottom>bounds.bottom)delta=rect.top-bounds.top-(nav.clientHeight-rect.height)/2;
+    }
+    activeHeading=active;
+    $$('[data-heading]').forEach(a=>{const on=a.dataset.heading===active;a.classList.toggle('active',on);if(on)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});
+    if(delta!==null)nav.scrollTop+=delta;
   }
   let articleTop = 0, articleHeight = 1;
   /* Reading offsetHeight inside a scroll handler forces a layout on every frame
@@ -440,12 +473,19 @@
     articleTop = rect.top + window.scrollY;
     articleHeight = Math.max(1, article.offsetHeight - window.innerHeight);
   }
+  function measureAndProgress() { measureArticle(); updateProgress(); }
+  /* A read in the frame that follows a write burst makes the browser lay the new
+     document out inside the task; a read one frame later finds the layout it
+     already computed for painting, and costs nothing. A chapter render and an
+     in-place route are the only paths that rewrite the whole article, so they are
+     the only ones that need the wait. */
+  function afterLayout(read) { requestAnimationFrame(()=>requestAnimationFrame(read)); }
   function updateProgress() {
     if(currentView!=='reader')return;
-    // Read first, write last. The bar's width dirties layout and the heading
-    // scan reads geometry, so writing before scanning would force a layout on
-    // every scroll event; scanning first finds the layout already clean.
-    updateActiveHeading();
+    // scrollY and the cached box are the only inputs: no layout property is read,
+    // so a scroll event cannot force a layout of a 400k-word document. Heading
+    // highlighting is not here -- it belongs to the observer, which reports the
+    // crossings this scan used to measure on every frame.
     $('#readingProgress').style.width=Math.max(0,Math.min(100,(window.scrollY-articleTop)/articleHeight*100))+'%';
   }
   function route(options) {
@@ -486,7 +526,9 @@
     // the rendered home page and then cross-fade it into the chapter.
     const swap = (inPlace || !currentView || !window.Motion) ? (apply(), undefined) : window.Motion.transition(apply);
     if(inPlace){
-      updateProgress();
+      // The language switch that lands here has just rewritten the article, so
+      // the bar waits for the browser's own layout pass instead of forcing one.
+      afterLayout(updateProgress);
       /* No frame is scheduled for an in-place route, and a language switch into
          #practice is also the retry path for a bundle that failed before. Nothing
          here is waiting on a first paint, so the fetch can start at once. */

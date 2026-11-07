@@ -134,6 +134,31 @@ check('updateProgress reads no layout property', () => {
   }
 });
 
+/* A function body, sliced to the closing brace at this file's top indentation
+   so nested blocks cannot truncate the slice. The opening is matched by regex so
+   a signature change cannot turn a behavioural failure into a missing one. */
+function paperBody(open) {
+  const match = open.exec(PAPER);
+  assert.ok(match, `${open} is missing from paper.js`);
+  const end = PAPER.indexOf('\n  }', match.index);
+  assert.notEqual(end, -1, `${open} is never closed at the expected indent`);
+  return PAPER.slice(match.index + match[0].length, end);
+}
+
+check('updateProgress leaves heading highlighting to the observer', () => {
+  // Calling the scan from scroll is what moved the forced reflow off
+  // renderChapter and onto every frame of the reader's scroll.
+  const body = paperBody(/function updateProgress\s*\(\s*\)\s*\{/);
+  assert.ok(!body.includes('updateActiveHeading'),
+    'updateProgress must not call updateActiveHeading; the observer owns highlighting');
+});
+
+check('the heading scan takes geometry from observer entries, not from layout', () => {
+  const body = paperBody(/function updateActiveHeading\s*\([^)]*\)\s*\{/);
+  assert.ok(!body.includes('getBoundingClientRect'),
+    'measuring every heading per callback is the forced reflow this task removes');
+});
+
 check('the article height is measured once per resize and per chapter', () => {
   assert.match(PAPER, /function measureArticle\(\)/, 'measureArticle is missing');
   assert.match(PAPER, /window\.addEventListener\('resize',\s*\(\)=>\{measureArticle\(\);updateProgress\(\);\}\)/,

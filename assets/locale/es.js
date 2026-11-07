@@ -412,6 +412,10 @@ MSI18N.register('es', {
   'discussion.loginFailed': 'El inicio de sesión no se completó. Inténtalo de nuevo.',
   'error.commentService': 'El servicio de comentarios no está disponible ahora. Inténtalo más tarde.',
   'error.requestFailed': 'La solicitud no se completó. Inténtalo de nuevo.',
+  'error.serviceDown': 'El servicio no está disponible por un momento. Reintentando…',
+  'error.retryLater': 'La acción no se completó. Inténtalo de nuevo.',
+  'error.network': 'Falló la conexión de red. Revísala y reintenta.',
+  'error.rateLimited': 'Demasiadas acciones. Espera un momento.',
 
   'analytics.title': 'Estadísticas del sitio',
   'analytics.pageTitle': 'Estadísticas del sitio｜Super Intelligence Learning Space',

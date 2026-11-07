@@ -412,6 +412,10 @@ MSI18N.register('en', {
   'discussion.loginFailed': 'Sign-in did not complete. Please try again.',
   'error.commentService': 'The comment service is unavailable right now. Please try again later.',
   'error.requestFailed': 'The request did not complete. Please try again.',
+  'error.serviceDown': 'The service is briefly unavailable. Retrying…',
+  'error.retryLater': 'That did not go through. Please try again.',
+  'error.network': 'Network connection failed. Check your connection and retry.',
+  'error.rateLimited': 'Too many actions. Please wait a moment.',
 
   'analytics.title': 'Site analytics',
   'analytics.pageTitle': 'Site analytics｜Super Intelligence Learning Space',

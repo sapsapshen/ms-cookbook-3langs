@@ -153,13 +153,19 @@
     });
   }
 
+  function friendlyStatus(status){
+    if(status===503)return '统计服务暂时不可用，请稍后刷新';
+    if(status===401)return '请登录或刷新页面后重试';
+    return '读取统计数据失败，请稍后刷新';
+  }
+
   async function loadSummary(query='days=7') {
     $('#dashboardStatus').textContent='';
     try {
       const data=await request('/api/analytics/summary?'+query);
       latestSummary=data;render(data);
     } catch(error) {
-      $('#dashboardStatus').textContent=error.message;
+      $('#dashboardStatus').textContent=friendlyStatus(error.status||0);
     }
   }
 
@@ -169,7 +175,7 @@
       const data=await request('/api/analytics/hourly?date='+encodeURIComponent(date));
       latestHourly=data;renderHourly(data);
     } catch(error) {
-      $('#dashboardStatus').textContent=error.message;
+      $('#dashboardStatus').textContent=friendlyStatus(error.status||0);
     }
   }
 

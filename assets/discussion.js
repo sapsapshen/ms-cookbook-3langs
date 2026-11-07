@@ -42,11 +42,28 @@
   dForm.append(dLabel,dText,el('p',t('discussion.annotationHint'),'discussion-hint'),dStatus,dSubmit,dClose);
   dialog.append(dTitle,quote,dForm);document.body.append(dialog);
 
+  const wait = ms => new Promise(resolveWait => setTimeout(resolveWait, ms));
+  function friendlyStatus(status) {
+    if (status === 503) return t('error.serviceDown');
+    if (status === 429) return t('error.rateLimited');
+    return t('error.retryLater');
+  }
   async function api(path,options={}) {
-    const response=await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf,...options.headers}});
-    let data;try{data=await response.json();}catch{throw new Error(t('error.commentService'));}
-    if(!response.ok){if(response.status===401)refreshSession();throw new Error(typeof data.detail==='string'?data.detail:t('error.requestFailed'));}
-    return data;
+    // A 503 from the write endpoints means "same request, later", and the draft
+    // is still in the textarea, so backing off is free for the reader.
+    for (let attempt = 0; ; attempt += 1) {
+      let response;
+      try {
+        response = await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf,...options.headers}});
+      } catch {
+        if (attempt < 2) { await wait(400 * (attempt + 1)); continue; }
+        throw new Error(t('error.network'));
+      }
+      if (response.status === 503 && attempt < 2) { await wait(400 * (attempt + 1)); continue; }
+      let data;try{data=await response.json();}catch{throw new Error(friendlyStatus(response.status));}
+      if(!response.ok){if(response.status===401)refreshSession();throw new Error(typeof data.detail==='string'?data.detail:friendlyStatus(response.status));}
+      return data;
+    }
   }
   function loginLink(text) {
     const a=el('a',text||t('discussion.loginLink'),'discussion-login');a.href='/auth/login?return_to='+encodeURIComponent(location.hash||'#home');
@@ -57,7 +74,7 @@
     account.replaceChildren();
     if(session.user){
       account.append(el('span',session.user.name,'account-name'));
-      const logout=el('button',t('discussion.logout'));logout.type='button';logout.onclick=async()=>{try{await api('/api/logout',{method:'POST'});await refreshSession();await load();}catch(e){status.textContent=e.message;}};account.append(logout);
+      const logout=el('button',t('discussion.logout'));logout.type='button';logout.onclick=async()=>{try{await api('/api/logout',{method:'POST'});await refreshSession();await load();}catch(e){status.textContent=t('error.retryLater');}};account.append(logout);
     }else if(session.loginEnabled) account.append(loginLink(t('discussion.loginShort')));
     else {const pending=el('span',t('discussion.loginShort'),'account-pending');pending.title=t('discussion.loginUnconfigured');pending.setAttribute('aria-disabled','true');account.append(pending);}
     window.dispatchEvent(new CustomEvent('purplebook:session',{detail:session}));
@@ -65,7 +82,7 @@
     formHint.replaceChildren(el('span',t('discussion.formHint')));
     if(!session.user) formHint.append(' ',session.loginEnabled?loginLink(t('discussion.loginCta')):el('span',t('discussion.loginLater')));
   }
-  async function refreshSession(){try{session=await api('/api/session');renderAccount();}catch(e){status.textContent=e.message;renderAccount();}}
+  async function refreshSession(){try{session=await api('/api/session');renderAccount();}catch(e){status.textContent=t('error.retryLater');renderAccount();}}
   function chapterKey(){return location.hash.slice(1).split('?')[0].split('/')[0];}
   function collectBlocks(){
     blocks=[...$('#articleBody').querySelectorAll('p,li,h2,h3,h4,blockquote,td')].filter(n=>!n.closest('pre,.katex')&&!n.querySelector('p,li,h2,h3,h4,blockquote,td'));
@@ -106,7 +123,7 @@
       if(entry.canDelete){
         const highlight=entry.kind==='highlight';
         const del=el('button',highlight?t('discussion.removeHighlight'):t('discussion.delete'),'entry-delete');del.type='button';
-        del.onclick=async()=>{if(!confirm(highlight?t('discussion.deleteHighlightConfirm'):t('discussion.deleteContentConfirm')))return;del.disabled=true;try{await api('/api/entries/'+entry.id,{method:'DELETE'});await load();}catch(e){status.textContent=e.message;del.disabled=false;}};card.append(del);
+        del.onclick=async()=>{if(!confirm(highlight?t('discussion.deleteHighlightConfirm'):t('discussion.deleteContentConfirm')))return;del.disabled=true;try{await api('/api/entries/'+entry.id,{method:'DELETE'});await load();}catch(e){status.textContent=t('error.retryLater');del.disabled=false;}};card.append(del);
       }
       list.append(card);
     }
@@ -118,7 +135,7 @@
     panel.hidden=false;chapter=current;collectBlocks();
     const ticket=++generation;status.textContent='';
     try{const data=await api(`/api/chapters/${current}/entries${append&&next?'?before='+next:''}`);if(ticket!==generation||chapterKey()!==current)return;items=append?items.concat(data.items):data.items;next=data.next;render();}
-    catch(e){if(ticket!==generation)return;items=[];next=null;render();status.textContent=e.message;}
+    catch(e){if(ticket!==generation)return;items=[];next=null;render();status.textContent=t('error.retryLater');}
   }
   more.onclick=()=>load(true);
   function capture(){
@@ -136,15 +153,15 @@
   function canWrite(){if(session.user)return true;status.replaceChildren(el('span',t('discussion.loginFirst')),session.loginEnabled?loginLink():el('span',t('discussion.loginSoon')));panel.scrollIntoView({block:'start',behavior:'smooth'});selectionBar.hidden=true;return false;}
   save.onclick=async()=>{
     if(!canWrite()||!anchor||busy)return;busy=true;save.disabled=true;const selected={...anchor};
-    try{await api(`/api/chapters/${selected.chapter}/entries`,{method:'POST',body:JSON.stringify({...selected,kind:'highlight'})});selectionBar.hidden=true;getSelection().removeAllRanges();showTab('annotation');await load();status.textContent=t('discussion.savedHighlight');notify(status.textContent);}catch(e){status.textContent=e.message;notify(e.message);}finally{busy=false;save.disabled=false;}
+    try{await api(`/api/chapters/${selected.chapter}/entries`,{method:'POST',body:JSON.stringify({...selected,kind:'highlight'})});selectionBar.hidden=true;getSelection().removeAllRanges();showTab('annotation');await load();status.textContent=t('discussion.savedHighlight');notify(status.textContent);}catch(e){status.textContent=t('error.retryLater');notify(status.textContent);}finally{busy=false;save.disabled=false;}
   };
   write.onclick=()=>{if(!canWrite()||!anchor)return;quote.textContent=anchor.quote;dText.value='';dStatus.textContent='';selectionBar.hidden=true;dialog.showModal();dText.focus();};
   dClose.onclick=()=>dialog.close();
   dForm.onsubmit=async e=>{e.preventDefault();if(busy||!anchor||!dText.value.trim())return;busy=true;dSubmit.disabled=true;
-    try{await api(`/api/chapters/${anchor.chapter}/entries`,{method:'POST',body:JSON.stringify({...anchor,kind:'annotation',text:dText.value})});dialog.close();showTab('annotation');getSelection().removeAllRanges();await load();}catch(error){dStatus.textContent=error.message;}finally{busy=false;dSubmit.disabled=false;}
+    try{await api(`/api/chapters/${anchor.chapter}/entries`,{method:'POST',body:JSON.stringify({...anchor,kind:'annotation',text:dText.value})});dialog.close();showTab('annotation');getSelection().removeAllRanges();await load();}catch(error){dStatus.textContent=t('error.retryLater');}finally{busy=false;dSubmit.disabled=false;}
   };
   form.onsubmit=async e=>{e.preventDefault();if(!canWrite()||busy||!textarea.value.trim())return;busy=true;submit.disabled=true;const target=chapterKey();
-    try{await api(`/api/chapters/${target}/entries`,{method:'POST',body:JSON.stringify({kind:'comment',text:textarea.value})});if(chapterKey()===target){textarea.value='';await load();status.textContent=t('discussion.published');}}catch(error){status.textContent=error.message;}finally{busy=false;submit.disabled=!session.user;}
+    try{await api(`/api/chapters/${target}/entries`,{method:'POST',body:JSON.stringify({kind:'comment',text:textarea.value})});if(chapterKey()===target){textarea.value='';await load();status.textContent=t('discussion.published');}}catch(error){status.textContent=error instanceof Error && error.message ? error.message : t('error.retryLater');}finally{busy=false;submit.disabled=!session.user;}
   };
   window.addEventListener('hashchange',()=>{generation++;selectionBar.hidden=true;dialog.close();anchor=null;if(chapter!==chapterKey()){textarea.value='';items=[];next=null;tab='comment';render();}renderAccount();requestAnimationFrame(()=>load());});
   window.addEventListener('focus',async()=>{await refreshSession();await load();});

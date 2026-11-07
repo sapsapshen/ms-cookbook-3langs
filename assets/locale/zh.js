@@ -412,6 +412,10 @@ MSI18N.register('zh', {
   'discussion.loginFailed': '登录未完成，请重新登录。',
   'error.commentService': '评论服务暂时不可用，请稍后重试。',
   'error.requestFailed': '请求未完成，请重试。',
+  'error.serviceDown': '服务暂时不可用，正在自动重试…',
+  'error.retryLater': '操作没有成功，请稍后重试',
+  'error.network': '网络连接失败，请检查网络后重试',
+  'error.rateLimited': '操作太频繁，请稍后再试',
 
   'analytics.title': '访问统计',
   'analytics.pageTitle': '访问统计｜超智学习空间',

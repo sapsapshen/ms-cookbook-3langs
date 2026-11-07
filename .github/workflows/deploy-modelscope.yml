@@ -40,6 +40,7 @@ on:
       - 'scripts/test-i18n.cjs'
       - 'scripts/test-asset-loading.cjs'
       - 'scripts/test-motion.cjs'
+      - 'scripts/test-reader-copy.cjs'
       - 'scripts/test-ci-coverage.cjs'
       - 'README*.md'
       - 'LICENSE'
@@ -104,6 +105,14 @@ jobs:
           # asserts the contract at the source -- tokens, no layout-property
           # transitions, and reduced motion honoured in CSS and JS alike.
           node scripts/test-motion.cjs
+      - name: Verify reader-facing copy and retry behaviour
+        run: |
+          # A reader must never see "Failed to fetch" or a Python traceback in
+          # a status line, and the write endpoints answer 503 under load. Both
+          # live only in the shipped sources -- no runtime test covers them --
+          # so this asserts the mapping itself: the friendlyStatus gate, the
+          # 400/800 ms 503 backoff, and the four copy keys in all three locales.
+          node scripts/test-reader-copy.cjs
       - name: Verify the exercise modules
         run: |
           # The grading logic, against the corpus harness. Its fake Pyodide is

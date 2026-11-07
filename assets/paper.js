@@ -457,8 +457,10 @@
       }
       currentView=view;
     };
-    // A language switch re-runs in place: no transition, no flash of the old copy.
-    const swap = (inPlace || !window.Motion) ? (apply(), undefined) : window.Motion.transition(apply);
+    // A language switch re-runs in place, and the first route of a visit has no
+    // previous view to fade from: a #chapter-1 deep link would otherwise paint
+    // the rendered home page and then cross-fade it into the chapter.
+    const swap = (inPlace || !currentView || !window.Motion) ? (apply(), undefined) : window.Motion.transition(apply);
     if(inPlace){
       updateProgress();
       /* No frame is scheduled for an in-place route, and a language switch into
@@ -489,7 +491,7 @@
       if(view==='reader'&&!window.ExerciseMap&&window.AssetLoader)ensureExerciseBundle().catch(error=>console.warn('exercise bundle failed to load',error));
       if(window.Motion)window.Motion.scan();
     });
-    if(swap && swap.ready) swap.ready.then(after, after); else after();
+    if(swap && swap.ready) swap.ready.then(after,error=>{console.error('view transition failed',error);after();}); else after();
   }
   // A language change rewrites every string the router and panels own.
   window.MSI18N.on(()=>{

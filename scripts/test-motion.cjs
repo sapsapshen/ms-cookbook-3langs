@@ -50,6 +50,44 @@ check('prefers-reduced-motion zeroes the duration tokens', () => {
   }
 });
 
+/* Slice the block whose opening brace follows `head`, honouring nesting: the
+   reduced-motion block contains rules of its own, so a `[^}]*` capture would
+   stop at the first nested brace and assert on a prefix. */
+function mediaBlock(head) {
+  const start = CSS.indexOf(head);
+  assert.notEqual(start, -1, `${head} is missing from motion.css`);
+  let depth = 0;
+  for (let i = start + head.length - 1; i < CSS.length; i += 1) {
+    if (CSS[i] === '{') depth += 1;
+    else if (CSS[i] === '}') { depth -= 1; if (depth === 0) return CSS.slice(start, i + 1); }
+  }
+  throw new Error(`${head} is never closed`);
+}
+
+check('the reduced-motion block wins the cascade against the hiding rule', () => {
+  // Same specificity as `.motion-ready [data-reveal]:not(.is-revealed)` above;
+  // a weaker selector would lose and leave reduced-motion readers on invisible
+  // prose, which is exactly what the zeroed tokens alone cannot prevent.
+  const reduced = mediaBlock('@media (prefers-reduced-motion: reduce)');
+  assert.match(reduced, /\.motion-ready \[data-reveal\]:not\(\.is-revealed\)\s*\{\s*opacity:\s*1\b/,
+    'the reduced block must force an unrevealed [data-reveal] back to opacity 1');
+});
+
+check('motion.css transitions nothing but transform and opacity', () => {
+  const ANIMATABLE = new Set(['transform', 'opacity']);
+  const declarations = CSS.match(/transition:\s*[^;}]*/g) || [];
+  assert.ok(declarations.length, 'motion.css declares no transition at all');
+  for (const declaration of declarations) {
+    const value = declaration.slice(declaration.indexOf(':') + 1).trim();
+    if (value === 'none') continue;
+    for (const part of value.split(',')) {
+      const property = part.trim().split(/\s+/)[0];
+      assert.ok(ANIMATABLE.has(property),
+        `motion.css transitions ${property}; only transform and opacity may animate`);
+    }
+  }
+});
+
 check('motion.js reads reduced motion through matchMedia, not a CSS hack alone', () => {
   // The query's own parentheses are literal: escaping only the outer pair makes
   // them a regex group, which then matches a media query Chromium rejects.

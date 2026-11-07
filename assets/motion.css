@@ -11,13 +11,17 @@
   --motion-rise:10px;
 }
 
-/* Content stays visible until motion.js proves it can reveal it. */
-.motion-ready [data-reveal]{
-  transition:opacity var(--motion-base) var(--ease-out),transform var(--motion-base) var(--ease-out);
-}
-.motion-ready [data-reveal]:not(.is-revealed){
-  opacity:0;
-  transform:translateY(var(--motion-rise));
+/* Content stays visible until motion.js proves it can reveal it. Screen only:
+   print has no scan(), so a heading the reader never scrolled past would print
+   at opacity 0 and take its section's title with it. */
+@media screen{
+  .motion-ready [data-reveal]{
+    transition:opacity var(--motion-base) var(--ease-out),transform var(--motion-base) var(--ease-out);
+  }
+  .motion-ready [data-reveal]:not(.is-revealed){
+    opacity:0;
+    transform:translateY(var(--motion-rise));
+  }
 }
 
 ::view-transition-old(root){animation:vt-out var(--motion-fast) var(--ease-in-out) both}
@@ -25,19 +29,11 @@
 @keyframes vt-out{to{opacity:0}}
 @keyframes vt-in{from{opacity:0;transform:translateY(var(--motion-rise))}to{opacity:1;transform:none}}
 
-/* Buttons, cards and nav links share the same two durations rather than each
-   inventing one. */
-.motion-ready .primary-button,
-.motion-ready .home-button,
-.motion-ready .pager-link,
-.motion-ready .desktop-nav a,
-.motion-ready .text-link,
-.motion-ready .discussion-entry,
-.motion-ready .wish-entry{
-  transition:transform var(--motion-fast) var(--ease-out),
-             opacity var(--motion-fast) var(--ease-out),
-             box-shadow var(--motion-fast) var(--ease-out);
-}
+/* Hover and active feedback rides the transitions paper.css, home.css and
+   styles.css already declare (`background .2s, transform .2s, box-shadow .2s` on
+   the buttons, `transform .2s` on the pager). Re-declaring a narrower list here
+   replaced the button's background fade with a snap, and a box-shadow
+   transition is out of bounds for this layer anyway. */
 .motion-ready .primary-button:hover,
 .motion-ready .home-button:hover,
 .motion-ready .pager-link:hover{transform:translateY(calc(var(--motion-rise) * -0.3))}

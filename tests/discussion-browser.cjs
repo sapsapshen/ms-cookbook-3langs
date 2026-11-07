@@ -44,22 +44,42 @@ const fs=require('node:fs');const os=require('node:os');const path=require('node
   await page.screenshot({path:'/tmp/purplebook-wishes-mobile.png'});
   page.once('dialog',d=>d.accept());await page.locator('.wish-entry button').click();
   await page.getByText('还没有人许愿。你希望超智学习空间补上的第一份实践是什么？',{exact:true}).waitFor();
-  // Motion must be invisible to a reader who asked for it to be, and must not
-  // leave a stale page behind when it does run. Both are cheap to assert here and
-  // impossible to assert from the static suites.
-  const reduced = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 390, height: 700 } });
-  const quiet = await reduced.newPage();
-  quiet.on('pageerror', e => errors.push('reduced: ' + e.message));
+  // Print and reduced motion are the two states where a reveal layer that is
+  // invisible to us becomes readable -- or unreadable -- in someone else's hands.
+  // Neither is observable from the static suites.
+  const motion = await browser.newContext({ reducedMotion: 'no-preference', viewport: { width: 390, height: 700 } });
+  const quiet = await motion.newPage();
+  quiet.on('pageerror', e => errors.push('motion: ' + e.message));
   await quiet.goto(env.APP_BASE_URL + '/#home');
   await quiet.evaluate(() => location.hash = '#chapter-1');
   await quiet.waitForFunction(() => document.body.dataset.view === 'reader');
-  const animated = await quiet.evaluate(() => [...document.querySelectorAll('#articleBody h2')]
-    .some(node => getComputedStyle(node).transitionDuration !== '0s'));
-  assert.equal(animated, false, 'reduced motion still transitions chapter sections');
-  const visible = await quiet.evaluate(() => [...document.querySelectorAll('#articleBody h2')]
-    .every(node => getComputedStyle(node).opacity === '1'));
-  assert.equal(visible, true, 'reduced motion left sections invisible');
-  await reduced.close();
+  // An empty NodeList would make every/every-style assertions true forever, so
+  // the page has to actually hold headings before they mean anything.
+  assert.ok(await quiet.locator('#articleBody h2').count() > 0, 'the reader page rendered no #articleBody h2');
+  // The reveal hook must land while motion is allowed: switched to reduce before
+  // scan() ran, no heading would carry data-reveal and the reduced block would go
+  // untested.
+  await quiet.waitForFunction(() => document.querySelectorAll('#articleBody h2[data-reveal]').length > 0);
+  // The hook starts the entrance transition from opacity 1 to 0, so sampling too
+  // early reads a mid-transition value and the print check below would pass or
+  // fail on frame timing. Wait until every heading's transition has settled.
+  await quiet.waitForFunction(() => [...document.querySelectorAll('#articleBody h2')]
+    .every(node => node.getAnimations().every(animation => animation.playState !== 'running')));
+  // A chapter printed before the reader scrolled past a heading must still print
+  // that heading: print media has no scan() to reveal it.
+  await quiet.emulateMedia({ media: 'print' });
+  const fadedForPrint = await quiet.evaluate(() => [...document.querySelectorAll('#articleBody h2')]
+    .filter(node => getComputedStyle(node).opacity !== '1').length);
+  assert.equal(fadedForPrint, 0, 'print media hides chapter headings the reader never scrolled to');
+  await quiet.emulateMedia({ media: 'screen', reducedMotion: 'reduce' });
+  await quiet.waitForFunction(() => window.Motion && window.Motion.reduce());
+  await quiet.waitForFunction(() => [...document.querySelectorAll('#articleBody h2')]
+    .every(node => node.getAnimations().every(animation => animation.playState !== 'running')));
+  const stillAnimated = await quiet.evaluate(() => [...document.querySelectorAll('#articleBody h2')]
+    .map(node => { const style = getComputedStyle(node); return { opacity: style.opacity, transitionDuration: style.transitionDuration }; })
+    .filter(state => state.opacity !== '1' || state.transitionDuration !== '0s'));
+  assert.deepEqual(stillAnimated, [], 'an existing chapter section stayed invisible or still transitions under reduced motion');
+  await motion.close();
   assert.deepEqual(errors,[]);console.log('PASS: browser comment, highlight, annotation, XSS text rendering, reload, chapter isolation, guest privacy, wishes publish/persist/delete/XSS/guest permissions, mobile layout');
  }finally{if(browser)await browser.close();server.kill();fs.rmSync(data,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -41,16 +41,24 @@
   function scan(root) {
     if (reduce.matches || !('IntersectionObserver' in window)) return;
     const watch = ensureObserver();
+    const pending = [];
     for (const node of revealables(root)) {
       if (node.dataset.revealBound === '1' || node.classList.contains('is-revealed')) continue;
+      pending.push(node);
+    }
+    // Every geometry read happens before any write: one node's box cannot depend
+    // on another node's opacity or transform, so batching the reads keeps this
+    // pass out of the read-write interleave that forces a layout per element.
+    const boxes = pending.map(node => node.getBoundingClientRect());
+    pending.forEach((node, index) => {
       node.dataset.revealBound = '1';
       // The CSS gate keys off [data-reveal]; a node selected by #articleBody h2
       // is invisible until it is revealed only once it carries that hook.
       node.setAttribute('data-reveal', '');
-      const box = node.getBoundingClientRect();
-      if (box.top < window.innerHeight && box.bottom > 0) { node.classList.add('is-revealed'); continue; }
+      const box = boxes[index];
+      if (box.top < window.innerHeight && box.bottom > 0) { node.classList.add('is-revealed'); return; }
       watch.observe(node);
-    }
+    });
   }
 
   /* A reader who turns the preference on mid-visit must see everything, not a
@@ -61,8 +69,10 @@
   }
 
   function fallbackSwap() {
-    const main = document.querySelector('main[data-page]:not([hidden])') || document.body;
-    main.animate(
+    // The reader view is a bare <div class="site-shell">, so a `main[data-page]`
+    // selector fell through to <body> and faded the header along with the page.
+    const page = document.querySelector('[data-page]:not([hidden])') || document.body;
+    page.animate(
       [{ opacity: 0, transform: 'translateY(' + token('--motion-rise', '10px') + ')' }, { opacity: 1, transform: 'none' }],
       { duration: parseInt(token('--motion-base', '220ms'), 10), easing: token('--ease-out', 'ease-out'), fill: 'none' }
     );

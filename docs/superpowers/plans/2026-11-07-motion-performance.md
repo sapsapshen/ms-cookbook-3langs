@@ -624,8 +624,10 @@ def image_size(path):
         if fourcc == b'VP8 ' and len(head) >= 30:
             return int.from_bytes(head[26:28], 'little') & 0x3FFF, int.from_bytes(head[28:30], 'little') & 0x3FFF
         if fourcc == b'VP8L' and len(head) >= 25:
+            # VP8L packs width-1 and height-1 as 14 bits each, then alpha flag and
+            # version. Masking 12 inflates any height under 4096 by four times.
             bits = int.from_bytes(head[21:25], 'little')
-            return bits % 4096 + 1, (bits // 4096) % 4096 + 1
+            return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
     return None
 ```
 
@@ -640,11 +642,13 @@ Expected: PASS（4 项）
 
 ```python
             if node.tag == 'img':
-                size = image_size(ROOT / node.get('src', ''))
-                if size:
+                size = image_size(ROOT / node.get('src', '')) if (ROOT / node.get('src', '')).is_file() else None
+                if size and size[0] > 0 and size[1] > 0:
                     node.set('width', str(size[0]))
                     node.set('height', str(size[1]))
 ```
+
+`is_file()` 与正数校验都是必需的：前者让缺失或外部 `src` 走「保持原样、由 check-site 报缺口」这条路而不是中断整本书的构建；后者挡住一个声明为 0 的头部写出 `width="0"`。
 
 注意插入点必须在 `to_markdown(article, number)`（第 172 行）之后——`content/chapters/*.md` 由更早的调用生成，因此正文 Markdown 不会因新增属性而变动，`--check` 仍然通过。
 
@@ -681,7 +685,7 @@ function imageSize(buffer){
     const fourcc=buffer.toString('latin1',12,16);
     if(fourcc==='VP8X')return [1+buffer.readUIntLE(24,3),1+buffer.readUIntLE(27,3)];
     if(fourcc==='VP8 ')return [buffer.readUInt16LE(26)&0x3fff,buffer.readUInt16LE(28)&0x3fff];
-    if(fourcc==='VP8L'){const bits=buffer.readUInt32LE(21);return [bits%4096+1,Math.floor(bits/4096)%4096+1];}
+    if(fourcc==='VP8L'){const bits=buffer.readUInt32LE(21);return [(bits&0x3fff)+1,((bits>>14)&0x3fff)+1];}
   }
   return null;
 }
@@ -719,6 +723,38 @@ Expected: `143 passed`
 git add scripts/build-content.py scripts/check-site.mjs assets/content.js tests/test_build_content.py
 git commit -m "perf(reader): give every article image its intrinsic size and the first one priority"
 ```
+
+### Task 3 实现后的更正（评审裁定，代码为准）
+
+评审用独立解码器复现出本任务原文的一处真缺陷并新增三项覆盖要求。以下差异以本节为准：
+
+1. **VP8L 是 14 位字段，不是 12 位。** 上文两处解析器原文写的是 `bits % 4096` / `bits // 4096 % 4096`，会把任何小于 4096 的高度放大四倍、宽度超过 4096 时回绕。两侧（Python 与 JS）同错，因此 check-site 的等值断言当时是在用同一个错误自我验证。正确形式已改写进上文两处。
+2. **`image_size` 调用点必须带 `is_file()` 与正数校验**，理由见 Step 5 下方说明。
+3. **新增合成头部测试**，覆盖 VP8 / VP8L / VP8X / PNG 四条分支与各自的长度守卫——纯 `bytes` 构造，不读图片文件、不引入 Pillow（CI 未安装 Pillow，测试一旦依赖它就会在 CI 里失败）：
+
+```python
+def _riff(payload, fourcc):
+    return b'RIFF' + (4 + len(payload)).to_bytes(4, 'little') + b'WEBP' + payload
+
+
+def test_vp8l_uses_fourteen_bit_fields():
+    bits = ((4000 - 1) << 14) | (3000 - 1)          # 14-bit height, 14-bit width
+    head = _riff(b'VP8L' + (12).to_bytes(4, 'little') + b'\x2f' + bits.to_bytes(4, 'little') + b'\x00' * 8, b'VP8L')
+    path = tmp_write(head)
+    assert image_size(path) == (3000, 4000)
+
+
+def test_vp8x_reads_canvas_minus_one():
+    chunk = b'VP8X' + (10).to_bytes(4, 'little') + b'\x00' * 4 + (1023).to_bytes(3, 'little') + (767).to_bytes(3, 'little') + b'\x00' * 4
+    assert image_size(tmp_write(_riff(chunk, b'VP8X'))) == (1024, 768)
+
+
+def test_truncated_chunk_returns_none_not_a_guess():
+    assert image_size(tmp_write(b'RIFF\x10\x00\x00\x00WEBPVP8 ')) is None
+```
+
+4. **新增 `tests/test_content_sizes.py`**，在 Python 侧独立守住产物不变量（此前只有用同一个解析器的 JS 侧在守）：每个 `article-image` 标签都带 `width`/`height`；每章恰好一张图不是 lazy，且它是该章第一张并带 `fetchpriority="high"`；其余全部保持 `loading="lazy"`。最后一条是 spec「其余正文图保持 lazy」的唯一自动化守卫——评审证明 check-site 现有断言在「第二张图被去掉 lazy」时静默通过。
+5. **check-site 补一条 lazy 断言**，与第 4 条同源，防止未来构建脚本回归。
 
 ---
 

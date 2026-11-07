@@ -43,7 +43,7 @@
   - `app.SELECTIVE_BINARY_SUFFIXES: tuple[str, ...]` — 不做压缩的后缀白名单
   - `app.SelectiveEncoding` — ASGI 中间件类，构造签名 `SelectiveEncoding(app)`
   - `app.SHORT_CACHE_PATHS: frozenset[str]` — 无内容哈希、走短缓存的路径
-  - 响应头契约：带 `?v=` 的请求返回 `Cache-Control: public, max-age=31536000, immutable`
+  - 响应头契约：2xx 且路由未自行设定 `Cache-Control` 时，带 `?v=` 的静态资源请求返回 `Cache-Control: public, max-age=31536000, immutable`；`SHORT_CACHE_PATHS` 优先于 `?v=`；无哈希的 `/assets|/content|/chapters` 返回 `REVALIDATE`。路由自设的策略（`/` 的 `no-cache`、`/analytics` 的 `no-store`）永不被查询参数覆盖。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -273,12 +273,12 @@ REVALIDATE = 'public, max-age=0, must-revalidate'
 - [ ] **Step 6: 运行，确认通过**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests/test_static_delivery.py -q`
-Expected: PASS（14 项）
+Expected: PASS（15 项）
 
 - [ ] **Step 7: 跑全量回归**
 
 Run: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests -q`
-Expected: `137 passed`（123 基线 + 14 新增），且 `tests/test_discussion.py` 的 `cache-control==no-store` 断言仍通过。
+Expected: `138 passed`（123 基线 + 15 新增），且 `tests/test_discussion.py` 的 `cache-control==no-store` 断言仍通过。
 
 - [ ] **Step 8: 提交**
 

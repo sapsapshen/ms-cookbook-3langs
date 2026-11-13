@@ -495,5 +495,26 @@ MSI18N.register('es', {
   'exercise.incorrect': 'Casi. Inténtalo de nuevo.',
   'exercise.synced': 'Se han sincronizado los aprobados de tus otros dispositivos.',
   'exercise.mapTitle': 'Mapa de aprendizaje',
-  'exercise.mapTotal': '{passed} / {total} ejercicios aprobados'
+  'exercise.mapTotal': '{passed} / {total} ejercicios aprobados',
+
+  'login.pageTitle': 'Entrar｜Super Intelligence Learning Space',
+  'login.description': 'Entra en el Super Intelligence Learning Space para comentar, guardar subrayados y sincronizar los ejercicios.',
+  'login.home': 'Inicio del Super Intelligence Learning Space',
+  'login.title': 'Entrar',
+  'login.intro': 'Después de entrar puedes comentar, guardar subrayados y sincronizar el progreso de los ejercicios.',
+  'login.email': 'Correo',
+  'login.password': 'Contraseña',
+  'login.submit': 'Entrar',
+  'login.oauth': 'Entrar con una cuenta de ModelScope',
+  'login.note': 'Las cuentas las crea un administrador del sitio. Si olvidas la contraseña, pídele que la restablezca.',
+  'login.back': '← Volver a la lectura',
+  'login.missing': 'Escribe el correo y la contraseña.',
+  'login.pending': 'Entrando…',
+  'login.success': 'Sesión iniciada. Volviendo…',
+  'login.network': 'Falló la conexión. Inténtalo de nuevo.',
+  'login.badCredentials': 'El correo o la contraseña no son correctos',
+  'login.rateLimited': 'Demasiados intentos. Prueba más tarde',
+  'login.unavailable': 'El inicio de sesión no está disponible. Prueba más tarde',
+  'login.badOrigin': 'El origen de la solicitud no es válido',
+  'login.failed': 'No se pudo completar el inicio de sesión. Inténtalo de nuevo.'
 });

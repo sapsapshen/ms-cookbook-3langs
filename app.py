@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager, closing, contextmanager
 from datetime import datetime, timedelta
 import hashlib
 import hmac
-import httpx
+import httpx2 as httpx
 import json
 import logging
 import mimetypes
@@ -44,6 +44,9 @@ SHORT_CACHE_PATHS = frozenset(('/favicon.svg', '/deployment.json', '/CONTRIBUTIN
 IMMUTABLE = 'public, max-age=31536000, immutable'
 SHORT_CACHE = 'public, max-age=300, must-revalidate'
 REVALIDATE = 'public, max-age=0, must-revalidate'
+# The reader never needs these sensors. An explicit empty allowlist stops an
+# embedded frame from inheriting a looser policy from the host page.
+PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=(), payment=()'
 
 # Python's map is built from /etc/mimetypes on Linux, where webp is often absent;
 # StaticFiles then serves it as octet-stream and the browser cannot sniff it.
@@ -620,6 +623,7 @@ def create_app(data_dir=None, analytics_runtime_dir=None):
         response = await call_next(request)
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='strict-origin-when-cross-origin'
+        response.headers['Permissions-Policy']=PERMISSIONS_POLICY
         if request.url.path.startswith(('/api/','/auth/')):
             response.headers['Cache-Control']='no-store'
         elif 200 <= response.status_code < 300 and 'cache-control' not in response.headers:

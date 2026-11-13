@@ -64,6 +64,8 @@ const REQUIRED = [
   'scripts/test-asset-loading.cjs',
   'scripts/test-motion.cjs',
   'scripts/test-reader-copy.cjs',
+  'scripts/test-book-search.cjs',
+  'scripts/test-reader-routes.cjs',
   'scripts/test-exercise-ui-mutations.cjs',
 ];
 
@@ -72,10 +74,6 @@ const REQUIRED = [
 const EXCLUDED = new Map([
   ['scripts/test-exercise-ui-harness.cjs',
    'a shared harness required by test-exercise-ui / -map / -ui-corpus; running it alone executes nothing'],
-  ['scripts/test-book-search.cjs',
-   'pre-existing suite, never wired into CI before this feature; out of scope here'],
-  ['scripts/test-reader-routes.cjs',
-   'pre-existing suite, never wired into CI before this feature; out of scope here'],
   ['scripts/test-ci-coverage.cjs',
    'this file: it asserts on REQUIRED, so listing itself there would be circular. It does run in CI, through its own step.'],
 ]);
@@ -85,7 +83,7 @@ const EXCLUDED = new Map([
  * GitHub Actions fails the whole workflow on a YAML parse error, so the shape
  * below cannot rot into something that "still parses". What it CAN do is stop
  * finding a section -- a moved key, a renamed step -- and hand back an empty
- * slice. Every consumer here treats empty as "all 19 are missing", so a parser
+ * slice. Every consumer here treats empty as "all 21 are missing", so a parser
  * that loses track reports red rather than passing vacuously. That direction
  * is the whole point; the reverse tests at the bottom pin it down. */
 
@@ -164,7 +162,7 @@ function readWorkflow() {
   return readFileSync(WORKFLOW, 'utf8');
 }
 
-test('19 个校验脚本都在 workflow 的某个 run: 里执行', () => {
+test('21 个校验脚本都在 workflow 的某个 run: 里执行', () => {
   const runs = parseRunBlocks(readWorkflow());
   assert.ok(runs.length >= 5, `only ${runs.length} run: blocks parsed; the parser is not seeing the steps`);
   const executed = scriptsIn(runs.join('\n'));
@@ -172,7 +170,7 @@ test('19 个校验脚本都在 workflow 的某个 run: 里执行', () => {
     '这些脚本没有在 CI 里执行，改动它们不会得到任何反馈');
 });
 
-test('19 个校验脚本都在 paths: 白名单里，否则 workflow 根本不会被触发', () => {
+test('21 个校验脚本都在 paths: 白名单里，否则 workflow 根本不会被触发', () => {
   const paths = new Set(parsePaths(readWorkflow()));
   assert.ok(paths.size >= 20, `only ${paths.size} paths: entries parsed; the parser is not seeing the filter`);
   assert.deepEqual(missing(REQUIRED, paths), [],
@@ -263,10 +261,10 @@ test('反向验证：paths: 整体消失时必须报红，而不是因为"没解
   const text = readWorkflow().replace(/^(\s*)paths:\s*$/m, '$1disarmed:');
   assert.deepEqual(parsePaths(text), [], 'paths: 被改名后仍读出了条目，说明它在读别的东西');
   assert.deepEqual(missing(REQUIRED, new Set(parsePaths(text))), REQUIRED,
-    'paths: 整体消失后，19 个脚本必须全部报为漏项');
+    'paths: 整体消失后，全部校验脚本必须报为漏项');
   // Same for run: blocks.
   assert.deepEqual(missing(REQUIRED, scriptsIn('')), REQUIRED,
-    '一个脚本都不执行时，漏项检测必须把 19 个全报出来');
+    '一个脚本都不执行时，漏项检测必须把全部校验脚本报出来');
 });
 /* Self-check for the floor above. The floor is a guard against a suite that
  * goes quiet, and a guard nobody has seen fire is indistinguishable from no

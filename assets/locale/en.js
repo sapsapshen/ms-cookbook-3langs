@@ -495,5 +495,26 @@ MSI18N.register('en', {
   'exercise.incorrect': 'Not quite. Try again.',
   'exercise.synced': 'Passes from your other devices have been synced.',
   'exercise.mapTitle': 'Learning map',
-  'exercise.mapTotal': '{passed} / {total} exercises passed'
+  'exercise.mapTotal': '{passed} / {total} exercises passed',
+
+  'login.pageTitle': 'Sign in｜Super Intelligence Learning Space',
+  'login.description': 'Sign in to the Super Intelligence Learning Space to comment, save highlights, and sync exercise progress.',
+  'login.home': 'Super Intelligence Learning Space home',
+  'login.title': 'Sign in',
+  'login.intro': 'After you sign in you can comment, save highlights, and sync exercise progress.',
+  'login.email': 'Email',
+  'login.password': 'Password',
+  'login.submit': 'Sign in',
+  'login.oauth': 'Sign in with a ModelScope account',
+  'login.note': 'Accounts are created by a site administrator. Contact an administrator if you forget the password.',
+  'login.back': '← Back to reading',
+  'login.missing': 'Enter both email and password.',
+  'login.pending': 'Signing in…',
+  'login.success': 'Signed in. Returning…',
+  'login.network': 'The network request failed. Try again.',
+  'login.badCredentials': 'The email or password is incorrect',
+  'login.rateLimited': 'Too many sign-in attempts. Try again later',
+  'login.unavailable': 'Sign-in is temporarily unavailable. Try again later',
+  'login.badOrigin': 'The request origin was rejected',
+  'login.failed': 'Sign-in did not finish. Try again.'
 });

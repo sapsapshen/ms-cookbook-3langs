@@ -14,6 +14,12 @@
   display: grid;
   gap: 20px;
 }
+.login-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .login-wordmark {
   display: inline-flex;
   align-items: center;

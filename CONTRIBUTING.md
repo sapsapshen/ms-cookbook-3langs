@@ -4,7 +4,7 @@ Thank you for contributing practical, reproducible knowledge to the cookbook.
 
 ## Report an issue
 
-Open a [GitHub issue](https://github.com/modelscope/ms-cookbook/issues/new) with the affected chapter or page, expected behavior, actual behavior, and reproduction steps. For layout issues, include browser, viewport size, and a screenshot without private data.
+Open a [GitHub issue](https://github.com/sapsapshen/ms-cookbook-3langs/issues/new) with the affected chapter or page, expected behavior, actual behavior, and reproduction steps. For layout issues, include browser, viewport size, and a screenshot without private data.
 
 ## Submit a pull request
 

@@ -4,13 +4,13 @@
   <img src="assets/home/book-hero.webp" width="360" alt="ModelScope Cookbook — purple book cover">
 </p>
 
-<h1 align="center">ModelScope Cookbook</h1>
-<p align="center"><strong>From open-source models to practical AI applications.</strong></p>
-<p align="center">魔搭紫皮书 · Choose a model. Run it. Adapt it. Build with it.</p>
+<h1 align="center">Super Intelligence Learning Space</h1>
+<p align="center"><strong>A three-language reading site for the open-source model cookbook.</strong></p>
+<p align="center">超智学习空间 · 简体中文 · English · Español</p>
 
 <p align="center">
-  <a href="https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook"><img src="https://img.shields.io/badge/Read_Online-ModelScope-7043DB?style=flat-square" alt="Read online on ModelScope"></a>
-  <a href="https://github.com/modelscope/ms-cookbook/stargazers"><img src="https://img.shields.io/github/stars/modelscope/ms-cookbook?style=flat-square&amp;color=7043DB" alt="GitHub stars"></a>
+  <a href="https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook"><img src="https://img.shields.io/badge/Studio-ModelScope-7043DB?style=flat-square" alt="ModelScope Studio deployment"></a>
+  <a href="https://github.com/sapsapshen/ms-cookbook-3langs/stargazers"><img src="https://img.shields.io/github/stars/sapsapshen/ms-cookbook-3langs?style=flat-square&amp;color=7043DB" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-7043DB?style=flat-square" alt="License: Apache 2.0"></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributions-Welcome-287D70?style=flat-square" alt="Contributions welcome"></a>
 </p>
@@ -28,7 +28,7 @@
 
 ## Overview
 
-**ModelScope Cookbook is a hands-on, open-source guide to using open-source AI models in real applications.** It brings model selection, inference, data preparation, fine-tuning, evaluation, and application development into one structured learning resource.
+**Super Intelligence Learning Space (SILS, 超智学习空间) is the three-language reading site for this cookbook.** The chapters are the ModelScope Cookbook (魔搭紫皮书): model selection, inference, data preparation, fine-tuning, evaluation, and application development in one structured path. The site shell, chapter prose, and exercises switch together among 简体中文, English, and Español. The control sits in the header and, on a narrow screen, inside the menu. The choice is stored in this browser and also applies to the sign-in page and the analytics dashboard.
 
 A useful model application starts with practical decisions: which model fits the task, what hardware it needs, how to adapt it to your data, and how to judge the result. The cookbook connects these decisions to runnable examples, using tools such as **EvalScope, ms-swift, DiffSynth, and Ollama**, alongside RAG and Agent workflows.
 
@@ -38,21 +38,27 @@ The goal is to help developers move from a first successful inference to applica
 
 ## Start reading
 
-**[Read online on ModelScope →](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook)**
-
-No installation is needed for online reading. The website includes full-text keyword search, guided reading paths, chapter navigation, code copying, image enlargement, and rendered mathematical formulas.
+Maintainers who configure `MODELSCOPE_API_KEY` can publish the site with the [deployment workflow](.github/workflows/deploy-modelscope.yml) to the ModelScope Studio [`ms-cookbook-team/ms-cookbook`](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook). The website includes full-text keyword search, guided reading paths, chapter navigation, code copying, image enlargement, and rendered mathematical formulas.
 
 For local reading:
 
 ```bash
-git clone https://github.com/modelscope/ms-cookbook.git
-cd ms-cookbook
+git clone https://github.com/sapsapshen/ms-cookbook-3langs.git
+cd ms-cookbook-3langs
 python3 -m http.server 4173 --bind 127.0.0.1
 ```
 
 Open [http://127.0.0.1:4173/#home](http://127.0.0.1:4173/#home). If the port is occupied, use `4174` in both the command and URL. Stop the server with `Ctrl+C`.
 
-Reading locally requires Python 3 and a modern browser; it requires no project dependencies, build step, API key, or GPU. Individual exercises may require model downloads, credentials, software, or compute resources as described in their chapters.
+Reading locally requires Python 3 and a modern browser; it requires no project dependencies, build step, API key, or GPU. Individual exercises may require model downloads, credentials, software, or compute resources as described in their chapters. The static server does not provide sign-in, comments, or progress sync. For those, install the API and open [http://127.0.0.1:7860/#home](http://127.0.0.1:7860/#home):
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+APP_BASE_URL=http://127.0.0.1:7860 .venv/bin/uvicorn app:app --host 127.0.0.1 --port 7860
+```
+
+See [AUTH-AND-DISCUSSION.md](AUTH-AND-DISCUSSION.md) for accounts, comments, and analytics. Pull-request checks run the same test suite as the deployment workflow and do not publish the Studio.
 
 ## Learning paths
 
@@ -73,17 +79,17 @@ Basic Python and command-line familiarity are useful for the coding exercises. B
 
 ## Hands-on exercises
 
-Exercised chapters ship two to three exercises each. Write code in the browser, run it in a Pyodide sandbox, and get per-check feedback right in the page. Progress is kept locally for guests and synced to your ModelScope account once you sign in, so it follows you across devices. The `#practice` view doubles as a learning map showing which chapters you have worked through.
+Exercised chapters ship two to three exercises each. Write code in the browser, run it in a Pyodide sandbox, and get per-check feedback right in the page. Progress is kept locally for guests and synced after you sign in, so it follows you across devices. The `#practice` view doubles as a learning map showing which chapters you have worked through.
 
 The Python runtime is about 13 MB and loads lazily: nothing is downloaded while you read, only when you press **Run** for the first time. The download gets its own generous budget, separate from the 15 seconds your code is allowed to run, so a slow first run never gets reported as a timeout in your own code.
 
 Exercises that would need a GPU, a training cluster or an external API are written as reflection prompts instead: you write your reasoning, compare it with the reference answer, and self-assess. We would rather say a topic cannot run in a browser than ship a Run button that always fails.
 
-Your exercise code runs in the reader's own browser: no network access, no subprocesses, and no route to the host filesystem — a write to `/tmp` succeeds but lands in an in-memory filesystem that is destroyed with the worker, so nothing reaches your real disk. Progress sync uploads only the exercise id, whether it passed, your pass rate, attempt count and the code you wrote — so keep production keys and personal data out of it. See [AUTH-AND-DISCUSSION.md](https://github.com/modelscope/ms-cookbook/blob/main/AUTH-AND-DISCUSSION.md) for the full data-handling notes.
+Your exercise code runs in the reader's own browser: no network access, no subprocesses, and no route to the host filesystem — a write to `/tmp` succeeds but lands in an in-memory filesystem that is destroyed with the worker, so nothing reaches your real disk. Progress sync uploads only the exercise id, whether it passed, your pass rate, attempt count and the code you wrote — so keep production keys and personal data out of it. See [AUTH-AND-DISCUSSION.md](AUTH-AND-DISCUSSION.md) for the full data-handling notes.
 
 ## Book contents
 
-Read each chapter on GitHub, or use the [online reading website](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook). Chapter titles are in Chinese.
+Read each chapter in this repository, or on the [ModelScope Studio](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook) after a publish. Source titles are in Chinese; the site translates the reading view.
 
 | Chapter | Focus |
 | --- | --- |
@@ -157,13 +163,13 @@ Share questions, reproduction notes, and practical experience with other readers
   </tr>
 </table>
 
-Scan with WeChat, or save the image and scan it from your photo library. If a code expires, please [open an issue](https://github.com/modelscope/ms-cookbook/issues/new).
+Scan with WeChat, or save the image and scan it from your photo library. If a code expires, please [open an issue](https://github.com/sapsapshen/ms-cookbook-3langs/issues/new).
 
 ## Contributing
 
 There are two ways to share your work:
 
-- **GitHub:** report a problem in [Issues](https://github.com/modelscope/ms-cookbook/issues), or submit a focused [pull request](https://github.com/modelscope/ms-cookbook/pulls). Include the affected chapter or page, supporting references, and verification steps.
+- **GitHub:** report a problem in [Issues](https://github.com/sapsapshen/ms-cookbook-3langs/issues), or submit a focused [pull request](https://github.com/sapsapshen/ms-cookbook-3langs/pulls). Include the affected chapter or page, supporting references, and verification steps.
 - **ModelScope:** visit [Developer Practices](https://modelscope.cn/spotlight), choose **创建内容** (Create content), and add the topic **#魔搭紫皮书**.
 
 We welcome technical corrections, reproducible application examples, AIGC workflows, and reading-experience improvements. Preserve article wording and structure when making interface changes; content corrections need a clear source or author approval. Never include credentials, personal data, or material you cannot redistribute.
@@ -172,7 +178,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ### Acknowledgments
 
-Thank you to [freestylefly](https://github.com/freestylefly), [yingdachen](https://github.com/yingdachen), [liucongg](https://github.com/liucongg), and everyone helping improve the project. [View all contributors →](https://github.com/modelscope/ms-cookbook/graphs/contributors)
+Thank you to [freestylefly](https://github.com/freestylefly), [yingdachen](https://github.com/yingdachen), [liucongg](https://github.com/liucongg), and everyone helping improve the project. [View all contributors →](https://github.com/sapsapshen/ms-cookbook-3langs/graphs/contributors)
 
 Thanks to [Datawhale's Hello-Agents](https://github.com/datawhalechina/hello-agents) for the README organization reference.
 

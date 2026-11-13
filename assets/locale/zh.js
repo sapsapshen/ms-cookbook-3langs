@@ -495,5 +495,26 @@ MSI18N.register('zh', {
   'exercise.incorrect': '还差一点，再想想。',
   'exercise.synced': '已从其它设备同步通过记录。',
   'exercise.mapTitle': '学习地图',
-  'exercise.mapTotal': '已通过 {passed} / {total} 题'
+  'exercise.mapTotal': '已通过 {passed} / {total} 题',
+
+  'login.pageTitle': '登录｜超智学习空间',
+  'login.description': '登录超智学习空间，参与讨论、保存划线与同步练习进度。',
+  'login.home': '超智学习空间首页',
+  'login.title': '登录学习空间',
+  'login.intro': '登录后可以发表评论、保存划线与同步练习进度。',
+  'login.email': '邮箱',
+  'login.password': '密码',
+  'login.submit': '登录',
+  'login.oauth': '使用 ModelScope 社区账号登录',
+  'login.note': '账号由站点管理员创建。忘记密码请联系管理员重置。',
+  'login.back': '← 返回阅读空间',
+  'login.missing': '请输入邮箱和密码。',
+  'login.pending': '正在登录…',
+  'login.success': '登录成功，正在返回…',
+  'login.network': '网络连接失败，请稍后重试。',
+  'login.badCredentials': '邮箱或密码不正确',
+  'login.rateLimited': '登录尝试太频繁，请稍后再试',
+  'login.unavailable': '登录服务暂时不可用，请稍后重试',
+  'login.badOrigin': '请求来源无效',
+  'login.failed': '登录未完成，请稍后重试。'
 });

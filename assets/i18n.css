@@ -89,7 +89,7 @@ html:lang(en) .home-fact > *, html:lang(es) .home-fact > * { min-width: 0; }
 @media (min-width: 1101px) and (max-width: 1400px) {
   html:lang(en) .desktop-nav, html:lang(es) .desktop-nav { display: none; }
   html:lang(en) .app-header .mobile-menu, html:lang(es) .app-header .mobile-menu {
-    display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--text); font-size: 15px;
+    display: flex; align-items: center; gap: 8px; min-height: 44px; min-width: 44px; border: 0; background: none; color: var(--text); font-size: 15px;
   }
   html:lang(en) .app-header .mobile-menu img, html:lang(es) .app-header .mobile-menu img { width: 22px; height: 22px; }
   html:lang(en) .header-account-area, html:lang(es) .header-account-area { margin-left: auto; }
@@ -106,8 +106,10 @@ html:lang(en) .home-fact > *, html:lang(es) .home-fact > * { min-width: 0; }
 }
 
 @media (max-width: 700px) {
-  .language-picker { min-height: 34px; padding: 3px 8px; }
-  .language-select { font-size: 12px; }
+  /* 44px is the touch target, and 16px keeps iOS from zooming the page on focus.
+     The header copy is hidden at this width; the control lives in the menu. */
+  .language-picker { min-height: 44px; padding: 6px 12px; }
+  .language-select { font-size: 16px; }
   /* Phones keep only the menu button in the bar; the selector lives inside that dialog. */
   .header-account-area .language-switcher { display: none; }
   html:lang(en) .app-header .reading-account .discussion-login,

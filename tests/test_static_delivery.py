@@ -118,3 +118,12 @@ def test_error_response_under_auth_still_no_store(site):
 
 def test_index_still_no_cache(site):
     assert client(site).get('/').headers['cache-control'] == 'no-cache'
+
+
+def test_responses_carry_baseline_security_headers(site):
+    page = client(site).get('/')
+    api = client(site).get('/api/session')
+    for response in (page, api):
+        assert response.headers['x-content-type-options'] == 'nosniff'
+        assert response.headers['referrer-policy'] == 'strict-origin-when-cross-origin'
+        assert response.headers['permissions-policy'] == 'camera=(), microphone=(), geolocation=(), payment=()'

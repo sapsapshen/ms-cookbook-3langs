@@ -30,7 +30,7 @@ for(const language of ['zh','en','es']) {
   dictionaries[language] = entries;
 }
 
-const pages = ['../index.html', '../assets/analytics.html'];
+const pages = ['../index.html', '../assets/analytics.html', '../login.html'];
 for(const page of pages) {
   const markup = readFileSync(resolve(__dirname, page), 'utf8');
   for(const [, key] of markup.matchAll(/data-i18n(?:-html)?="([a-z][a-zA-Z.]*)"/g)) {

@@ -105,6 +105,8 @@ const scriptOrder=[...eager,...deferred];
    -- and they are named individually so a fourth eager tag cannot join them by
    accident. Every other script defers, and asset-loader.js goes first: every
    lazy bundle in the site is injected through it. */
+assert(!indexHtml.includes('class="chapter-art"'),
+  'reading.css hides .chapter-art; do not download 01-reading-v2.png from the shell');
 assert.deepEqual(eager,['i18n.js','locale/zh.js','content.js'],
   'exactly assets/i18n.js, assets/locale/zh.js and assets/content.js may block the parser');
 assert.equal(deferred[0],'asset-loader.js','asset-loader.js must be the first deferred script');

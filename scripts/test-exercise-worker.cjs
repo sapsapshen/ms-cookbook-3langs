@@ -58,13 +58,18 @@ const PYTHON = process.env.PYTHON || (fs.existsSync(VENV_PYTHON) ? VENV_PYTHON :
    could never have leaked.
 
    File hand-off rather than pipes, because reading a child's stdout pipe
-   synchronously is not portable to Windows. */
+   synchronously is not portable to Windows.
+
+   One shared req.json / res.json pair is not safe on a fast runner. Opening
+   the response with mode 'w' creates the file before the JSON is written, so
+   the waiter can read a partial file, throw, and leave the finished JSON for
+   the NEXT call — which then grades the previous program. Each request
+   therefore gets its own files, and the response appears only via an atomic
+   rename once it is complete. */
 const DRIVER = `
 import json, os, sys, time, traceback
 
 HERE = sys.argv[1]
-REQ = os.path.join(HERE, 'req.json')
-RES = os.path.join(HERE, 'res.json')
 
 NAMES = ['__sils_stdout', '__sils_error', '__sils_ok', '__sils_assert_ok',
          '__sils_assert_detail', '__sils_found', '__sils_value']
@@ -103,15 +108,36 @@ def snapshot(session):
 # The interpreter's own namespace, kept for the life of the process.
 SESSION = {}
 
+def pending_ids():
+    found = []
+    try:
+        names = os.listdir(HERE)
+    except OSError:
+        return found
+    for name in names:
+        if not name.startswith('req-') or not name.endswith('.json'):
+            continue
+        try:
+            found.append(int(name[4:-5]))
+        except ValueError:
+            continue
+    found.sort()
+    return found
+
 while True:
-    if not os.path.exists(REQ):
+    pending = pending_ids()
+    if not pending:
         time.sleep(0.002)
         continue
+    req_id = pending[0]
+    req_path = os.path.join(HERE, 'req-%d.json' % req_id)
     try:
-        with open(REQ, 'r', encoding='utf-8') as handle:
+        with open(req_path, 'r', encoding='utf-8') as handle:
             request = json.load(handle)
-        os.remove(REQ)
+        os.remove(req_path)
     except (OSError, ValueError):
+        continue
+    if int(request.get('id', -1)) != req_id:
         continue
     if request.get('stop'):
         break
@@ -121,42 +147,71 @@ while True:
             exec(compile(code, '<exercise>', 'exec'), SESSION)
     except BaseException:
         error = traceback.format_exc(limit=8)
-    payload = {'error': error,
+    payload = {'id': req_id, 'error': error,
                'values': {name: encode(SESSION.get(name)) for name in NAMES},
                'learner': snapshot(SESSION)}
-    with open(RES, 'w', encoding='utf-8') as handle:
+    # Rename into place only after the bytes are durable, so the waiter never
+    # observes a truncated JSON document.
+    tmp_path = os.path.join(HERE, 'res-%d.json.tmp' % req_id)
+    res_path = os.path.join(HERE, 'res-%d.json' % req_id)
+    with open(tmp_path, 'w', encoding='utf-8') as handle:
         json.dump(payload, handle)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, res_path)
 `;
 
 /* One CPython process that lives as long as the fake worker does. */
 function createInterpreter() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sils-worker-'));
-  const req = path.join(dir, 'req.json');
-  const res = path.join(dir, 'res.json');
   const child = spawn(PYTHON, ['-X', 'utf8', '-u', '-c', DRIVER, dir], { stdio: 'ignore' });
   const park = new Int32Array(new SharedArrayBuffer(4));
+  let seq = 0;
+
+  // Publish only by rename. A reader that polls for req-<id>.json never sees a
+  // half-written request, and a later call cannot observe this call's response.
+  function publish(body) {
+    const id = ++seq;
+    const tmp = path.join(dir, `req-${id}.json.tmp`);
+    const finalPath = path.join(dir, `req-${id}.json`);
+    fs.writeFileSync(tmp, JSON.stringify(Object.assign({ id }, body)));
+    fs.renameSync(tmp, finalPath);
+    return id;
+  }
+
+  function readResponse(id) {
+    const resPath = path.join(dir, `res-${id}.json`);
+    const deadline = Date.now() + 30000;
+    while (!fs.existsSync(resPath)) {
+      if (child.exitCode !== null) throw new Error('the python driver exited');
+      if (Date.now() > deadline) throw new Error('the python driver stopped responding');
+      Atomics.wait(park, 0, 0, 2);
+    }
+    let payload;
+    try {
+      payload = JSON.parse(fs.readFileSync(resPath, 'utf8'));
+    } finally {
+      fs.rmSync(resPath, { force: true });
+    }
+    if (!payload || payload.id !== id) {
+      throw new Error('the python driver answered a different request');
+    }
+    return payload;
+  }
 
   return {
     run(codes) {
-      fs.writeFileSync(req, JSON.stringify({ codes }), 'utf8');
-      const deadline = Date.now() + 30000;
-      while (!fs.existsSync(res)) {
-        if (Date.now() > deadline) throw new Error('the python driver stopped responding');
-        Atomics.wait(park, 0, 0, 2);
-      }
-      const payload = JSON.parse(fs.readFileSync(res, 'utf8'));
-      fs.rmSync(res, { force: true });
-      return payload;
+      return readResponse(publish({ codes }));
     },
     /* `child.kill()` only asks the OS to terminate the process; the child can
-       still be holding req.json open for a few milliseconds afterwards. On
+       still be holding a request file open for a few milliseconds afterwards. On
        Windows an unlink against a file with a live handle fails with EBUSY, so
        deleting the directory straight after kill() loses that race about one run
        in three -- a flake in the suite CI now depends on. Wait for the actual
        exit, then retry briefly: Windows also holds handles open asynchronously
        for reasons that outlive the process (indexers, virus scanners). */
     async close() {
-      try { fs.writeFileSync(req, JSON.stringify({ stop: true }), 'utf8'); } catch (failure) { /* gone */ }
+      try { publish({ stop: true }); } catch (failure) { /* gone */ }
       if (child.exitCode === null && child.signalCode === null) {
         await new Promise(resolve => {
           child.once('exit', resolve);

@@ -4,13 +4,13 @@
   <img src="assets/home/book-hero.webp" width="360" alt="魔搭紫皮书：开源模型应用实战封面">
 </p>
 
-<h1 align="center">ModelScope Cookbook · 魔搭紫皮书</h1>
-<p align="center"><strong>让开源模型，从知识走向实践。</strong></p>
-<p align="center">选得对 · 跑得起 · 调得好 · 用得上</p>
+<h1 align="center">超智学习空间</h1>
+<p align="center"><strong>魔搭紫皮书的三语阅读站。</strong></p>
+<p align="center">简体中文 · English · Español</p>
 
 <p align="center">
-  <a href="https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook"><img src="https://img.shields.io/badge/在线阅读-ModelScope-7043DB?style=flat-square" alt="在魔搭创空间在线阅读"></a>
-  <a href="https://github.com/modelscope/ms-cookbook/stargazers"><img src="https://img.shields.io/github/stars/modelscope/ms-cookbook?style=flat-square&amp;color=7043DB" alt="GitHub stars"></a>
+  <a href="https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook"><img src="https://img.shields.io/badge/创空间-ModelScope-7043DB?style=flat-square" alt="魔搭创空间部署"></a>
+  <a href="https://github.com/sapsapshen/ms-cookbook-3langs/stargazers"><img src="https://img.shields.io/github/stars/sapsapshen/ms-cookbook-3langs?style=flat-square&amp;color=7043DB" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-7043DB?style=flat-square" alt="许可证：Apache 2.0"></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/参与共建-Welcome-287D70?style=flat-square" alt="欢迎参与共建"></a>
 </p>
@@ -28,7 +28,7 @@
 
 ## 项目介绍
 
-**魔搭紫皮书是一个面向开发者的开源模型应用实战项目，围绕真实任务，系统介绍模型选型、推理运行、数据准备、微调评测与应用开发。**
+**超智学习空间（SILS）是这本实战手册的三语阅读站。** 章节来自魔搭紫皮书，围绕真实任务介绍模型选型、推理运行、数据准备、微调评测与应用开发。站点界面、章节正文和练习会一起在简体中文、English、Español 之间切换。语言控件在页眉；窄屏时收进菜单。选择记在这台浏览器里，登录页和访问统计页使用同一次选择。
 
 从“模型可以下载”到“模型真正用起来”，中间还有一系列具体问题：业务需求该选哪类模型？现有硬件能跑多大规模？如何用自己的数据微调？效果提升该怎样验证？本书结合 **EvalScope、ms-swift、DiffSynth、Ollama** 等工具，以及 RAG 与 Agent 工作流，把这些选择与动手操作衔接起来。
 
@@ -38,21 +38,27 @@
 
 ## 开始阅读
 
-**[在魔搭创空间在线阅读 →](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook)**
-
-打开即可阅读，无需安装。网站提供全文关键词搜索、阅读路径、章节导航、代码复制、图片放大与数学公式渲染，支持桌面和手机访问。
+配置了 `MODELSCOPE_API_KEY` 的维护者可以用[部署工作流](.github/workflows/deploy-modelscope.yml)把站点发布到魔搭创空间 [`ms-cookbook-team/ms-cookbook`](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook)。网站提供全文关键词搜索、阅读路径、章节导航、代码复制、图片放大与数学公式渲染，支持桌面和手机访问。
 
 如需本地阅读：
 
 ```bash
-git clone https://github.com/modelscope/ms-cookbook.git
-cd ms-cookbook
+git clone https://github.com/sapsapshen/ms-cookbook-3langs.git
+cd ms-cookbook-3langs
 python3 -m http.server 4173 --bind 127.0.0.1
 ```
 
 打开 [http://127.0.0.1:4173/#home](http://127.0.0.1:4173/#home)。端口被占用时，将命令和地址中的端口一并改为 `4174`。按 `Ctrl+C` 停止服务。
 
-本地阅读只需 Python 3 与现代浏览器，无需安装项目依赖、执行构建、配置 API 密钥或使用 GPU。各章实践所需的软件、模型文件、访问凭据和算力条件，以章节说明为准。
+本地阅读只需 Python 3 与现代浏览器，无需安装项目依赖、执行构建、配置 API 密钥或使用 GPU。各章实践所需的软件、模型文件、访问凭据和算力条件，以章节说明为准。上面的静态服务不能登录、评论或同步练习进度。需要这些能力时安装 API，并打开 [http://127.0.0.1:7860/#home](http://127.0.0.1:7860/#home)：
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+APP_BASE_URL=http://127.0.0.1:7860 .venv/bin/uvicorn app:app --host 127.0.0.1 --port 7860
+```
+
+账号、评论与访问统计见 [AUTH-AND-DISCUSSION.md](AUTH-AND-DISCUSSION.md)。拉取请求会跑与部署相同的测试，但不会发布创空间。
 
 ## 学习路线
 
@@ -73,17 +79,17 @@ python3 -m http.server 4173 --bind 127.0.0.1
 
 ## 动手练习
 
-配套练习的章节每章有 2 到 3 道题。在浏览器里写代码，用 Pyodide 沙箱直接运行，逐项给出通过/未通过反馈。游客进度存在本地，登录魔搭账号后自动同步，换设备也能接着做。`#practice` 视图同时是学习地图，一眼看清哪些章练过。
+配套练习的章节每章有 2 到 3 道题。在浏览器里写代码，用 Pyodide 沙箱直接运行，逐项给出通过/未通过反馈。游客进度存在本地，登录后自动同步，换设备也能接着做。`#practice` 视图同时是学习地图，一眼看清哪些章练过。
 
 Python 运行时约 13 MB，懒加载：阅读时不下载任何东西，只有点「运行」时才拉取。下载有自己宽松的额度，与你的代码 15 秒的执行上限分开，所以首次运行慢不会被误报成你的代码超时。
 
 需要 GPU、训练集群或外部 API 的题目会写成思考题：你写下判断，对照参考答案自评。我们宁可明说某个主题在浏览器里跑不了，也不放一个注定失败的「运行」按钮。
 
-练习代码在读者自己的浏览器里运行：没有网络访问，也没有子进程，更到不了宿主文件系统——写 `/tmp` 会成功，但落在一个随 worker 销毁而消失的内存文件系统里，真实磁盘上什么都不会留下；进度同步只上传题目 id、是否通过、通过率、尝试次数和你写的代码——请不要把生产密钥或个人信息写进练习代码。完整的数据处理说明见 [AUTH-AND-DISCUSSION.md](https://github.com/modelscope/ms-cookbook/blob/main/AUTH-AND-DISCUSSION.md)。
+练习代码在读者自己的浏览器里运行：没有网络访问，也没有子进程，更到不了宿主文件系统——写 `/tmp` 会成功，但落在一个随 worker 销毁而消失的内存文件系统里，真实磁盘上什么都不会留下；进度同步只上传题目 id、是否通过、通过率、尝试次数和你写的代码——请不要把生产密钥或个人信息写进练习代码。完整的数据处理说明见 [AUTH-AND-DISCUSSION.md](AUTH-AND-DISCUSSION.md)。
 
 ## 内容导航
 
-点击章节在 GitHub 阅读，或前往[在线阅读网站](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook)。
+章节可以在本仓库阅读；发布之后也可以在[魔搭创空间](https://modelscope.cn/studios/ms-cookbook-team/ms-cookbook)阅读。源标题是中文，站点会翻译阅读界面。
 
 | 章节 | 关键内容 |
 | --- | --- |
@@ -157,13 +163,13 @@ Python 运行时约 13 MB，懒加载：阅读时不下载任何东西，只有�
   </tr>
 </table>
 
-使用微信扫码，或保存图片后从相册识别。如二维码失效，欢迎通过 [Issue](https://github.com/modelscope/ms-cookbook/issues/new) 反馈。
+使用微信扫码，或保存图片后从相册识别。如二维码失效，欢迎通过 [Issue](https://github.com/sapsapshen/ms-cookbook-3langs/issues/new) 反馈。
 
 ## 参与共建
 
 你可以选择两种方式分享成果：
 
-- **GitHub：** 在 [Issues](https://github.com/modelscope/ms-cookbook/issues) 中反馈问题，或提交范围清晰的 [Pull Request](https://github.com/modelscope/ms-cookbook/pulls)。请注明相关章节或页面、参考依据及验证步骤。
+- **GitHub：** 在 [Issues](https://github.com/sapsapshen/ms-cookbook-3langs/issues) 中反馈问题，或提交范围清晰的 [Pull Request](https://github.com/sapsapshen/ms-cookbook-3langs/pulls)。请注明相关章节或页面、参考依据及验证步骤。
 - **魔搭：** 前往[开发者实践](https://modelscope.cn/spotlight)，选择 **创建内容**，添加专题 **#魔搭紫皮书** 后投稿。
 
 欢迎贡献技术勘误、可复现应用案例、AIGC 工作流与阅读体验改进。界面调整应保留文章内容与结构，正文修订需提供明确来源或作者确认。请勿提交访问凭据、个人隐私数据或未经授权的材料。
@@ -172,7 +178,7 @@ Python 运行时约 13 MB，懒加载：阅读时不下载任何东西，只有�
 
 ### 致谢
 
-感谢 [freestylefly](https://github.com/freestylefly)、[yingdachen](https://github.com/yingdachen)、[liucongg](https://github.com/liucongg)，以及每一位帮助项目改进的共建者。[查看全部贡献记录 →](https://github.com/modelscope/ms-cookbook/graphs/contributors)
+感谢 [freestylefly](https://github.com/freestylefly)、[yingdachen](https://github.com/yingdachen)、[liucongg](https://github.com/liucongg)，以及每一位帮助项目改进的共建者。[查看全部贡献记录 →](https://github.com/sapsapshen/ms-cookbook-3langs/graphs/contributors)
 
 感谢 [Datawhale Hello-Agents](https://github.com/datawhalechina/hello-agents) 提供 README 组织参考。
 

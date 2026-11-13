@@ -1,10 +1,10 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-const pages=['../index.html','../assets/analytics.html'];
+const pages=['../index.html','../assets/analytics.html','../login.html'];
 const scripts=['../assets/i18n.js','../assets/paper.js'];
-const stamp=contents=>contents.replace(/(href|src)="(assets\/[^"?]+\.(?:css|js))(?:\?[^" ]*)?"/g,(_,attr,path)=>
+const stamp=contents=>contents.replace(/(href|src)="(\/?assets\/[^"?]+\.(?:css|js))(?:\?[^" ]*)?"/g,(_,attr,path)=>
   `${attr}="${path}?v=${hash(path)}"`);
-const hash=path=>createHash('sha256').update(readFileSync(new URL('../'+path,import.meta.url))).digest('hex').slice(0,12);
+const hash=path=>createHash('sha256').update(readFileSync(new URL('../'+path.replace(/^\//,''),import.meta.url))).digest('hex').slice(0,12);
 /* Injected paths live inside JS string arrays. Without a hash they would get no
    Cache-Control from the immutable rule, which keys off the ?v= parameter.
    Scripts FIRST: stamping them rewrites their own content, so a page stamped

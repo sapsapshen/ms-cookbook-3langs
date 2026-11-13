@@ -203,6 +203,20 @@ await check('every assets/ reference in index.html exists on disk', () => {
   }
 });
 
+await check('login.html pins the same content hashes, including root-absolute URLs', () => {
+  const login = read('login.html');
+  const {createHash} = require('node:crypto');
+  let seen = 0;
+  for (const match of login.matchAll(/(?:src|href)="\/?(assets\/[^"?]+\.(?:js|css))\?v=([0-9a-f]+)"/g)) {
+    seen += 1;
+    const [, path, version] = match;
+    const actual = createHash('sha256').update(readFileSync(resolve(ROOT, path))).digest('hex').slice(0, 12);
+    assert.equal(version, actual, `${path} on the login page is pinned to ?v=${version} but hashes to ${actual}`);
+  }
+  assert.ok(seen >= 6, `login.html only fingerprinted ${seen} css/js files`);
+  assert.ok(login.includes('data-language-switcher'), 'the login page has no language control');
+});
+
 await check('every cached ?v= fingerprint matches the file it points at', () => {
   const {createHash} = require('node:crypto');
   let seen = 0;
